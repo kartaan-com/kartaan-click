@@ -1,4 +1,4 @@
-// ─── Kartaan Shortcuts — VMS packing screen ─────────────────────────────
+// ─── Kartaan Click — VMS packing screen ─────────────────────────────
 // Runs on the SynLabs VMS operator screen and does one thing: empties the AWB
 // box by itself the moment a recording stops, then puts the cursor back in it.
 //
@@ -62,7 +62,7 @@ function checkForStop() {
   const previous = lastLabel;
   lastLabel = label;
   if (previous === BUSY && label === IDLE && clearAwbBox()) {
-    console.log(`[Kartaan Shortcuts ${BUILD}] recording stopped — AWB box cleared, cursor back in it`);
+    console.log(`[Kartaan Click ${BUILD}] recording stopped — AWB box cleared, cursor back in it`);
   }
 }
 
@@ -90,7 +90,7 @@ new MutationObserver(() => {
     if (box) {
       box.focus();
       clearInterval(timer);
-      console.log(`[Kartaan Shortcuts ${BUILD}] active on this VMS screen — kartaan.com`);
+      console.log(`[Kartaan Click ${BUILD}] active on this VMS screen — kartaan.com`);
     } else if (++attempts > 20) {
       clearInterval(timer);
     }

@@ -1,4 +1,4 @@
-# Kartaan Shortcuts
+# Kartaan Click
 
 Free browser extension that fixes small, repetitive annoyances in the tools sellers
 and warehouse teams use all day. Built by Vishal Jaiswal at [Kartaan](https://kartaan.com), and free for
@@ -28,7 +28,7 @@ before it disappears.
 
 ### From the Microsoft Edge Add-ons store
 
-Search for **Kartaan Shortcuts** and click Get. *(Listing pending review.)*
+Search for **Kartaan Click** and click Get. *(Listing pending review.)*
 
 ### From the ZIP
 
@@ -41,7 +41,7 @@ install file is distributed as a ZIP from kartaan.com or sent to you directly.
 4. Click **Load unpacked** and pick the unzipped folder (the one with `manifest.json` in it)
 
 Reload your VMS tab. Open the browser console (F12) and you should see a line
-starting `[Kartaan Shortcuts]` confirming it is active.
+starting `[Kartaan Click]` confirming it is active.
 
 ### Building the ZIP
 

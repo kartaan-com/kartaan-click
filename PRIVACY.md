@@ -1,4 +1,4 @@
-# Privacy Policy — Kartaan Shortcuts
+# Privacy Policy — Kartaan Click
 
 Last updated: 29 August 2026
 

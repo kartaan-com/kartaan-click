@@ -9,18 +9,18 @@ unless you want to reword it.
    your Microsoft account, and choose the **Microsoft Edge** program.
    There is no fee for Edge — unlike Chrome, which charges $5.
 2. Build the upload file: `node tools/make-zip.js`, which produces
-   `kartaan-shortcuts-1.0.0.zip` with `manifest.json` at the top level.
+   `kartaan-click-1.0.0.zip` with `manifest.json` at the top level.
 
 ## Listing fields
 
 **Name**
-Kartaan Shortcuts
+Kartaan Click
 
 **Short description** (under 132 characters)
 Free workflow fixes for seller and warehouse tools. On the VMS packing screen, the AWB box clears itself when you stop.
 
 **Description**
-Kartaan Shortcuts removes small, repetitive clicks from the tools that seller and warehouse teams use all day. It is free, from Kartaan.
+Kartaan Click removes small, repetitive clicks from the tools that seller and warehouse teams use all day. It is free, from Kartaan.
 
 What it does today — VMS packing screen, auto-clear AWB:
 
