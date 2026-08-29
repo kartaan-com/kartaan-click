@@ -1,4 +1,4 @@
-# Privacy Policy — Kartaan Seller Tools
+# Privacy Policy — Kartaan Shortcuts
 
 Last updated: 29 August 2026
 
