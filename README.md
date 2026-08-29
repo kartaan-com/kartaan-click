@@ -33,11 +33,11 @@ manual install below works in the meantime, and in Chrome.)*
 
 ### Manually, in Chrome or Edge
 
-1. Download this repository: green **Code** button → **Download ZIP**
+1. **[Download the extension](https://github.com/kartaan-com/kartaan-seller-assist/archive/refs/heads/main.zip)** — one click, saves `kartaan-seller-assist-main.zip`
 2. Unzip it somewhere you will not delete by accident
 3. Open `chrome://extensions` (or `edge://extensions`)
 4. Turn on **Developer mode** — top-right in Chrome, bottom-left in Edge
-5. Click **Load unpacked** and pick the unzipped folder
+5. Click **Load unpacked** and pick the unzipped folder (the one with `manifest.json` in it)
 
 Reload your VMS tab. Open the browser console (F12) and you should see a line
 starting `[Kartaan Seller Assist]` confirming it is active.
