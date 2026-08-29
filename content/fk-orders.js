@@ -26,8 +26,26 @@ window.__kartaanClickOrders = true;
 
 'use strict';
 
-const BUILD      = '2026-08-29a';  // shown in the log so it is obvious which build a tab is running
+const BUILD      = '2026-08-29b';  // shown in the log so it is obvious which build a tab is running
 const DRY_RUN    = false;          // set true to make Start only report what it would click
+
+// TEMPORARY DIAGNOSTIC — delete this and everything marked "BLOB TEST" once the
+// question below is answered. It changes nothing about how labels are saved.
+//
+// THE QUESTION: Flipkart builds each label inside its own page and hands the
+// browser a blob: address. The background worker cannot read one of those — it
+// lives at a different address to the page, so the lookup fails. That is what
+// killed the hands-free route once already. But a content script runs at the
+// PAGE's address, so it may be able to read the very same blob. If it can, the
+// extension can save the label itself with no Save-As box and no settings change.
+//
+// Two things have to be true, and only a real browser can say:
+//   A. a content script can read a blob at all, and registers at the page address
+//   B. the blob is still alive by the time we reach it (pages usually throw the
+//      address away the instant the download starts)
+// Probe A runs from the panel button any time, with no orders needed. Probe B
+// runs on the next real label. Neither cancels or delays anything.
+const BLOB_TEST = true;
 const STATE_KEY  = 'kcOrdersBot';
 const LOG_KEY    = 'kcOrdersLog';
 const UI_KEY     = 'kcOrdersUi';      // panel position, collapsed state, dismissed notice
@@ -418,6 +436,11 @@ function buildPanel(mode) {
         + '  <div class="hint" id="__kcHint">Scan first, then tick the SKUs to work through. Nothing ticked = all of them.</div>'
       : ''),
     '  <div class="row"><label>Stop after <input type="number" id="__kcLimit" min="1" value="50"> orders</label></div>',
+    // On every tab, not just the labels one: this probe makes its own file and
+    // needs no orders waiting, so it can be answered today.
+    (BLOB_TEST
+      ? '  <div class="row"><button id="__kcBlobTest">Blob test (diagnostic)</button></div>'
+      : ''),
     '  <div class="row">',
     '    <button class="go" id="__kcStart">Start</button>',
     '    <button class="stop" id="__kcStop">Stop</button>',
@@ -497,6 +520,9 @@ function buildPanel(mode) {
       await chrome.storage.local.set({ [UI_KEY]: ui });
     };
   }
+
+  const blobBtn = panel.querySelector('#__kcBlobTest');
+  if (blobBtn) blobBtn.onclick = () => blobSelfTest();
 
   if (mode.skuFilter) {
     panel.querySelector('#__kcScan').onclick = () => scanSkus(mode);
@@ -647,6 +673,73 @@ async function scanSkus(mode) {
   await log('scan done — ' + skus.length + ' order(s) across ' + sorted.length + ' SKU(s):');
   for (const [sku, n] of sorted) await log('   ' + n + ' × ' + sku);
   await paint(mode);
+}
+
+// ── BLOB TEST (temporary diagnostic) ────────────────────────────────────────
+// Reports what actually happens, rather than what anyone expects to happen.
+async function blobProbe(url, why) {
+  const started = Date.now();
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      await log('BLOB TEST (' + why + '): FAILED — the page answered ' + res.status);
+      return false;
+    }
+    const buf = await res.arrayBuffer();
+    await log('BLOB TEST (' + why + '): READ OK — ' + buf.byteLength + ' bytes, '
+      + (res.headers.get('content-type') || 'unknown type')
+      + ', took ' + (Date.now() - started) + 'ms');
+    return true;
+  } catch (e) {
+    // "Failed to fetch" is what BOTH possible causes look like: the address was
+    // thrown away before we got there, or this world is not allowed to read the
+    // page's files at all. The own-blob probe tells those apart — if that one
+    // came back READ OK at this page's address, then reading is allowed and the
+    // only explanation left is that it was thrown away. The timing says how
+    // narrow the window was.
+    await log('BLOB TEST (' + why + '): FAILED after ' + (Date.now() - started) + 'ms — '
+      + ((e && e.message) ? e.message : String(e)));
+    return false;
+  }
+}
+
+// Probe A — does a content script get a page-address blob, and can it read it?
+// Needs no orders and no label; it makes its own tiny file and reads it back.
+async function blobSelfTest() {
+  const mine = URL.createObjectURL(new Blob(['kartaan click blob test'], { type: 'text/plain' }));
+  await log('BLOB TEST (own blob): address is ' + mine.slice(0, 60));
+  await log('  → ' + (mine.indexOf('blob:' + location.origin) === 0
+    ? 'that IS this page address, so a label blob should be reachable too'
+    : 'that is NOT this page address — reading a label blob is unlikely to work'));
+  await blobProbe(mine, 'own blob');
+  URL.revokeObjectURL(mine);
+}
+
+// Probe B — the real thing. The background worker hands over the actual label's
+// address the instant the download appears; this reads it as fast as it can.
+//
+// The address arrives by TWO routes on purpose, and whichever lands first wins.
+// A direct message is the quicker of the two but may be refused for want of a
+// host permission, and storage is slower but is guaranteed to work because this
+// extension already has that permission. A test that fails for the wrong reason
+// is worse than no test.
+let _blobSeen = '';
+function onBlobUrl(url, route) {
+  if (!url || url === _blobSeen) return;   // both routes fired — take the first
+  _blobSeen = url;
+  log('BLOB TEST (real label): address arrived via ' + route + ', reading it now…');
+  blobProbe(url, 'real label');
+}
+
+if (BLOB_TEST) {
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg && msg.type === 'LABEL_BLOB_URL') onBlobUrl(msg.url, 'direct message');
+  });
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes._labelBlobUrl && changes._labelBlobUrl.newValue) {
+      onBlobUrl(changes._labelBlobUrl.newValue, 'storage');
+    }
+  });
 }
 
 // ── human-like click ────────────────────────────────────────────────────────

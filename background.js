@@ -20,6 +20,10 @@ const ARM_WINDOW_MS = 60000;
 // goes in, which is safe to apply to both the original and the re-issue.
 let _folderUntil = 0;
 
+// DIAGNOSTIC, temporary — see BLOB_TEST in content/fk-orders.js. The tab that
+// armed the current label, so the blob url can be handed straight back to it.
+let _labelTabId = null;
+
 // Where labels are filed. Chrome only allows a path relative to the user's own
 // Downloads folder — an absolute path anywhere else on the disk is rejected by
 // the browser, so this is as close to "a folder of your own" as an extension can
@@ -67,7 +71,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'LABEL_ARM') {
     _labelArmedAt = Date.now();
     _folderUntil  = Date.now() + ARM_WINDOW_MS;
-    chrome.storage.local.remove('_labelDownloadResult', () => sendResponse({ ok: true }));
+    _labelTabId   = (sender && sender.tab && sender.tab.id != null) ? sender.tab.id : null;
+    chrome.storage.local.remove(['_labelDownloadResult', '_labelBlobUrl'], () => sendResponse({ ok: true }));
     return true;
   }
 
@@ -100,6 +105,19 @@ chrome.downloads.onCreated.addListener((item) => {
   // destroy the only copy, so leave Chrome to save it and just report where it
   // landed. (Proven the hard way; do not try to re-fetch a blob.)
   if (url.startsWith('blob:')) {
+    // DIAGNOSTIC, temporary — see BLOB_TEST in content/fk-orders.js. Hand the blob
+    // address straight back to the page's own content script, which lives at the
+    // page's address and may be able to read what this worker cannot. Sent two
+    // ways because the direct message can be refused for want of a host
+    // permission, while storage always works; the content script takes whichever
+    // arrives first. Nothing is cancelled and nothing waits on the answer — the
+    // label saves exactly as it did before, either way.
+    chrome.storage.local.set({ _labelBlobUrl: url });
+    if (_labelTabId != null) {
+      chrome.tabs.sendMessage(_labelTabId, { type: 'LABEL_BLOB_URL', url }, () => {
+        void chrome.runtime.lastError;   // the tab may have gone; harmless here
+      });
+    }
     trackDownload(item.id);
     return;
   }
