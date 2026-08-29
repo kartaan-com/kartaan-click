@@ -1,7 +1,7 @@
 # Kartaan Seller Assist
 
 Free browser extension that fixes small, repetitive annoyances in the tools sellers
-and warehouse teams use all day. Made by [Kartaan](https://kartaan.com) and free for
+and warehouse teams use all day. Built by Vishal Jaiswal at [Kartaan](https://kartaan.com), and free for
 anyone to use.
 
 ## What it does today
@@ -53,10 +53,11 @@ See [PRIVACY.md](PRIVACY.md).
 Only `https://*.synlabs.io/*`. On any page there without an AWB box it does nothing
 at all.
 
-## Contributing
+## Suggestions
 
 Found another repetitive click worth killing? Open an issue with the site and the
-steps you repeat.
+steps you repeat. Code contributions are not accepted — this is maintained by
+Kartaan.
 
 ## Regenerating the icons
 
@@ -64,4 +65,8 @@ steps you repeat.
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE).
+Copyright © 2026 Vishal Jaiswal (Kartaan). All rights reserved.
+
+Free to use, not free to take. You may install and use it at no cost, and share
+the download link. You may not copy, modify, redistribute, or publish it anywhere
+else without written permission. See [LICENSE](LICENSE).
