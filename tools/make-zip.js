@@ -9,7 +9,7 @@ const path = require('path');
 
 const root    = path.join(__dirname, '..');
 const version = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')).version;
-const out     = path.join(root, `kartaan-seller-assist-${version}.zip`);
+const out     = path.join(root, `kartaan-seller-tools-${version}.zip`);
 
 // Deliberately excludes tools/, STORE-LISTING.md and icons/icon300.png — build
 // scripts, submission notes and the store artwork are not part of what ships.

@@ -1,4 +1,4 @@
-# Privacy Policy — Kartaan Seller Assist
+# Privacy Policy — Kartaan Seller Tools
 
 Last updated: 29 August 2026
 
