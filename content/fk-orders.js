@@ -1,0 +1,989 @@
+// ─── Kartaan Click — Flipkart one-by-one order actions ──────────────────────
+// Runs on https://seller.flipkart.com/* (document_idle), but stays completely
+// inert unless the page is Active Orders → Pending-to-Pack or Pending-to-Accept.
+//
+// WHY THIS EXISTS: Flipkart's bulk actions are broken, so every order has to be
+// handled with an individual click. This drives those clicks one at a time, with
+// randomised pacing so it behaves like a person working through the list rather
+// than a burst of scripted clicks.
+//
+// Three modes, picked automatically from the page:
+//   To Pack / Pending RTD   → clicks "Mark RTD" on each row
+//   To Pack / Pending Label → clicks "Print Labels" on each row, in batches of
+//                             whatever "Stop after" is set to
+//   To Accept               → clicks "Accept" on each row, optionally only for
+//                             the SKUs ticked in the panel (Scan SKUs lists every
+//                             SKU on the tab with its order count first)
+// The two To Pack sub-tabs share one URL, so those two are told apart by which
+// row buttons are on screen, re-checked every few seconds while idle.
+//
+// It never auto-starts — only the Start button on its own on-page panel begins a
+// run. State lives in chrome.storage.local so a page reload (its own, or
+// Flipkart's) resumes the run instead of losing it.
+
+if (!window.__kartaanClickOrders) {
+window.__kartaanClickOrders = true;
+
+'use strict';
+
+const BUILD      = '2026-08-29a';  // shown in the log so it is obvious which build a tab is running
+const DRY_RUN    = false;          // set true to make Start only report what it would click
+const STATE_KEY  = 'kcOrdersBot';
+const LOG_KEY    = 'kcOrdersLog';
+const UI_KEY     = 'kcOrdersUi';      // panel position, collapsed state, dismissed notice
+const FILTER_KEY = 'kcOrdersFilter';  // { mode: [sku, sku, ...] } — survives reloads mid-run
+
+// Chrome and Edge both default to asking where to save every file. While that is
+// on, printing labels cannot be hands-free: the browser puts a Save-As box on
+// screen and the run has to stop and wait for a human every single time. There is
+// no way for an extension to read that setting, let alone change it — so the panel
+// says this up front on the labels tab, and says it again the moment a label
+// actually stalls, which is proof the setting is on.
+const SAVE_HELP = [
+  'For hands-free label printing, the browser must stop asking where to save:',
+  '  Chrome: Settings → Downloads → turn OFF "Ask where to save each file before downloading"',
+  '  Edge:   Settings → Downloads → turn OFF "Ask me what to do with each download"',
+  'Labels then save on their own into your Downloads → "Kartaan Click Labels" folder.',
+].join('\n');
+
+// The two Active Orders tabs this works on. `labels` are the exact button texts
+// on a row; `tile` is the counter chip used to confirm an action landed.
+const MODES = {
+  pack: {
+    id:     'pack',
+    tabKey: 'pendingToPack',
+    title:  'Mark RTD',
+    verb:   'Mark RTD',
+    labels: ['mark rtd', 'mark as rtd', 'mark ready to dispatch'],
+    tiles:  ['Pending RTD', 'To Pack'],
+    skuFilter: false,
+  },
+  // The Pending Label sub-tab lives on the SAME url as Pending RTD, so this mode
+  // is chosen by what is actually on screen (see currentMode). The row control is
+  // a real enabled BUTTON reading "Print Labels"; the bulk one in the toolbar is
+  // disabled and covers the whole table, so the row/bulk rules already exclude it.
+  label: {
+    id:     'label',
+    tabKey: 'pendingToPack',
+    title:  'Print labels',
+    verb:   'Print Labels',
+    labels: ['print labels', 'print label'],
+    tiles:  ['Pending Label'],
+    // Same SKU picker as the Accept tab: Scan SKUs lists every SKU waiting for a
+    // label with its order count, and only the ticked ones get printed.
+    skuFilter: true,
+    // The browser may open a viewer or start a download, either of which takes a
+    // moment longer than a plain button press.
+    confirmWaitMs: 20000,
+    // Getting the file on disk is the point of this mode, so that is what counts
+    // as success — not whether Flipkart also moved the row off the sub-tab.
+    successOnAct: true,
+    async act(pick) {
+      // Arm the background worker first: it files the label into its own folder,
+      // and re-issues the download without a Save-As box where that is possible.
+      await chrome.runtime.sendMessage({ type: 'LABEL_ARM' });
+      const startedAt = Date.now();
+      await humanClick(pick.el);
+
+      // If the browser asks where to save, the run simply waits here until the
+      // file is actually on disk — no clicking ahead to the next order meanwhile.
+      let told = false;
+      const res = await waitFor(async () => {
+        const r = (await chrome.storage.local.get('_labelDownloadResult'))._labelDownloadResult;
+        if (r) return r;
+        if (!told && Date.now() - startedAt > 6000) {
+          told = true;
+          await log('  waiting for you to save this label — paused until then');
+          await log(SAVE_HELP);
+        }
+        return null;
+      }, 610000);
+
+      if (!res) {
+        await chrome.runtime.sendMessage({ type: 'LABEL_DISARM' });
+        await log('  no label download appeared — if a Save-As box is on screen, close it and tell me');
+        return false;
+      }
+      if (!res.ok) {
+        await log('  label NOT saved — ' + res.reason);
+        return false;
+      }
+      await log('  saved → ' + res.filename);
+      return true;
+    },
+  },
+  accept: {
+    id:     'accept',
+    tabKey: 'pendingToAccept',
+    title:  'Accept orders',
+    verb:   'Accept',
+    labels: ['accept', 'accept order', 'accept orders'],
+    tiles:  ['To Accept'],
+    skuFilter: true,
+    // A row's "Accept Orders" is NOT a button — it is an accordion header (a plain
+    // div, data-testid="accordion-header") that opens a small panel offering
+    // "Accept All N Order(s)" and "Accept Orders Partially". So this tab needs two
+    // clicks per row, and we always take the full-accept option.
+    findRows() {
+      return [...document.querySelectorAll('[data-testid="accordion-header"]')]
+        .filter(h => /^accept orders?/i.test(txt(h)) && isVisible(h) && !isDisabled(h))
+        .map(h => {
+          const ctx = rowContextFor(h);
+          return ctx ? { el: h, ctx, sku: skuOf(ctx.text) } : null;
+        })
+        .filter(Boolean);
+    },
+    async act(pick) {
+      // Opening a row re-renders it, which detaches the very element that was
+      // clicked — so anything scoped to it (its parent, its ancestors) is stale
+      // and finds nothing, even though the panel is plainly open on screen. Only
+      // one row panel is ever open, so search the whole page instead.
+      const findAcceptAll = () => {
+        const all = [...document.querySelectorAll('button')].filter(b =>
+          /^accept all \d+ orders?$/i.test(txt(b)) && isVisible(b) && !isDisabled(b));
+        if (all.length < 2) return all[0] || null;
+        const mine = all.find(b => {
+          const c = rowContextFor(b);
+          return c && skuOf(c.text) === pick.sku;
+        });
+        return mine || all[0];
+      };
+
+      // One native click opens the row; the arrival of the "Accept All ..."
+      // button is the signal (aria-expanded is not reliable here — it read
+      // "false" on a panel that had visibly opened).
+      await humanClick(pick.el, { native: true });
+      const btn = await waitFor(findAcceptAll, 8000);
+      if (!btn) { await log('  row panel did not open'); return false; }
+      await log('  panel open → "' + txt(btn) + '"');
+      await humanClick(btn, { native: true });
+      return true;
+    },
+  },
+};
+
+const urlFor = mode =>
+  'https://seller.flipkart.com/index.html#dashboard/active-orders?query='
+  + encodeURIComponent('{"activeShipmentTile":"' + mode.tabKey + '"}');
+
+function currentMode() {
+  const h = decodeURIComponent(location.hash || '');
+  if (!/active-orders/i.test(h)) return null;
+  if (new RegExp(MODES.accept.tabKey, 'i').test(h)) return MODES.accept;
+  if (new RegExp(MODES.pack.tabKey,   'i').test(h)) return packSubTab();
+  return null;
+}
+
+// "Pending Label" and "Pending RTD" share one url, so the url cannot tell them
+// apart — the rows can. An enabled row-level "Print Labels" button only exists on
+// the Pending Label sub-tab (the toolbar's own copy is always disabled).
+function packSubTab() {
+  const onLabelTab = [...document.querySelectorAll('button')].some(b =>
+    /^print labels?$/i.test(txt(b)) && !b.disabled && isVisible(b) && rowContextFor(b));
+  return onLabelTab ? MODES.label : MODES.pack;
+}
+
+// Pacing (milliseconds). Every wait is randomised around these — never a fixed beat.
+const PACE = {
+  betweenOrdersMin:  2200,
+  betweenOrdersMax:  6500,
+  breakEveryMin:     8,      // after this many clicks (randomised up to Max) take a longer break
+  breakEveryMax:     15,
+  breakMin:          18000,
+  breakMax:          55000,
+  rowWaitMs:         45000,  // how long to wait for the list to render before reloading
+  confirmWaitMs:     12000,  // how long to wait for the row to disappear after a click
+  maxReloads:        6,      // consecutive reloads with no rows before giving up
+  maxFails:          5,      // consecutive clicks that changed nothing before giving up
+  reloadEveryClicks: 25,     // refresh the list periodically so it doesn't go stale
+};
+
+// ── small helpers ───────────────────────────────────────────────────────────
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const rand  = (a, b) => Math.floor(a + Math.random() * (b - a));
+
+// Randomised wait that is occasionally much longer — a flat random range still
+// looks mechanical; real people stall now and then.
+async function humanPause(min, max) {
+  let ms = rand(min, max);
+  if (Math.random() < 0.12) ms += rand(2000, 9000);
+  await sleep(ms);
+}
+
+// Polls until `fn()` returns something truthy, or the timeout runs out.
+async function waitFor(fn, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const v = await fn();   // works for plain predicates too
+    if (v) return v;
+    if (Date.now() > deadline) return null;
+    await sleep(250);
+  }
+}
+
+const txt = el => ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim();
+
+function isVisible(el) {
+  if (!el || !el.getBoundingClientRect) return false;
+  const r = el.getBoundingClientRect();
+  if (r.width < 2 || r.height < 2) return false;
+  const cs = getComputedStyle(el);
+  return cs.visibility !== 'hidden' && cs.display !== 'none' && parseFloat(cs.opacity || '1') > 0.2;
+}
+
+function isDisabled(el) {
+  if (el.disabled === true) return true;
+  if (el.getAttribute('aria-disabled') === 'true') return true;
+  if (/disabled/i.test(el.className || '')) return true;
+  const cs = getComputedStyle(el);
+  if (cs.pointerEvents === 'none') return true;
+  if (parseFloat(cs.opacity || '1') < 0.55) return true;
+  return false;
+}
+
+// A row's action button sits inside a container that also carries the order's
+// SKU / FSN text. The toolbar's bulk button does not — that is how the two are
+// told apart, on top of the disabled check.
+function rowContextFor(el) {
+  let node = el;
+  for (let i = 0; i < 10 && node; i++) {
+    node = node.parentElement;
+    if (!node) break;
+    const t = txt(node);
+    if (/SKU ID|FSN|Order ID/i.test(t) && t.length > 40) {
+      // The toolbar's bulk button has no row of its own, so walking up from it
+      // eventually lands on a container holding the WHOLE table. Anything covering
+      // more than one order is not a row — reject it outright (an outer container
+      // can only get bigger, so there is no point walking further).
+      if ((t.match(/SKU ID/gi) || []).length > 1 || t.length > 600) return null;
+      return { node, text: t };
+    }
+  }
+  return null;
+}
+
+function skuOf(rowText) {
+  const m = rowText.match(/SKU ID:\s*([^|]+?)\s*(?:\||FSN\b|$)/i);
+  return m ? m[1].trim() : '(no SKU)';
+}
+
+function actionRowButtons(mode) {
+  if (mode.findRows) return mode.findRows();
+  const nodes = [...document.querySelectorAll('button, a, [role="button"]')];
+  const out = [];
+  for (const el of nodes) {
+    const t = txt(el).toLowerCase();
+    if (mode.labels.indexOf(t) === -1) continue;
+    if (!isVisible(el) || isDisabled(el)) continue;
+    const ctx = rowContextFor(el);
+    if (!ctx) continue;                       // toolbar / bulk button — skip
+    out.push({ el, ctx, sku: skuOf(ctx.text) });
+  }
+  return out;
+}
+
+// Reads a counter chip such as "Pending RTD 75" or the "0 To Accept" tile.
+function readTile(label) {
+  const nodes = [...document.querySelectorAll('div, span, li, button, a')];
+  const re    = new RegExp('^(\\d+)\\s*' + label + '$|^' + label + '\\s*(\\d+)$', 'i');
+  for (const el of nodes) {
+    const t = txt(el);
+    if (t.length > 30) continue;
+    const m = t.match(re);
+    if (m) return parseInt(m[1] || m[2], 10);
+  }
+  return null;
+}
+
+function readPendingCount(mode) {
+  for (const label of mode.tiles) {
+    const n = readTile(label);
+    if (n != null) return n;
+  }
+  return null;
+}
+
+// Flipkart's own empty-state artwork, e.g. "No orders to accept" / "No orders
+// to pack". Its exact wording differs per tab, so only the shape is matched.
+function isEmptyState() {
+  return [...document.querySelectorAll('div, p, span, h1, h2, h3')].some(el => {
+    const t = txt(el);
+    return t.length < 60 && /^No orders/i.test(t) && isVisible(el);
+  });
+}
+
+function isLoggedOut() {
+  const url = location.href, title = (document.title || '').toLowerCase();
+  return url.includes('/login') || url.includes('/signin')
+      || /[?&]referral_url=/.test(url)
+      || title.includes('become an online seller')
+      || title.includes('sign in');
+}
+
+// ── state ───────────────────────────────────────────────────────────────────
+const getState = async () => (await chrome.storage.local.get(STATE_KEY))[STATE_KEY] || null;
+const setState = async s   => chrome.storage.local.set({ [STATE_KEY]: s });
+
+async function getFilter(mode) {
+  const all = (await chrome.storage.local.get(FILTER_KEY))[FILTER_KEY] || {};
+  return all[mode.id] || [];
+}
+async function setFilter(mode, skus) {
+  const all = (await chrome.storage.local.get(FILTER_KEY))[FILTER_KEY] || {};
+  all[mode.id] = skus;
+  await chrome.storage.local.set({ [FILTER_KEY]: all });
+}
+
+// ── on-page panel ───────────────────────────────────────────────────────────
+let panel, logBox, statLine, skuBox;
+
+async function log(line) {
+  const stamp = new Date().toLocaleTimeString('en-IN', { hour12: false });
+  const entry = stamp + '  ' + line;
+  console.log('[Kartaan Click]', line);
+  // After the extension is reloaded, the copy of this script already running in
+  // an open tab is orphaned — every chrome.* call throws and the buttons look
+  // dead. Say so instead of failing silently.
+  let store;
+  try {
+    store = (await chrome.storage.local.get(LOG_KEY))[LOG_KEY] || [];
+  } catch (e) {
+    if (logBox) logBox.textContent = 'Extension was reloaded — refresh this page (F5) to use the panel.';
+    return;
+  }
+  store.push(entry);
+  while (store.length > 120) store.shift();
+  await chrome.storage.local.set({ [LOG_KEY]: store });
+  if (logBox) { logBox.textContent = store.slice(-80).join('\n'); logBox.scrollTop = logBox.scrollHeight; }
+}
+
+function buildPanel(mode) {
+  if (panel) return;
+  panel = document.createElement('div');
+  panel.id = '__kcPanel';
+  panel.innerHTML = [
+    '<style>',
+    // Default bottom-LEFT: the action buttons live on the right of the table,
+    // and the panel must never sit on top of the thing it is clicking.
+    '#__kcPanel{position:fixed;left:16px;bottom:16px;width:340px;z-index:2147483647;',
+    'background:#14161a;color:#e8eaed;font:12px/1.45 system-ui,Segoe UI,Arial;border-radius:10px;',
+    'box-shadow:0 8px 28px rgba(0,0,0,.45);overflow:hidden}',
+    '#__kcPanel h4{margin:0;padding:9px 12px;background:#1f6feb;font-size:13px;font-weight:600;',
+    'cursor:move;display:flex;align-items:center;justify-content:space-between;user-select:none}',
+    '#__kcPanel #__kcToggle{flex:0 0 auto;width:24px;padding:1px 0;background:rgba(0,0,0,.25);',
+    'font-size:14px;line-height:1.2}',
+    '#__kcPanel .bd{padding:10px 12px}',
+    '#__kcPanel .row{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}',
+    '#__kcPanel button{flex:1;padding:7px 8px;border:0;border-radius:6px;cursor:pointer;',
+    'font-size:12px;font-weight:600;color:#fff;background:#3d444d}',
+    '#__kcPanel .go{background:#1a7f37}',
+    '#__kcPanel .stop{background:#b62324}',
+    '#__kcPanel .scan{background:#8250df}',
+    '#__kcPanel input[type=number]{width:62px;background:#0d1117;color:#e8eaed;border:1px solid #30363d;',
+    'border-radius:5px;padding:4px 6px}',
+    '#__kcPanel .stat{font-size:12px;margin-bottom:8px;color:#9fb0c0}',
+    '#__kcPanel pre{margin:0;height:140px;overflow:auto;background:#0d1117;border-radius:6px;',
+    'padding:7px;font:11px/1.4 Consolas,monospace;white-space:pre-wrap;color:#adbac7}',
+    '#__kcPanel label{color:#9fb0c0}',
+    '#__kcPanel .skus{max-height:150px;overflow:auto;background:#0d1117;border-radius:6px;',
+    'padding:6px 8px;margin-bottom:8px;display:none}',
+    '#__kcPanel .skus div{display:flex;gap:6px;align-items:center;padding:2px 0;color:#c9d1d9}',
+    '#__kcPanel .skus b{margin-left:auto;color:#7ee787;font-weight:600}',
+    '#__kcPanel .hint{color:#6e7681;font-size:11px;margin-bottom:8px}',
+    '#__kcPanel .notice{background:#3d2c00;border:1px solid #7a5c00;border-radius:6px;padding:8px;',
+    'margin-bottom:8px;color:#f0d68a;font-size:11px;line-height:1.5}',
+    '#__kcPanel .notice b{display:block;margin-bottom:3px;color:#ffd866}',
+    '#__kcPanel .notice button{margin-top:6px;padding:4px 8px;font-size:11px;background:#5a4400}',
+    '</style>',
+    '<h4><span>Kartaan Click — ' + mode.title + '</span><button id="__kcToggle" title="Collapse">–</button></h4>',
+    '<div class="bd">',
+    '  <div class="stat" id="__kcStat">Idle</div>',
+    // Labels are the only mode that puts a file on the disk, so this is the only
+    // mode where the browser's "ask where to save" setting can stall a run.
+    (mode.id === 'label'
+      ? '  <div class="notice" id="__kcNotice" style="display:none">'
+        + '<b>Before you start — one browser setting</b>'
+        + 'If your browser asks where to save every download, it will ask for <b style="display:inline">every single label</b> '
+        + 'and the run will wait for you each time.<br><br>'
+        + 'To make it hands-free:<br>'
+        + '<b style="display:inline">Chrome</b> — Settings → Downloads → turn off "Ask where to save each file before downloading"<br>'
+        + '<b style="display:inline">Edge</b> — Settings → Downloads → turn off "Ask me what to do with each download"<br><br>'
+        + 'Labels then save on their own into <b style="display:inline">Downloads → Kartaan Click Labels</b>.'
+        + '<button id="__kcNoticeOk">Got it, don\'t show again</button>'
+        + '</div>'
+      : ''),
+    (mode.skuFilter
+      ? '  <div class="row"><button class="scan" id="__kcScan">Scan SKUs</button></div>'
+        + '  <div class="skus" id="__kcSkus"></div>'
+        + '  <div class="hint" id="__kcHint">Scan first, then tick the SKUs to work through. Nothing ticked = all of them.</div>'
+      : ''),
+    '  <div class="row"><label>Stop after <input type="number" id="__kcLimit" min="1" value="50"> orders</label></div>',
+    '  <div class="row">',
+    '    <button class="go" id="__kcStart">Start</button>',
+    '    <button class="stop" id="__kcStop">Stop</button>',
+    '    <button id="__kcProbe">Probe</button>',
+    '  </div>',
+    '  <pre id="__kcLog"></pre>',
+    '</div>',
+  ].join('');
+  document.body.appendChild(panel);
+  logBox   = panel.querySelector('#__kcLog');
+  statLine = panel.querySelector('#__kcStat');
+  skuBox   = panel.querySelector('#__kcSkus');
+
+  // ── collapse / expand ──
+  const body   = panel.querySelector('.bd');
+  const toggle = panel.querySelector('#__kcToggle');
+  const applyCollapsed = c => {
+    body.style.display = c ? 'none' : '';
+    toggle.textContent = c ? '+' : '–';
+    toggle.title       = c ? 'Expand' : 'Collapse';
+  };
+  toggle.onclick = async e => {
+    e.stopPropagation();                       // do not start a drag
+    const ui = (await chrome.storage.local.get(UI_KEY))[UI_KEY] || {};
+    ui.collapsed = body.style.display !== 'none';
+    applyCollapsed(ui.collapsed);
+    await chrome.storage.local.set({ [UI_KEY]: ui });
+  };
+
+  // ── drag by the blue header ──
+  const head = panel.querySelector('h4');
+  let drag = null;
+  head.addEventListener('mousedown', e => {
+    if (e.target === toggle) return;
+    const r = panel.getBoundingClientRect();
+    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!drag) return;
+    panel.style.left   = Math.max(0, Math.min(window.innerWidth  - 80, e.clientX - drag.dx)) + 'px';
+    panel.style.top    = Math.max(0, Math.min(window.innerHeight - 40, e.clientY - drag.dy)) + 'px';
+    panel.style.right  = 'auto';
+    panel.style.bottom = 'auto';
+  });
+  document.addEventListener('mouseup', async () => {
+    if (!drag) return;
+    drag = null;
+    const ui = (await chrome.storage.local.get(UI_KEY))[UI_KEY] || {};
+    ui.left = parseInt(panel.style.left, 10);
+    ui.top  = parseInt(panel.style.top, 10);
+    await chrome.storage.local.set({ [UI_KEY]: ui });
+  });
+
+  // Put it back where it was left last time, and show the download notice unless
+  // it has already been read and dismissed.
+  chrome.storage.local.get(UI_KEY).then(res => {
+    const ui = res[UI_KEY] || {};
+    if (typeof ui.left === 'number' && typeof ui.top === 'number') {
+      panel.style.left = ui.left + 'px';
+      panel.style.top  = ui.top + 'px';
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+    }
+    applyCollapsed(!!ui.collapsed);
+    const notice = panel.querySelector('#__kcNotice');
+    if (notice && !ui.saveNoticeRead) notice.style.display = 'block';
+  });
+
+  // ── buttons ──
+  const noticeOk = panel.querySelector('#__kcNoticeOk');
+  if (noticeOk) {
+    noticeOk.onclick = async () => {
+      panel.querySelector('#__kcNotice').style.display = 'none';
+      const ui = (await chrome.storage.local.get(UI_KEY))[UI_KEY] || {};
+      ui.saveNoticeRead = true;
+      await chrome.storage.local.set({ [UI_KEY]: ui });
+    };
+  }
+
+  if (mode.skuFilter) {
+    panel.querySelector('#__kcScan').onclick = () => scanSkus(mode);
+  }
+
+  panel.querySelector('#__kcStart').onclick = async () => {
+    const dryRun = DRY_RUN;
+    const limit  = parseInt(panel.querySelector('#__kcLimit').value, 10) || 1;
+    if (mode.skuFilter) await setFilter(mode, tickedSkus());
+    const picked = mode.skuFilter ? await getFilter(mode) : [];
+    await chrome.storage.local.set({ [LOG_KEY]: [] });
+    await setState({
+      mode: mode.id, running: true, dryRun, limit,
+      done: 0, failed: 0, reloads: 0, startedAt: Date.now(),
+    });
+    await log('START (build ' + BUILD + ') — ' + mode.verb + ', ' + (dryRun ? 'DRY RUN' : 'LIVE') + ', limit ' + limit
+      + (mode.skuFilter ? (picked.length ? ', SKUs: ' + picked.join(', ') : ', all SKUs') : ''));
+    runLoop(mode);
+  };
+
+  panel.querySelector('#__kcStop').onclick = async () => {
+    const s = (await getState()) || {};
+    s.running = false;
+    await setState(s);
+    await log('STOP requested — will halt after the current order.');
+  };
+
+  panel.querySelector('#__kcProbe').onclick = async () => {
+    const btns = actionRowButtons(mode);
+    await log('PROBE (' + mode.verb + '): counter = ' + readPendingCount(mode)
+      + ', row buttons found = ' + btns.length);
+    for (let i = 0; i < Math.min(3, btns.length); i++) {
+      await log('  [' + i + '] SKU "' + btns[i].sku + '" | ' + btns[i].ctx.text.slice(0, 70));
+    }
+    if (!mode.findRows) {
+      const all = [...document.querySelectorAll('button, a, [role="button"]')]
+        .filter(e => mode.labels.indexOf(txt(e).toLowerCase()) !== -1);
+      await log('  matching elements on page = ' + all.length + ' (usable rows = ' + btns.length + ')');
+    }
+  };
+}
+
+function tickedSkus() {
+  if (!skuBox) return [];
+  return [...skuBox.querySelectorAll('input[type=checkbox]')]
+    .filter(c => c.checked).map(c => c.dataset.sku);
+}
+
+async function paint(mode, extra) {
+  const s = await getState();
+  if (!statLine) return;
+  const pending = readPendingCount(mode);
+  const tail = (pending != null ? ', on this tab ' + pending : '') + (extra ? ' ' + extra : '');
+  statLine.textContent = (s && s.running)
+    ? 'Running — done ' + s.done + ', failed ' + s.failed + tail
+    : 'Idle' + tail;
+}
+
+// ── pagination ──────────────────────────────────────────────────────────────
+// The list is paged, not endlessly scrolled: 20 rows per page with real page
+// buttons underneath (data-testid page-1, page-2, ..., plus next/prev).
+const pageButtons = () => [...document.querySelectorAll('[data-testid^="page-"]')]
+  .filter(b => /^\d+$/.test(txt(b)));
+
+// Clicks page number `i` (0-based) and waits for its rows to render.
+async function gotoPage(mode, i) {
+  const btns = pageButtons();
+  if (!btns[i]) return false;
+  await humanClick(btns[i]);
+  await sleep(rand(900, 1600));
+  await waitFor(() => actionRowButtons(mode).length > 0, 15000);
+  return true;
+}
+
+// ── sections ────────────────────────────────────────────────────────────────
+// A tab can also be split into switchable sections shown as pills above the list,
+// e.g. "Breached Orders (11)" and "Dispatch by 12 PM, Tomorrow (48)" — 59 orders
+// in total but only one section's rows on screen at a time, each with its own
+// pages. Missing this is why a scan of 59 labels only ever found 11.
+function sectionPills() {
+  const all = [...document.querySelectorAll('div, span, button, li')]
+    .filter(e => /^(Breached Orders|Dispatch by .{0,60}?)\s*\(\d+\)$/i.test(txt(e)) && isVisible(e));
+  // A pill's own container matches the same text, so keep the innermost ones.
+  return all.filter(e => !all.some(o => o !== e && e.contains(o)));
+}
+
+async function gotoSection(mode, i) {
+  const pills = sectionPills();
+  if (!pills[i]) return false;
+  await humanClick(pills[i], { native: true });
+  await sleep(rand(1200, 2200));
+  await waitFor(() => actionRowButtons(mode).length > 0, 15000);
+  return true;
+}
+
+// ── SKU scan ────────────────────────────────────────────────────────────────
+// Walks every section and every page inside it, tallying SKUs, then returns to the
+// first section. Only the SKU text is kept, never element references — those die
+// the moment the list changes.
+async function scanAllPages(mode, onProgress) {
+  const skus     = [];
+  const pills    = sectionPills();
+  const sections = Math.max(1, pills.length);
+
+  for (let s = 0; s < sections; s++) {
+    if (pills.length && !(await gotoSection(mode, s))) continue;
+    for (let p = 0; ; p++) {
+      if (p > 0 && !(await gotoPage(mode, p))) break;
+      await waitFor(() => actionRowButtons(mode).length > 0, 15000);
+      for (const r of actionRowButtons(mode)) skus.push(r.sku);
+      if (onProgress) onProgress(skus.length, s + 1, sections, p + 1);
+      // Re-read the page buttons every time: they only appear once that
+      // section's data has loaded.
+      if (p + 1 >= pageButtons().length) break;
+    }
+  }
+
+  if (pills.length > 1) await gotoSection(mode, 0);
+  else if (pageButtons().length > 1) await gotoPage(mode, 0);
+  return skus;
+}
+
+async function scanSkus(mode) {
+  const sections = Math.max(1, sectionPills().length);
+  await log('scanning ' + sections + ' section(s) of orders…');
+  const skus = await scanAllPages(mode, (n, s, t, p) =>
+    paint(mode, '(section ' + s + '/' + t + ', page ' + p + ', ' + n + ' orders)'));
+  const counts = new Map();
+  for (const sku of skus) counts.set(sku, (counts.get(sku) || 0) + 1);
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const previously = await getFilter(mode);
+
+  skuBox.innerHTML = '';
+  for (const [sku, n] of sorted) {
+    const line = document.createElement('div');
+    const cb   = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.sku = sku;
+    cb.checked = previously.indexOf(sku) !== -1;
+    const name = document.createElement('span');
+    name.textContent = sku;
+    const cnt = document.createElement('b');
+    cnt.textContent = n + (n === 1 ? ' order' : ' orders');
+    line.appendChild(cb); line.appendChild(name); line.appendChild(cnt);
+    skuBox.appendChild(line);
+  }
+  skuBox.style.display = sorted.length ? 'block' : 'none';
+  await log('scan done — ' + skus.length + ' order(s) across ' + sorted.length + ' SKU(s):');
+  for (const [sku, n] of sorted) await log('   ' + n + ' × ' + sku);
+  await paint(mode);
+}
+
+// ── human-like click ────────────────────────────────────────────────────────
+function fire(el, type, x, y) {
+  const Ev = type.indexOf('pointer') === 0 && window.PointerEvent ? PointerEvent : MouseEvent;
+  el.dispatchEvent(new Ev(type, {
+    bubbles: true, cancelable: true, composed: true, view: window,
+    clientX: x, clientY: y, button: 0,
+    buttons: (type === 'pointerdown' || type === 'mousedown') ? 1 : 0,
+  }));
+}
+
+// When the panel sits over the row being clicked, the click simply does not land —
+// the Accept row would not open at all until the panel was hidden, and then it
+// opened in half a second. So get out of the way for the duration of any click
+// that overlaps it, then come straight back.
+function movePanelAsideFor(el) {
+  if (!panel || !el || !el.getBoundingClientRect) return () => {};
+  const a = panel.getBoundingClientRect(), b = el.getBoundingClientRect();
+  const overlaps = a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+  if (!overlaps) return () => {};
+  const was = panel.style.visibility;
+  panel.style.visibility = 'hidden';
+  return () => { panel.style.visibility = was; };
+}
+
+async function humanClick(el, opts) {
+  const restorePanel = movePanelAsideFor(el);
+  try {
+    return await clickSequence(el, opts);
+  } finally {
+    restorePanel();
+  }
+}
+
+async function clickSequence(el, opts) {
+  // opts.native — exactly the sequence proved to work by hand on the Accept row:
+  // instant scroll into view, a pause, then the element's own click and nothing
+  // else. Adding smooth scrolling or synthetic hover events on top of it stopped
+  // the row from opening, so nothing else belongs in this branch.
+  if (opts && opts.native) {
+    el.scrollIntoView({ block: 'center' });
+    await sleep(rand(500, 1200));
+    el.click();
+    return;
+  }
+
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  await sleep(rand(400, 1100));                       // settle + look at the row
+  const r = el.getBoundingClientRect();
+  const x = r.left + r.width  * (0.28 + Math.random() * 0.44);
+  const y = r.top  + r.height * (0.28 + Math.random() * 0.44);
+  fire(el, 'pointerover', x, y); fire(el, 'mouseover', x, y);
+  fire(el, 'mousemove', x + rand(-3, 3), y + rand(-2, 2));
+  await sleep(rand(140, 480));                        // hover dwell
+  fire(el, 'pointerdown', x, y); fire(el, 'mousedown', x, y);
+  await sleep(rand(55, 165));                         // press duration
+  fire(el, 'pointerup', x, y); fire(el, 'mouseup', x, y);
+  fire(el, 'click', x, y);
+  if (!(opts && opts.single) && typeof el.click === 'function') {
+    // Belt-and-braces: some Flipkart controls bind only the framework's own
+    // click handler, which the synthetic sequence above can miss.
+    await sleep(rand(40, 90));
+    el.click();
+  }
+}
+
+// Occasional idle movement so the page does not only ever see click bursts.
+async function idleFidget() {
+  if (Math.random() < 0.35) {
+    window.dispatchEvent(new WheelEvent('wheel', { deltaY: rand(-120, 220), bubbles: true }));
+    window.scrollBy({ top: rand(-90, 160), behavior: 'smooth' });
+    await sleep(rand(250, 900));
+  }
+  if (Math.random() < 0.25) {
+    document.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, clientX: rand(200, 1200), clientY: rand(150, 700),
+    }));
+    await sleep(rand(150, 600));
+  }
+}
+
+// ── confirmation dialog (Flipkart may or may not show one) ──────────────────
+async function confirmModalIfAny() {
+  await sleep(rand(500, 1200));
+  const wanted = ['yes', 'confirm', 'proceed', 'ok', 'continue',
+                  'mark rtd', 'yes, mark rtd', 'accept', 'accept order', 'yes, accept'];
+  const candidates = [...document.querySelectorAll('button, [role="button"]')].filter(el =>
+    isVisible(el) && !isDisabled(el) && wanted.indexOf(txt(el).toLowerCase()) !== -1);
+  // Only a button inside an overlay counts, and never one that belongs to a row —
+  // otherwise "Accept" in the next row would be mistaken for a dialog button.
+  const modalBtn = candidates.find(el =>
+    el.closest('[class*="modal" i],[class*="dialog" i],[class*="popup" i],[role="dialog"]')
+    && !rowContextFor(el));
+  if (!modalBtn) return false;
+  await log('  confirmation dialog → clicking "' + txt(modalBtn) + '"');
+  await humanClick(modalBtn);
+  await sleep(rand(700, 1600));
+  return true;
+}
+
+// ── waiting / recovery ──────────────────────────────────────────────────────
+// Waits for the order list to render. Flipkart's dashboard is slow and sometimes
+// never finishes painting — in that case the page is reloaded and we wait again.
+async function waitForRows(mode) {
+  const deadline = Date.now() + PACE.rowWaitMs;
+  while (Date.now() < deadline) {
+    const s = await getState();
+    if (!s || !s.running) return [];
+    if (isLoggedOut()) return 'LOGGED_OUT';
+    const btns = actionRowButtons(mode);
+    if (btns.length) return btns;
+    // The list may be inside a collapsed "Dispatch by ..." group — open it once.
+    const group = [...document.querySelectorAll('div,button,span,[role="button"]')]
+      .find(e => /^Dispatch by .{0,40}\(\d+\)$/i.test(txt(e)) && isVisible(e));
+    if (group && !group.__kcOpened) { group.__kcOpened = true; group.click(); await sleep(1500); }
+    await sleep(600);
+  }
+  return [];
+}
+
+async function reloadAndResume(mode, why) {
+  const s = await getState();
+  if (!s) return;
+  s.reloads = (s.reloads || 0) + 1;
+  await setState(s);
+  await log('reload #' + s.reloads + ' — ' + why);
+  if (s.reloads > PACE.maxReloads) {
+    s.running = false; await setState(s);
+    await log('STOPPED — too many reloads with nothing on screen.');
+    return;
+  }
+  await sleep(rand(1200, 3000));
+  if (!currentMode()) location.href = urlFor(mode);
+  location.reload();
+}
+
+// ── main loop ───────────────────────────────────────────────────────────────
+let looping = false;
+
+async function runLoop(mode) {
+  if (looping) return;
+  looping = true;
+  try {
+    let sinceBreak  = 0;
+    let breakAfter  = rand(PACE.breakEveryMin, PACE.breakEveryMax);
+    let consecFails = 0;
+    let pageHop     = 0;   // how far through the pages we have looked for a ticked SKU
+    let sectionHop  = 0;   // and how far through the tab's sections
+    const filter    = mode.skuFilter ? await getFilter(mode) : [];
+    const wanted    = new Set(filter);
+
+    for (;;) {
+      const s = await getState();
+      if (!s || !s.running) { await log('stopped.'); break; }
+
+      if (s.done >= s.limit) {
+        s.running = false; await setState(s);
+        await log('DONE — limit reached, ' + s.done + ' order(s) handled.');
+        break;
+      }
+      if (isLoggedOut()) {
+        s.running = false; await setState(s);
+        await log('STOPPED — Flipkart session expired. Log in again, then press Start.');
+        break;
+      }
+      if (!currentMode()) { await reloadAndResume(mode, 'not on the ' + mode.title + ' tab'); return; }
+
+      const rows = await waitForRows(mode);
+      if (rows === 'LOGGED_OUT') continue;
+      if (!rows.length) {
+        // Once the tab is empty Flipkart drops the counter chip altogether and
+        // shows its "No orders ..." artwork, so a null count is not a failure —
+        // check the empty-state message before treating this as a stalled page.
+        if (readPendingCount(mode) === 0 || isEmptyState()) {
+          s.running = false; await setState(s);
+          await log('DONE — nothing left on this tab.');
+          break;
+        }
+        await reloadAndResume(mode, 'no ' + mode.verb + ' buttons rendered'); return;
+      }
+
+      // The page is healthy again — clear the reload counter.
+      if (s.reloads) { s.reloads = 0; await setState(s); }
+
+      // Only the ticked SKUs, when a filter is set. The chosen SKUs may sit on a
+      // later page, or in another section of the tab, so walk both before
+      // concluding there is nothing left.
+      const candidates = wanted.size ? rows.filter(r => wanted.has(r.sku)) : rows;
+      if (!candidates.length) {
+        const pages = pageButtons().length;
+        pageHop += 1;
+        if (pageHop < pages && await gotoPage(mode, pageHop)) {
+          await log('no chosen SKUs on this page — page ' + (pageHop + 1) + ' of ' + pages);
+          continue;
+        }
+        const pills = sectionPills();
+        sectionHop += 1;
+        if (sectionHop < pills.length && await gotoSection(mode, sectionHop)) {
+          pageHop = 0;
+          await log('none left here — section ' + (sectionHop + 1) + ' of ' + pills.length
+            + ': ' + txt(sectionPills()[sectionHop] || {}));
+          continue;
+        }
+        s.running = false; await setState(s);
+        await log('DONE — no more orders for the chosen SKUs.');
+        break;
+      }
+      pageHop = 0; sectionHop = 0;   // found work here — start from this spot next time
+
+      // Work mostly top-down, but not always the very first row.
+      const pick  = candidates[Math.random() < 0.75 ? 0 : rand(0, Math.min(3, candidates.length))];
+      const label = pick.sku + ' — ' + pick.ctx.text.slice(0, 60);
+      await paint(mode);
+      await idleFidget();
+
+      if (s.dryRun) {
+        await log('(dry) would click ' + mode.verb + ' → ' + label);
+        s.done += 1; await setState(s);
+        await humanPause(700, 1400);
+        continue;
+      }
+
+      await log('click ' + (s.done + 1) + '/' + s.limit + ' → ' + label);
+      const before = readPendingCount(mode);
+      let preVerified = false;
+      if (mode.act) {
+        const acted = await mode.act(pick);
+        if (acted && mode.successOnAct) preVerified = true;
+        if (!acted) {
+          // Count it as a failure rather than retrying forever — an earlier
+          // version looped on the same row indefinitely.
+          consecFails += 1;
+          const sf = await getState();
+          if (sf) { sf.failed += 1; await setState(sf); }
+          if (consecFails >= PACE.maxFails) {
+            if (sf) { sf.running = false; await setState(sf); }
+            await log('STOPPED — could not open ' + PACE.maxFails + ' rows in a row.');
+            break;
+          }
+          await humanPause(1200, 2500);
+          continue;
+        }
+      } else {
+        await humanClick(pick.el);
+      }
+      await confirmModalIfAny();
+
+      // Success = that row's button left the screen, or the tab counter dropped.
+      const deadline = Date.now() + (mode.confirmWaitMs || PACE.confirmWaitMs);
+      let ok = preVerified;
+      while (!ok && Date.now() < deadline) {
+        await sleep(500);
+        // On a tab where opening a row re-renders it, the clicked element detaches
+        // whether or not anything was accepted — so there the counter is the only
+        // honest signal. Elsewhere the row leaving the screen is the signal.
+        const rowGone = !document.contains(pick.el) || !isVisible(pick.el);
+        if (!mode.act && rowGone) { ok = true; break; }
+        const after = readPendingCount(mode);
+        if (before != null && after != null && after < before) { ok = true; break; }
+      }
+
+      const st = await getState();
+      if (!st) break;
+
+      if (ok) {
+        st.done += 1; consecFails = 0;
+        await setState(st);
+        await log('  ' + mode.verb + ' OK (' + st.done + ' done)');
+      } else {
+        st.failed += 1; consecFails += 1;
+        await setState(st);
+        await log('  no change after click (fail ' + consecFails + '/' + PACE.maxFails + ')');
+        if (consecFails >= PACE.maxFails) {
+          st.running = false; await setState(st);
+          await log('STOPPED — clicks are not doing anything. Press Probe and send me the log.');
+          break;
+        }
+        await reloadAndResume(mode, 'click had no effect'); return;
+      }
+
+      sinceBreak += 1;
+      await paint(mode);
+
+      if (st.done % PACE.reloadEveryClicks === 0) {
+        await reloadAndResume(mode, 'periodic refresh of the list'); return;
+      }
+
+      if (sinceBreak >= breakAfter) {
+        const br = rand(PACE.breakMin, PACE.breakMax);
+        await log('  pausing ' + Math.round(br / 1000) + 's');
+        sinceBreak = 0; breakAfter = rand(PACE.breakEveryMin, PACE.breakEveryMax);
+        await sleep(br);
+      } else {
+        await humanPause(PACE.betweenOrdersMin, PACE.betweenOrdersMax);
+      }
+    }
+  } catch (err) {
+    await log('ERROR: ' + ((err && err.message) ? err.message : String(err)));
+    const s = await getState();
+    if (s) { s.running = false; await setState(s); }
+  } finally {
+    looping = false;
+    await paint(mode);
+  }
+}
+
+// ── boot ────────────────────────────────────────────────────────────────────
+(async () => {
+  // Only ever mount on the two Active Orders tabs — every other Flipkart page is
+  // left completely untouched.
+  const mount = async () => {
+    const mode = currentMode();
+    if (!mode) return;
+    if (panel && panel.__kcMode !== mode.id) { panel.remove(); panel = null; }  // switched tab
+    buildPanel(mode);
+    panel.__kcMode = mode.id;
+    const store = (await chrome.storage.local.get(LOG_KEY))[LOG_KEY] || [];
+    if (logBox) logBox.textContent = store.slice(-80).join('\n');
+    await paint(mode);
+    const s = await getState();
+    if (s && s.running && s.mode === mode.id) {
+      await log('resuming after page load…');
+      await sleep(rand(2000, 4500));   // let the list paint before touching it
+      runLoop(mode);
+    }
+  };
+  await mount();
+  window.addEventListener('hashchange', () => setTimeout(mount, 1200));
+  // Pending Label and Pending RTD share a url, so switching between them fires no
+  // hashchange — notice the swap by watching what is on screen, but never while a
+  // run is in progress.
+  setInterval(() => {
+    if (looping || !panel) return;
+    const m = currentMode();
+    if (m && panel.__kcMode !== m.id) mount();
+  }, 3000);
+})();
+
+}

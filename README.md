@@ -6,7 +6,7 @@ anyone to use.
 
 ## What it does today
 
-**VMS packing screen — the AWB box clears itself.**
+### 1. VMS packing screen — the AWB box clears itself
 
 On the SynLabs VMS operator screen, scanning an AWB starts the recording on its own.
 But stopping it leaves the old number sitting in the box, so between every two
@@ -24,6 +24,44 @@ It never clicks anything for you and never touches the recording itself. It wait
 until the page's own Stop has finished before clearing, so the AWB is always read
 before it disappears.
 
+### 2. Flipkart Active Orders — one order at a time
+
+Flipkart's bulk buttons on Active Orders do not work, so every order needs its own
+individual click. With a hundred orders waiting that is an hour of clicking.
+
+A small panel appears on the Active Orders page and works through the list for you.
+Which job it does depends on the tab you are on:
+
+| Tab | What it clicks |
+|---|---|
+| To Pack → Pending RTD | **Mark RTD** on each order |
+| To Pack → Pending Label | **Print Labels** on each order |
+| To Accept | **Accept** on each order |
+
+On the label and accept tabs you can press **Scan SKUs** first, which lists every
+SKU waiting with its order count, and tick only the ones you want to work through.
+
+It never starts on its own. You press Start, you set how many orders to stop after,
+and Stop halts it after the order it is on. It paces itself unevenly, the way a
+person working down a list does, and if the page reloads mid-run it picks up where
+it left off.
+
+#### Printing labels — one browser setting
+
+Browsers are usually set to ask where to save every file. While that is on, your
+browser will ask for every single label and the run waits for you each time.
+
+To make it hands-free:
+
+- **Chrome** — Settings → Downloads → turn off "Ask where to save each file before downloading"
+- **Edge** — Settings → Downloads → turn off "Ask me what to do with each download"
+
+Labels then save on their own into **Downloads → Kartaan Click Labels**.
+
+The panel says this on the labels tab too, and says it again if a label ever stalls
+waiting for you. An extension cannot read or change that setting for you — only you
+can.
+
 ## Install
 
 ### From the Microsoft Edge Add-ons store
@@ -40,8 +78,9 @@ install file is distributed as a ZIP from kartaan.com or sent to you directly.
 3. Turn on **Developer mode** — top-right in Chrome, bottom-left in Edge
 4. Click **Load unpacked** and pick the unzipped folder (the one with `manifest.json` in it)
 
-Reload your VMS tab. Open the browser console (F12) and you should see a line
-starting `[Kartaan Click]` confirming it is active.
+Reload the tab you want to use it on. On the VMS screen, the browser console (F12)
+shows a line starting `[Kartaan Click]` when it is active; on Flipkart Active Orders
+the panel appears at the bottom-left.
 
 ### Building the ZIP
 
@@ -50,13 +89,21 @@ starting `[Kartaan Click]` confirming it is active.
 ## Privacy
 
 It collects nothing, sends nothing, and talks to no server. No accounts, no
-tracking, no analytics. It reads one text box on the VMS screen and clears it.
-See [PRIVACY.md](PRIVACY.md).
+tracking, no analytics. Everything it remembers — how far a run has got, which SKUs
+you ticked, where you dragged the panel — stays in your own browser.
+
+It asks for two permissions: `storage` to remember those things between page loads,
+and `downloads` to save shipping labels into your Downloads folder. The downloads
+permission is inert except in the seconds after you press Print Labels; files you
+download yourself are never touched. See [PRIVACY.md](PRIVACY.md).
 
 ## Which sites it runs on
 
-Only `https://*.synlabs.io/*`. On any page there without an AWB box it does nothing
-at all.
+Only these two:
+
+- `https://*.synlabs.io/*` — on any page there without an AWB box it does nothing.
+- `https://seller.flipkart.com/*` — the panel only appears on Active Orders. Every
+  other Flipkart page is left completely alone.
 
 ## Suggestions
 
