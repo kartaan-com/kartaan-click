@@ -8,8 +8,8 @@ unless you want to reword it.
 1. Register (free) at <https://partner.microsoft.com/dashboard/registration/> using
    your Microsoft account, and choose the **Microsoft Edge** program.
    There is no fee for Edge — unlike Chrome, which charges $5.
-2. Build the upload file: zip the **contents** of this folder (not the folder
-   itself), so `manifest.json` sits at the top level of the zip.
+2. Build the upload file: `node tools/make-zip.js`, which produces
+   `kartaan-seller-assist-1.0.0.zip` with `manifest.json` at the top level.
 
 ## Listing fields
 
@@ -38,13 +38,16 @@ More free tools are on the way. Learn more at kartaan.com
 Productivity
 
 **Privacy policy URL**
-https://github.com/kartaan-com/kartaan-seller-assist/blob/main/PRIVACY.md
+⚠️ NEEDS A PUBLIC HOME. The repository is private, so the GitHub link 404s for the
+reviewer and the submission will be rejected. Publish the text of PRIVACY.md at a
+public URL first — `https://kartaan.com/privacy` is the obvious one — and put that
+URL here.
 
 **Website**
 https://kartaan.com
 
 **Support / contact**
-https://github.com/kartaan-com/kartaan-seller-assist/issues
+kartaan.com (the GitHub issues link cannot be used — private repo)
 
 **Search terms**
 vms, packing, awb, warehouse, barcode scanner, seller tools

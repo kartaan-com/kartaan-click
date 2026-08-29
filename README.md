@@ -28,19 +28,24 @@ before it disappears.
 
 ### From the Microsoft Edge Add-ons store
 
-Search for **Kartaan Seller Assist** and click Get. *(Listing pending review — the
-manual install below works in the meantime, and in Chrome.)*
+Search for **Kartaan Seller Assist** and click Get. *(Listing pending review.)*
 
-### Manually, in Chrome or Edge
+### From the ZIP
 
-1. **[Download the extension](https://github.com/kartaan-com/kartaan-seller-assist/archive/refs/heads/main.zip)** — one click, saves `kartaan-seller-assist-main.zip`
-2. Unzip it somewhere you will not delete by accident
-3. Open `chrome://extensions` (or `edge://extensions`)
-4. Turn on **Developer mode** — top-right in Chrome, bottom-left in Edge
-5. Click **Load unpacked** and pick the unzipped folder (the one with `manifest.json` in it)
+The source repository is private, so there is no public download link here. The
+install file is distributed as a ZIP from kartaan.com or sent to you directly.
+
+1. Unzip it somewhere you will not delete by accident
+2. Open `chrome://extensions` (or `edge://extensions`)
+3. Turn on **Developer mode** — top-right in Chrome, bottom-left in Edge
+4. Click **Load unpacked** and pick the unzipped folder (the one with `manifest.json` in it)
 
 Reload your VMS tab. Open the browser console (F12) and you should see a line
 starting `[Kartaan Seller Assist]` confirming it is active.
+
+### Building the ZIP
+
+`node tools/make-zip.js` — packages the files Chrome needs and nothing else.
 
 ## Privacy
 
