@@ -38,13 +38,13 @@ More free tools are on the way. Learn more at kartaan.com
 Productivity
 
 **Privacy policy URL**
-https://github.com/Jaiswalmagic1/kartaan-seller-assist/blob/main/PRIVACY.md
+https://github.com/kartaan-com/kartaan-seller-assist/blob/main/PRIVACY.md
 
 **Website**
 https://kartaan.com
 
 **Support / contact**
-https://github.com/Jaiswalmagic1/kartaan-seller-assist/issues
+https://github.com/kartaan-com/kartaan-seller-assist/issues
 
 **Search terms**
 vms, packing, awb, warehouse, barcode scanner, seller tools
