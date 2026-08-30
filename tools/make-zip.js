@@ -1,11 +1,11 @@
-// Packages the extension for install and for the Edge store: only the files
-// Chrome actually loads, with manifest.json at the top level of the archive,
+// Packages the extension for install and for the Edge store: only the files the
+// browser actually loads, with manifest.json at the top level of the archive,
 // which is what "Load unpacked" and the store both expect.
 // Run: node tools/make-zip.js
 
-const { execFileSync } = require('child_process');
 const fs   = require('fs');
 const path = require('path');
+const { createZip, listZip } = require('./zip');
 
 const root    = path.join(__dirname, '..');
 const version = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')).version;
@@ -30,32 +30,25 @@ const include = [
 ];
 
 fs.rmSync(out, { force: true });
+createZip(root, include, out);
 
-// Everything is copied into a staging folder first, then that folder's contents
-// are zipped. Handing Compress-Archive the file paths directly looks like it
-// works but flattens them — `icons/icon16.png` landed in the archive as
-// `icon16.png`, so the icons the manifest points at were missing from every
-// package built before 29 August 2026.
-const stage = fs.mkdtempSync(path.join(require('os').tmpdir(), 'kartaan-click-'));
-for (const rel of include) {
-  const from = path.join(root, rel);
-  const to   = path.join(stage, rel);
-  fs.mkdirSync(path.dirname(to), { recursive: true });
-  fs.cpSync(from, to, { recursive: true });
+// Read the archive back the way an unzip tool would, rather than trusting the
+// write. TWO packaging bugs have already shipped from this file — folders
+// flattened into the root, then folders written with backslashes — and both
+// looked fine until somebody actually opened the archive. So now it opens it.
+const names = listZip(out);
+const problems = [];
+for (const n of names) {
+  if (n.includes('\\')) problems.push(`"${n}" uses a backslash; archive paths must use "/"`);
+}
+for (const need of ['manifest.json', 'icons/icon16.png', 'content/vms-awb.js']) {
+  if (!names.includes(need)) problems.push(`"${need}" is not in the archive at that path`);
+}
+if (problems.length) {
+  fs.rmSync(out, { force: true });
+  console.error('the package came out wrong, so it has been deleted:');
+  for (const p of problems) console.error('  - ' + p);
+  process.exit(1);
 }
 
-// Compress-Archive is built into Windows; no dependency to install.
-execFileSync('powershell', [
-  '-NoProfile', '-Command',
-  `Compress-Archive -Path '${path.join(stage, '*').replace(/'/g, "''")}' `
-  + `-DestinationPath '${out.replace(/'/g, "''")}' -Force`,
-], { stdio: 'inherit' });
-
-fs.rmSync(stage, { recursive: true, force: true });
-
-// Prove the manifest's own icon paths survived, rather than trusting the above.
-for (const rel of ['manifest.json', 'background.js', 'icons/icon16.png']) {
-  if (!fs.existsSync(path.join(root, rel))) throw new Error(`missing before packaging: ${rel}`);
-}
-
-console.log(`built ${out} (${(fs.statSync(out).size / 1024).toFixed(1)} KB)`);
+console.log(`built ${out} (${(fs.statSync(out).size / 1024).toFixed(1)} KB, ${names.length} files)`);

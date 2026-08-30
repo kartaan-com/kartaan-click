@@ -12,7 +12,7 @@ on:
 
 jobs:
   check:
-    runs-on: windows-latest   # make-zip.js and the ZIP check both use PowerShell
+    runs-on: ubuntu-latest   # nothing in the build needs Windows any more
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

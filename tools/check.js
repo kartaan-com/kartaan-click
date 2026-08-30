@@ -16,6 +16,7 @@ const fs   = require('fs');
 const path = require('path');
 const os   = require('os');
 const { execFileSync } = require('child_process');
+const { listZip } = require('./zip');
 
 const root    = path.join(__dirname, '..');
 const release = process.argv.includes('--release');
@@ -77,14 +78,19 @@ if (!failures.length) {
     execFileSync(process.execPath, [path.join(root, 'tools', 'make-zip.js')], { stdio: 'ignore' });
     const built = path.join(root, `kartaan-click-${manifest.version}.zip`);
     fs.copyFileSync(built, tmp);
-    const listed = execFileSync('powershell', ['-NoProfile', '-Command',
-      'Add-Type -A System.IO.Compression.FileSystem; ' +
-      `[IO.Compression.ZipFile]::OpenRead('${tmp.replace(/'/g, "''")}').Entries | ForEach-Object { $_.FullName }`,
-    ], { encoding: 'utf8' }).split(/\r?\n/).map(s => s.trim().replace(/\\/g, '/')).filter(Boolean);
+    const listed = listZip(tmp);
 
     for (const f of referenced) {
       if (!listed.includes(f)) {
         fail('missing from the ZIP', `"${f}" is not in the built package at that path (found: ${listed.join(', ')})`);
+      }
+    }
+    // Archive paths must use forward slashes. Windows' own zipper writes
+    // backslashes, which Explorer tolerates and nothing else does — a package
+    // built that way reached a public download before this rule existed.
+    for (const n of listed) {
+      if (n.includes('\\')) {
+        fail('broken ZIP paths', `the package contains "${n}" — archive paths must use "/" or the folders are lost`);
       }
     }
   } catch (e) {
