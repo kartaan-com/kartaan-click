@@ -1,11 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Kartaan Click",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Free workflow fixes for seller and warehouse tools: clears the VMS packing box, and works through Flipkart orders one click at a time.",
   "homepage_url": "https://kartaan.com",
 
   "permissions": ["storage", "downloads"],
+
+  "host_permissions": ["https://kartaan.com/*"],
 
   "background": {
     "service_worker": "background.js"

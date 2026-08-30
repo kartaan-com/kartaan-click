@@ -1,10 +1,12 @@
 // ─── Kartaan Click — background service worker ───────────────────────────────
 //
-// It exists for one job: getting Flipkart shipping labels onto the disk when the
-// Print labels tool clicks a row's "Print Labels" button.
-//
-// Everything here is INERT unless the on-page panel armed it in the last minute.
-// No download the user starts themselves is ever touched, renamed, or cancelled.
+// Two jobs, and nothing else:
+//   1. Getting Flipkart shipping labels onto the disk when the Print labels tool
+//      clicks a row's "Print Labels" button. All of that is INERT unless the
+//      on-page panel armed it in the last minute — no download the user starts
+//      themselves is ever touched, renamed, or cancelled.
+//   2. Asking once a day whether a newer version exists, so people on a manual
+//      install find out instead of never hearing about it.
 
 'use strict';
 
@@ -65,6 +67,76 @@ function trackDownload(id) {
   poll();
 }
 
+// ─── Update check ────────────────────────────────────────────────────────────
+//
+// An extension installed from a ZIP never updates itself — only a store install
+// does that, and self-hosted auto-update is Linux-only, so it does not exist for
+// anyone here. This is the next best thing: the extension asks, once a day, what
+// the newest version is, and says so. Nobody is forced to do anything.
+//
+// THIS IS THE ONLY TIME THE EXTENSION EVER CONTACTS A SERVER, and it sends
+// nothing about the user — it is a plain read of one small public file.
+//
+// ⚠️ JAISWAL MUST PUBLISH THIS FILE for the check to do anything. Until it
+// exists the check simply fails quietly and the extension carries on as normal.
+// It should hold, and nothing else:
+//   { "version": "1.2.0",
+//     "url": "https://kartaan.com/download/kartaan-click.zip",
+//     "notes": "Short line about what is new" }
+const VERSION_URL    = 'https://kartaan.com/kartaan-click/version.json';
+const CHECK_EVERY_MS = 24 * 60 * 60 * 1000;
+
+// True when `a` is a later version than `b`. Compares 1.2.0 style numbers part by
+// part, so 1.10.0 correctly beats 1.9.0 — which comparing them as text would not.
+function isNewer(a, b) {
+  const pa = String(a || '').split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b || '').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] || 0, y = pb[i] || 0;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+
+async function checkForUpdate(force) {
+  const previous  = (await chrome.storage.local.get('_updateInfo'))._updateInfo || {};
+  const installed = chrome.runtime.getManifest().version;
+  const now       = Date.now();
+
+  // Once a day is plenty, and it means opening twenty tabs does not mean twenty
+  // requests. `force` is for the popup's own "check now".
+  if (!force && previous.checkedAt && now - previous.checkedAt < CHECK_EVERY_MS) return previous;
+
+  let info;
+  try {
+    const res = await fetch(VERSION_URL, { cache: 'no-store' });
+    if (!res.ok) throw new Error('the server answered ' + res.status);
+    const data = await res.json();
+    const latest = String(data.version || '');
+    if (!latest) throw new Error('no version in the file');
+    info = {
+      checkedAt: now, installed, latest,
+      url:   String(data.url || ''),
+      notes: String(data.notes || ''),
+      updateAvailable: isNewer(latest, installed),
+      error: '',
+    };
+  } catch (e) {
+    // Keep whatever was last known to be true and record why this attempt failed,
+    // rather than silently pretending everything is fine (Golden Rule 29). Being
+    // offline lands here, which is why it is never shown as an alarm.
+    info = Object.assign({}, previous, {
+      checkedAt: now, installed,
+      error: (e && e.message) ? e.message : String(e),
+    });
+  }
+  await chrome.storage.local.set({ _updateInfo: info });
+  return info;
+}
+
+chrome.runtime.onInstalled.addListener(() => { checkForUpdate(true); });
+chrome.runtime.onStartup.addListener(()   => { checkForUpdate(false); });
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || !msg.type) return;
 
@@ -73,6 +145,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     _folderUntil  = Date.now() + ARM_WINDOW_MS;
     _labelTabId   = (sender && sender.tab && sender.tab.id != null) ? sender.tab.id : null;
     chrome.storage.local.remove(['_labelDownloadResult', '_labelBlobUrl'], () => sendResponse({ ok: true }));
+    return true;
+  }
+
+  if (msg.type === 'CHECK_UPDATE') {
+    checkForUpdate(!!msg.force).then(sendResponse);
     return true;
   }
 

@@ -9,7 +9,7 @@ unless you want to reword it.
    your Microsoft account, and choose the **Microsoft Edge** program.
    There is no fee for Edge — unlike Chrome, which charges $5.
 2. Build the upload file: `node tools/make-zip.js`, which produces
-   `kartaan-click-1.1.0.zip` with `manifest.json` at the top level.
+   `kartaan-click-1.2.0.zip` with `manifest.json` at the top level.
 
 ## Listing fields
 
@@ -36,7 +36,7 @@ Kartaan Click puts a small panel on the Active Orders page that works through th
 
 Printing labels saves each one into a Kartaan Click Labels folder inside your normal Downloads folder.
 
-Privacy: it collects nothing, sends nothing, and contacts no server. No accounts, no tracking, no analytics. Everything it remembers stays in your own browser.
+Privacy: it collects nothing about you. No accounts, no tracking, no analytics. Everything it remembers stays in your own browser. It makes one network request in its life: once a day it reads a small public file on kartaan.com to see whether a newer version is out, so it can tell you. Nothing about you is sent in it.
 
 More free tools are on the way. Learn more at kartaan.com
 
@@ -77,29 +77,45 @@ successfully. It is armed by the extension only in the seconds after the user
 presses Print Labels, and is completely inert at all other times: downloads the
 user starts themselves are never touched, renamed, moved, or cancelled.
 
-*Host permissions* — two sites are declared, `https://*.synlabs.io/*` and
-`https://seller.flipkart.com/*`. Both are required for the content scripts to run
-on those pages. No other site is accessed.
+*Host permissions* — three entries. `https://*.synlabs.io/*` and
+`https://seller.flipkart.com/*` are required for the content scripts to run on
+those pages. `https://kartaan.com/*` is used once a day to read a single small
+public file holding the current version number, so users on a manual install can
+be told when a new version exists. Nothing is sent in that request and no other
+site is accessed.
 
 **Is any user data collected?**
-No. Nothing is sent anywhere; there is no server, no analytics and no account.
+No. There is no analytics, no tracking and no account. The extension makes exactly
+one network request in its life cycle — a once-a-day read of
+`https://kartaan.com/kartaan-click/version.json`, a small public file containing
+the latest version number. It is a plain GET with no parameters, no identifiers
+and no request body. Nothing about the user or their browsing is transmitted.
 
 **Testing instructions for the reviewer**
 Both tools sit behind logins the reviewer will not have — a SynLabs VMS operator
 account and a Flipkart seller account — so the behaviour is best confirmed from the
-source, which is small and has no network calls of any kind:
+source, which is small:
 
 - `content/vms-awb.js` — about 90 lines. Reads and clears the text box with id
   `awbInput` on the VMS screen. No `fetch`, no `XMLHttpRequest`.
 - `content/fk-orders.js` — the Flipkart panel. It only ever presses buttons that are
   already on the page, and only after the user presses Start. No `fetch`, no
   `XMLHttpRequest`.
-- `background.js` — under 120 lines. Its only job is saving a shipping label. Every
-  path in it returns immediately unless the panel armed it within the last 60
-  seconds.
+- `background.js` — two jobs only: saving a shipping label, and the once-a-day
+  version check. Every download path in it returns immediately unless the panel
+  armed it within the last 60 seconds.
+- `popup.js` — reads the result of that version check and puts it on screen.
 
-Searching the package for `fetch(`, `XMLHttpRequest` or any http URL other than
-`seller.flipkart.com` and `kartaan.com` will return nothing.
+Searching the package finds two `fetch(` calls, and only one of them leaves the
+machine:
+- `background.js` — the version check described above. The only remote request in
+  the extension.
+- `content/fk-orders.js` — reads a `blob:` address, which is a file the Flipkart
+  page has already built in local memory. It contacts no server. This one is a
+  temporary diagnostic behind `const BLOB_TEST`, and is removed before submission.
+
+There is no `XMLHttpRequest` anywhere, and no http URL other than
+`seller.flipkart.com` and `kartaan.com`.
 
 ## Screenshots
 

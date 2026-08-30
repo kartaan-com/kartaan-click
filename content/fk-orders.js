@@ -408,6 +408,9 @@ function buildPanel(mode) {
     '#__kcPanel .skus div{display:flex;gap:6px;align-items:center;padding:2px 0;color:#c9d1d9}',
     '#__kcPanel .skus b{margin-left:auto;color:#7ee787;font-weight:600}',
     '#__kcPanel .hint{color:#6e7681;font-size:11px;margin-bottom:8px}',
+    '#__kcPanel .upd{background:#2e2400;border:1px solid #5a4400;border-radius:6px;padding:7px 9px;',
+    'margin-bottom:8px;color:#f0d68a;font-size:11px;line-height:1.5;display:none}',
+    '#__kcPanel .upd a{color:#ffd866;font-weight:600}',
     '#__kcPanel .notice{background:#3d2c00;border:1px solid #7a5c00;border-radius:6px;padding:8px;',
     'margin-bottom:8px;color:#f0d68a;font-size:11px;line-height:1.5}',
     '#__kcPanel .notice b{display:block;margin-bottom:3px;color:#ffd866}',
@@ -416,6 +419,7 @@ function buildPanel(mode) {
     '<h4><span>Kartaan Click — ' + mode.title + '</span><button id="__kcToggle" title="Collapse">–</button></h4>',
     '<div class="bd">',
     '  <div class="stat" id="__kcStat">Idle</div>',
+    '  <div class="upd" id="__kcUpdate"></div>',
     // Labels are the only mode that puts a file on the disk, so this is the only
     // mode where the browser's "ask where to save" setting can stall a run.
     (mode.id === 'label'
@@ -520,6 +524,25 @@ function buildPanel(mode) {
       await chrome.storage.local.set({ [UI_KEY]: ui });
     };
   }
+
+  // Ask whether a newer version exists. The background worker only actually goes
+  // out once a day; the rest of the time this is answered from what it already
+  // knows. Nothing here blocks the panel, and a failure shows nothing at all.
+  chrome.runtime.sendMessage({ type: 'CHECK_UPDATE' }, info => {
+    void chrome.runtime.lastError;
+    if (!info || !info.updateAvailable || !info.latest) return;
+    const el = panel.querySelector('#__kcUpdate');
+    if (!el) return;
+    el.textContent = 'Version ' + info.latest + ' is available'
+      + (info.notes ? ' — ' + info.notes : '') + '. ';
+    if (info.url) {
+      const a = document.createElement('a');
+      a.href = info.url; a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = 'Download';
+      el.appendChild(a);
+    }
+    el.style.display = 'block';
+  });
 
   const blobBtn = panel.querySelector('#__kcBlobTest');
   if (blobBtn) blobBtn.onclick = () => blobSelfTest();

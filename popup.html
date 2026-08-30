@@ -16,12 +16,22 @@
   .on { display: inline-block; margin-top: 8px; font-size: 11px; font-weight: 600;
         color: #0a7d36; background: #e6f5ec; border-radius: 20px; padding: 2px 9px; }
   footer { margin-top: 14px; font-size: 12px; color: #6b7890; }
+  .update { margin-top: 12px; font-size: 12px; border-radius: 8px; padding: 9px 11px; }
+  .update.muted { color: #6b7890; background: #f4f6fa; }
+  .update.new { color: #6b4a00; background: #fff5db; border: 1px solid #f0dca6; }
+  .update b { font-weight: 600; }
+  .update .notes { margin-top: 3px; color: #7a6634; }
+  .update a { display: inline-block; margin-top: 6px; }
+  #version { margin-top: 10px; font-size: 11px; color: #98a3b8; }
   a { color: #1e3a8a; font-weight: 600; text-decoration: none; }
   a:hover { text-decoration: underline; }
   @media (prefers-color-scheme: dark) {
     body { background: #14181f; color: #e8ecf4; }
     .tool { border-color: #2a3140; }
     .tool p, .tag, footer { color: #98a3b8; }
+    .update.muted { color: #98a3b8; background: #1b202a; }
+    .update.new { color: #f0d68a; background: #2e2400; border-color: #5a4400; }
+    .update .notes { color: #c4ad6e; }
     .on { color: #6ee7a0; background: #10281a; }
     a { color: #8fb0ff; }
   }
@@ -42,4 +52,8 @@
   <span class="on">Active on Flipkart Active Orders</span>
 </div>
 
+<div class="update muted" id="update">Checking for updates…</div>
+<div id="version"></div>
+
 <footer>More tools coming. <a href="https://kartaan.com" target="_blank" rel="noopener">kartaan.com</a></footer>
+<script src="popup.js"></script>

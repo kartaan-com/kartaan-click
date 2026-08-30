@@ -88,14 +88,31 @@ the panel appears at the bottom-left.
 
 ## Privacy
 
-It collects nothing, sends nothing, and talks to no server. No accounts, no
-tracking, no analytics. Everything it remembers — how far a run has got, which SKUs
-you ticked, where you dragged the panel — stays in your own browser.
+It collects nothing about you. No accounts, no tracking, no analytics. Everything
+it remembers — how far a run has got, which SKUs you ticked, where you dragged the
+panel — stays in your own browser.
 
-It asks for two permissions: `storage` to remember those things between page loads,
-and `downloads` to save shipping labels into your Downloads folder. The downloads
-permission is inert except in the seconds after you press Print Labels; files you
-download yourself are never touched. See [PRIVACY.md](PRIVACY.md).
+It asks for `storage` to remember those things between page loads, `downloads` to
+save shipping labels into your Downloads folder, and access to `kartaan.com` for
+the update check below. The downloads permission is inert except in the seconds
+after you press Print Labels; files you download yourself are never touched.
+
+It makes exactly one network request in its life: once a day it reads a small
+public file on kartaan.com to see whether a newer version exists, so it can tell
+you. Nothing about you is sent in it. See [PRIVACY.md](PRIVACY.md).
+
+## Updates
+
+A ZIP install never updates itself — that only happens for extensions installed
+from a browser's store, and self-hosted auto-update is not permitted on Windows.
+
+So instead the extension tells you. When a newer version is out, a line appears in
+the extension's popup and on the Flipkart panel, with a download link. Nobody is
+forced to do anything.
+
+To take an update: unzip the new version **over your existing folder**, then press
+the reload arrow on the extension at `chrome://extensions`. Keeping the same folder
+means your settings and panel position survive.
 
 ## Which sites it runs on
 

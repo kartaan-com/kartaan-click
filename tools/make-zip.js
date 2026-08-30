@@ -16,6 +16,7 @@ const out     = path.join(root, `kartaan-click-${version}.zip`);
 const include = [
   'manifest.json',
   'popup.html',
+  'popup.js',
   'background.js',
   'content',
   'icons/icon16.png',
