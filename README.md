@@ -29,10 +29,16 @@ parcels you had to click Stop, wipe the number out by hand, and click the box
 again before the scanner would work. Now you click Stop and the box empties itself
 and takes the cursor. The next parcel scans straight in.
 
+We pack our own orders on that screen every day, which is how we came to build
+this.
+
 **2. Flipkart orders, one click at a time.**
-Flipkart's bulk buttons on Active Orders do not work, so every order needs its own
-individual click — an hour of clicking when a hundred are waiting. A small panel
-works down the list for you:
+Flipkart's bulk actions on Active Orders normally work fine. But now and then they
+do not go through, and you are left processing orders one at a time — with a
+hundred waiting, that is an hour of clicking and nothing else.
+
+This was built for those days. We sell on Flipkart ourselves, and rather than sit
+there clicking through a backlog by hand, a small panel works down the list:
 
 | Tab | What it clicks |
 |---|---|

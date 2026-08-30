@@ -17,7 +17,7 @@ change whose version is not listed.
 ## 1.1.0 — 29 August 2026
 
 - **Added the Flipkart Active Orders tools.** A panel that works down the order
-  list one at a time, because Flipkart's own bulk buttons do not work:
+  list one at a time, for the days when Flipkart's bulk actions do not go through:
   Mark RTD, Print Labels, and Accept orders. You can scan your SKUs first and pick
   only the ones you want. It never starts on its own.
 - Fixed the packaging leaving the icons out of the ZIP, which affected every

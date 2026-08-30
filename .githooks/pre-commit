@@ -13,11 +13,14 @@ node tools/check.js || {
   exit 1
 }
 
-# The commit must be his, and must not credit anyone else (a standing rule).
+# Every commit here is authored by the same person. Rather than write that
+# address into a public file, this compares against whoever authored the last
+# commit — same effect, nothing published.
 who="$(git config user.email)"
-if [ "$who" != "kartaan.com" ]; then
+expected="$(git log -1 --format='%ae' 2>/dev/null)"
+if [ -n "$expected" ] && [ "$who" != "$expected" ]; then
   echo ""
-  echo "COMMIT REFUSED — this repository commits as kartaan.com,"
-  echo "but this commit would be authored by '$who'."
+  echo "COMMIT REFUSED — every commit in this repository is authored by the same"
+  echo "person, and this one would not be. Check 'git config user.email'."
   exit 1
 fi

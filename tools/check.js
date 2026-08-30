@@ -171,6 +171,22 @@ for (const f of shipped) {
   }
 }
 
+// ── 6b. No personal email addresses in a public repository ──────────────────
+// WHY: Jaiswal, 30 Aug 2026 — "you have publicly exposed my personal email ID,
+// that is not fair." It was sitting in LICENSE and STORE-LISTING.md when the
+// repository went public. Anywhere a contact is needed, point at kartaan.com and
+// let people take it from there.
+const PUBLIC_FILES = ['LICENSE', 'README.md', 'MANUAL.md', 'CHANGELOG.md', 'PRIVACY.md',
+                      'STORE-LISTING.md', 'popup.html', ...shipped,
+                      '.githooks/pre-commit', '.github/workflows/check.yml'];
+for (const f of PUBLIC_FILES) {
+  if (!exists(f)) continue;
+  for (const m of read(f).matchAll(/[\w.+-]+@(?:gmail|yahoo|outlook|hotmail|proton(?:mail)?|icloud)\.[a-z.]+/gi)) {
+    fail('personal email in a public file',
+      `${f} contains "${m[0]}" — this repository is public. Point at kartaan.com instead.`);
+  }
+}
+
 // ── 7. No secrets, ever (Golden Rule 8) ─────────────────────────────────────
 const SECRET = [
   [/ghp_[A-Za-z0-9]{20,}/,             'a GitHub token'],

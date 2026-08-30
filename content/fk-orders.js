@@ -2,10 +2,10 @@
 // Runs on https://seller.flipkart.com/* (document_idle), but stays completely
 // inert unless the page is Active Orders → Pending-to-Pack or Pending-to-Accept.
 //
-// WHY THIS EXISTS: Flipkart's bulk actions are broken, so every order has to be
-// handled with an individual click. This drives those clicks one at a time, with
-// randomised pacing so it behaves like a person working through the list rather
-// than a burst of scripted clicks.
+// WHY THIS EXISTS: Flipkart's bulk actions normally work. When they do not go
+// through, every order has to be handled with its own individual click instead.
+// This drives those clicks one at a time, with randomised pacing so it behaves
+// like a person working through the list rather than a burst of scripted clicks.
 //
 // Three modes, picked automatically from the page:
 //   To Pack / Pending RTD   → clicks "Mark RTD" on each row

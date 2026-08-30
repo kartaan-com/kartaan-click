@@ -22,6 +22,8 @@ Free workflow fixes for seller and warehouse teams — the VMS packing box clear
 **Description**
 Kartaan Click removes small, repetitive clicks from the tools that seller and warehouse teams use all day. It is free, from Kartaan.
 
+We are sellers ourselves. Every tool in here was built to solve a problem we ran into in our own warehouse, and then shared publicly so anyone else caught by the same thing can use it.
+
 VMS packing screen — the AWB box clears itself:
 
 On the SynLabs VMS operator screen, scanning an AWB starts the recording on its own. But stopping it leaves the old number sitting in the box. So between every two parcels you have to click Stop, wipe out the old AWB by hand, and click the box again before the scanner will type into it.
@@ -30,7 +32,7 @@ This extension does those last two steps for you. Click Stop, and the box emptie
 
 Flipkart Active Orders — one order at a time, without you sitting there:
 
-Flipkart's bulk buttons on Active Orders do not work, so every order has to be handled with its own individual click. When you have a hundred of them, that is an hour of clicking.
+Flipkart's bulk actions on Active Orders normally work fine. But now and again they do not go through, and until they do, every order has to be handled with its own individual click. When you have a hundred of them, that is an hour of clicking.
 
 Kartaan Click puts a small panel on the Active Orders page that works through the list for you — marking orders ready to dispatch, printing shipping labels, or accepting new orders, depending on which tab you are on. You can scan your SKUs first and tick only the ones you want to work through. It never starts on its own: you press Start, you set how many to stop after, and you can press Stop at any time.
 
@@ -53,7 +55,9 @@ URL here.
 https://kartaan.com
 
 **Support / contact**
-kartaan.com (the GitHub issues link cannot be used — private repo)
+https://kartaan.com — the contact details live there.
+(Do NOT put a personal email address in this field. If Edge insists on an email
+rather than a page, use a business address on the kartaan.com domain.)
 
 **Search terms**
 vms, packing, awb, warehouse, barcode scanner, flipkart, seller tools

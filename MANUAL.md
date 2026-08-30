@@ -50,11 +50,11 @@ That is it. Reload any tab you already had open before it will work there.
 
 **Where:** the SynLabs VMS operator screen (any `synlabs.io` address).
 
-### The problem it fixes
+### Why it exists
 
-Scanning an AWB starts the recording on its own. But when you stop the recording,
-the old number is still sitting in the box. So between every two parcels you have
-to:
+We pack our own orders on this screen. Scanning an AWB starts the recording on its
+own — but when you stop the recording, the old number is still sitting in the box.
+So between every two parcels you have to:
 
 1. Click **Stop**
 2. Wipe the old number out by hand
@@ -85,11 +85,16 @@ There is nothing to set up and nothing to press. It just works on that screen.
 **Where:** `seller.flipkart.com`, on the **Active Orders** page only. Every other
 Flipkart page is left completely alone.
 
-### The problem it fixes
+### Why it exists
 
-Flipkart's bulk buttons on Active Orders do not work. Every order has to be
-handled with its own individual click. With a hundred orders waiting, that is an
-hour of clicking and nothing else.
+Flipkart's bulk actions on Active Orders normally work fine. But now and again
+they do not go through, and until they do you are left handling every order with
+its own individual click. With a hundred orders waiting, that is an hour of
+clicking and nothing else.
+
+We sell on Flipkart ourselves and hit this often enough to stop doing it by hand.
+This is the tool we built for it, shared publicly so anyone caught by the same
+thing can use it when they need to.
 
 ### What you see
 
