@@ -1,36 +1,38 @@
 # Kartaan Click
 
-Free browser extension that fixes small, repetitive annoyances in the tools sellers
-and warehouse teams use all day. Built by Vishal Jaiswal at [Kartaan](https://kartaan.com), and free for
-anyone to use.
+A free browser extension that removes small, repetitive clicks from the tools
+seller and warehouse teams use all day. Built by Vishal Jaiswal at
+[Kartaan](https://kartaan.com), and free for anyone to use.
 
-## What it does today
+### [⬇ Download the latest version](https://github.com/kartaan-com/kartaan-click/releases/latest/download/kartaan-click.zip)
 
-### 1. VMS packing screen — the AWB box clears itself
+That link always points at the newest release, so it never needs changing.
 
-On the SynLabs VMS operator screen, scanning an AWB starts the recording on its own.
-But stopping it leaves the old number sitting in the box, so between every two
-parcels you have to:
+**New here? Read [the manual](MANUAL.md)** — it explains every tool in plain
+English, with no assumed knowledge.
 
-1. Click **Stop**
-2. Wipe the old AWB out by hand
-3. Click the box again before the scanner will type into it
+| | |
+|---|---|
+| 📖 [Manual](MANUAL.md) | What each tool does and how to use it |
+| 📝 [What changed](CHANGELOG.md) | Every version, newest first |
+| 🔒 [Privacy](PRIVACY.md) | What it does and does not do with your information |
+| ⚖️ [Licence](LICENSE) | Free to use. Not free to take. |
 
-This extension does steps 2 and 3 for you. Click Stop, and the box empties and takes
-the cursor — the next parcel scans straight in. Over a shift that is hundreds of
-clicks you no longer make.
+---
 
-It never clicks anything for you and never touches the recording itself. It waits
-until the page's own Stop has finished before clearing, so the AWB is always read
-before it disappears.
+## What it does
 
-### 2. Flipkart Active Orders — one order at a time
+**1. The VMS packing screen clears its own AWB box.**
+On the SynLabs VMS operator screen, scanning an AWB starts the recording by
+itself — but stopping it leaves the old number in the box, so between every two
+parcels you had to click Stop, wipe the number out by hand, and click the box
+again before the scanner would work. Now you click Stop and the box empties itself
+and takes the cursor. The next parcel scans straight in.
 
+**2. Flipkart orders, one click at a time.**
 Flipkart's bulk buttons on Active Orders do not work, so every order needs its own
-individual click. With a hundred orders waiting that is an hour of clicking.
-
-A small panel appears on the Active Orders page and works through the list for you.
-Which job it does depends on the tab you are on:
+individual click — an hour of clicking when a hundred are waiting. A small panel
+works down the list for you:
 
 | Tab | What it clicks |
 |---|---|
@@ -38,61 +40,96 @@ Which job it does depends on the tab you are on:
 | To Pack → Pending Label | **Print Labels** on each order |
 | To Accept | **Accept** on each order |
 
-On the label and accept tabs you can press **Scan SKUs** first, which lists every
-SKU waiting with its order count, and tick only the ones you want to work through.
+You can scan your SKUs first and tick only the ones you want. It never starts on
+its own — you press Start, you set how many to stop after, and Stop halts it after
+the order it is on.
 
-It never starts on its own. You press Start, you set how many orders to stop after,
-and Stop halts it after the order it is on. It paces itself unevenly, the way a
-person working down a list does, and if the page reloads mid-run it picks up where
-it left off.
-
-#### Printing labels — one browser setting
-
-Browsers are usually set to ask where to save every file. While that is on, your
-browser will ask for every single label and the run waits for you each time.
-
-To make it hands-free:
-
-- **Chrome** — Settings → Downloads → turn off "Ask where to save each file before downloading"
-- **Edge** — Settings → Downloads → turn off "Ask me what to do with each download"
-
-Labels then save on their own into **Downloads → Kartaan Click Labels**.
-
-The panel says this on the labels tab too, and says it again if a label ever stalls
-waiting for you. An extension cannot read or change that setting for you — only you
-can.
+Full detail, including every button and what to do when something goes wrong, is
+in **[the manual](MANUAL.md)**.
 
 ## Install
 
-### From the Microsoft Edge Add-ons store
+1. [Download the ZIP](https://github.com/kartaan-com/kartaan-click/releases/latest/download/kartaan-click.zip)
+2. Unzip it somewhere permanent — not your Downloads folder
+3. Open `chrome://extensions` (or `edge://extensions`)
+4. Turn on **Developer mode** — top-right in Chrome, bottom-left in Edge
+5. Click **Load unpacked** and pick the unzipped folder (the one with
+   `manifest.json` in it)
 
-Search for **Kartaan Click** and click Get. *(Listing pending review.)*
+Then refresh any tab you already had open.
 
-### From the ZIP
+*An Edge Add-ons store listing is pending review, which will make this a one-click
+install for Edge users.*
 
-The source repository is private, so there is no public download link here. The
-install file is distributed as a ZIP from kartaan.com or sent to you directly.
+## Updates
 
-1. Unzip it somewhere you will not delete by accident
-2. Open `chrome://extensions` (or `edge://extensions`)
-3. Turn on **Developer mode** — top-right in Chrome, bottom-left in Edge
-4. Click **Load unpacked** and pick the unzipped folder (the one with `manifest.json` in it)
+A ZIP install does not update itself — browsers only do that for extensions
+installed from their own store, and self-hosted auto-update is not permitted on
+Windows.
 
-Reload the tab you want to use it on. On the VMS screen, the browser console (F12)
-shows a line starting `[Kartaan Click]` when it is active; on Flipkart Active Orders
-the panel appears at the bottom-left.
+So the extension tells you instead. Once a day it checks whether a newer version
+exists, and when there is one a line appears in the extension's popup and on the
+Flipkart panel with a download link.
+
+To take an update: unzip the new version **over your existing folder**, then press
+the reload arrow at `chrome://extensions`. Keeping the same folder keeps your
+settings and panel position.
+
+## Which sites it runs on
+
+Only these two:
+
+- `https://*.synlabs.io/*` — on any page there without an AWB box it does nothing.
+- `https://seller.flipkart.com/*` — the panel only appears on Active Orders. Every
+  other Flipkart page is left completely alone.
+
+## Privacy
+
+It collects nothing about you. No accounts, no tracking, no analytics. Everything
+it remembers — how far a run has got, which SKUs you ticked, where you dragged the
+panel — stays in your own browser.
+
+It asks for `storage` to remember those things between page loads, `downloads` to
+save shipping labels into your Downloads folder, and access to `kartaan.com` for
+the update check above. The downloads permission is inert except in the seconds
+after you press Print Labels; files you download yourself are never touched.
+
+It makes exactly one network request in its life: once a day it reads a small
+public file on kartaan.com to see whether a newer version exists. Nothing about
+you is sent in it. See [PRIVACY.md](PRIVACY.md).
+
+## Suggestions
+
+Found another repetitive click worth killing? Open an issue with the site and the
+steps you repeat. Code contributions are not accepted — this is maintained by
+Kartaan.
+
+---
+
+## For maintainers
 
 ### Building the ZIP
 
-`node tools/make-zip.js` — packages the files Chrome needs and nothing else.
+`node tools/make-zip.js` — packages the files the browser needs and nothing else.
+
+### Releasing
+
+`node tools/release.js` — checks the release rules, builds the package, and prints
+the remaining steps. The release asset is always uploaded as `kartaan-click.zip`
+so the download link at the top of this page never changes.
+
+Before releasing: bump `version` in `manifest.json`, add its entry to
+[CHANGELOG.md](CHANGELOG.md), and update the version file on kartaan.com so
+existing users are told.
 
 ### The release rules
 
 `node tools/check.js` — the rules this repository will not accept a change
-without. It refuses a commit that, among other things, adds a permission without
-explaining it in PRIVACY.md and STORE-LISTING.md, leaves a file out of the
-package, contacts a server the privacy policy does not name, or ships a ZIP whose
-folders came out wrong. `--release` adds the stricter checks that only matter when
+without. It refuses a commit that adds a permission without explaining it in
+PRIVACY.md and STORE-LISTING.md, leaves a file out of the package, contacts a
+server the privacy policy does not name, adds a tool that MANUAL.md does not
+explain, ships a version with no CHANGELOG entry, or builds a ZIP whose folders
+came out wrong. `--release` adds the stricter checks that only matter when
 submitting to a store.
 
 It runs in two places, on purpose:
@@ -106,49 +143,7 @@ It runs in two places, on purpose:
 Each rule is there because something actually went wrong once, and the reason is
 written above it. Do not delete a rule to make a commit pass.
 
-## Privacy
-
-It collects nothing about you. No accounts, no tracking, no analytics. Everything
-it remembers — how far a run has got, which SKUs you ticked, where you dragged the
-panel — stays in your own browser.
-
-It asks for `storage` to remember those things between page loads, `downloads` to
-save shipping labels into your Downloads folder, and access to `kartaan.com` for
-the update check below. The downloads permission is inert except in the seconds
-after you press Print Labels; files you download yourself are never touched.
-
-It makes exactly one network request in its life: once a day it reads a small
-public file on kartaan.com to see whether a newer version exists, so it can tell
-you. Nothing about you is sent in it. See [PRIVACY.md](PRIVACY.md).
-
-## Updates
-
-A ZIP install never updates itself — that only happens for extensions installed
-from a browser's store, and self-hosted auto-update is not permitted on Windows.
-
-So instead the extension tells you. When a newer version is out, a line appears in
-the extension's popup and on the Flipkart panel, with a download link. Nobody is
-forced to do anything.
-
-To take an update: unzip the new version **over your existing folder**, then press
-the reload arrow on the extension at `chrome://extensions`. Keeping the same folder
-means your settings and panel position survive.
-
-## Which sites it runs on
-
-Only these two:
-
-- `https://*.synlabs.io/*` — on any page there without an AWB box it does nothing.
-- `https://seller.flipkart.com/*` — the panel only appears on Active Orders. Every
-  other Flipkart page is left completely alone.
-
-## Suggestions
-
-Found another repetitive click worth killing? Open an issue with the site and the
-steps you repeat. Code contributions are not accepted — this is maintained by
-Kartaan.
-
-## Regenerating the icons
+### Regenerating the icons
 
 `node tools/make-icons.js` — no dependencies, draws the PNGs from scratch.
 
@@ -156,6 +151,8 @@ Kartaan.
 
 Copyright © 2026 Vishal Jaiswal (Kartaan). All rights reserved.
 
-Free to use, not free to take. You may install and use it at no cost, and share
-the download link. You may not copy, modify, redistribute, or publish it anywhere
-else without written permission. See [LICENSE](LICENSE).
+**Free to use, not free to take.** You may install and use it at no cost and share
+the download link. You may not copy, modify, redistribute, sell, or publish it
+anywhere else without written permission. The source is public so that anyone can
+read it and see what it does — that is not permission to reuse it. See
+[LICENSE](LICENSE).

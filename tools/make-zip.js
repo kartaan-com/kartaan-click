@@ -23,6 +23,8 @@ const include = [
   'icons/icon48.png',
   'icons/icon128.png',
   'README.md',
+  'MANUAL.md',
+  'CHANGELOG.md',
   'PRIVACY.md',
   'LICENSE',
 ];

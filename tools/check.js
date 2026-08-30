@@ -192,7 +192,48 @@ for (const f of shipped) {
   }
 }
 
-// ── 9. The submission notes must match the version being built ──────────────
+// ── 9. Every tool must be explained to the people using it ──────────────────
+// WHY: Jaiswal, 30 Aug 2026 — "there is no way of explanation... any future
+// update, it should be explained somewhere so that anybody who doesn't know can
+// read and understand." A feature nobody can find out about is not finished.
+//
+// Each site the extension runs on must be named in MANUAL.md, so a new tool
+// cannot be added without a section describing it.
+if (!exists('MANUAL.md')) {
+  fail('no user guide', 'MANUAL.md is missing — every tool has to be explained somewhere');
+} else {
+  const manual = read('MANUAL.md');
+  for (const cs of manifest.content_scripts || []) {
+    for (const pattern of cs.matches || []) {
+      // "https://*.synlabs.io/*" → "synlabs.io"
+      const site = pattern.replace(/^https?:\/\//, '').replace(/\/\*$/, '').replace(/^\*\./, '');
+      if (!manual.includes(site)) {
+        fail('tool not explained',
+          `the extension runs on ${site} but MANUAL.md never mentions it — add a section explaining what it does there`);
+      }
+    }
+  }
+  for (const p of perms) {
+    if (!manual.includes(p) && p !== 'storage') {
+      warn('not in the guide', `MANUAL.md does not mention the "${p}" permission`);
+    }
+  }
+  if (exists('README.md') && !read('README.md').includes('MANUAL.md')) {
+    fail('guide not linked', 'README.md does not link to MANUAL.md, so nobody will find it');
+  }
+}
+
+// ── 10. Every version must say what changed in it ───────────────────────────
+// WHY: the update notice tells people a new version exists; this is where they
+// find out what is in it. A version with no entry gives them nothing to read.
+if (!exists('CHANGELOG.md')) {
+  fail('no changelog', 'CHANGELOG.md is missing');
+} else if (!read('CHANGELOG.md').includes(`## ${manifest.version} `)) {
+  fail('version not written up',
+    `manifest.json is version ${manifest.version} but CHANGELOG.md has no "## ${manifest.version}" entry saying what changed`);
+}
+
+// ── 11. The submission notes must match the version being built ─────────────
 if (exists('STORE-LISTING.md') && !read('STORE-LISTING.md').includes(`kartaan-click-${manifest.version}.zip`)) {
   fail('stale submission notes',
     `manifest.json is version ${manifest.version} but STORE-LISTING.md still names a different ZIP`);
