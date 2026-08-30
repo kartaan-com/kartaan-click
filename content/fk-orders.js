@@ -45,7 +45,7 @@ const DRY_RUN    = false;          // set true to make Start only report what it
 //      address away the instant the download starts)
 // Probe A runs from the panel button any time, with no orders needed. Probe B
 // runs on the next real label. Neither cancels or delays anything.
-const BLOB_TEST = true;
+const BLOB_TEST = false;   // switched on only for the one-off test build
 const STATE_KEY  = 'kcOrdersBot';
 const LOG_KEY    = 'kcOrdersLog';
 const UI_KEY     = 'kcOrdersUi';      // panel position, collapsed state, dismissed notice
