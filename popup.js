@@ -58,6 +58,56 @@ function render(info) {
   box.textContent = 'Up to date.';
 }
 
+// ── the key that stops a recording on the VMS screen ────────────────────────
+const STOP_KEY_SETTING = 'kcVmsStopKey';
+const DEFAULT_STOP_KEY = 'Enter';
+
+const keyBox    = document.getElementById('stopKey');
+const changeBtn = document.getElementById('changeKey');
+const keyHint   = document.getElementById('keyHint');
+const NORMAL_HINT = 'It only works while a recording is actually running.';
+
+// Space has no visible character, so it needs a name of its own on screen.
+const pretty = k => (k === ' ' ? 'Space' : k);
+
+chrome.storage.local.get(STOP_KEY_SETTING).then(res => {
+  keyBox.textContent = pretty((res && res[STOP_KEY_SETTING]) || DEFAULT_STOP_KEY);
+});
+
+let listening = false;
+changeBtn.addEventListener('click', () => {
+  if (listening) return;
+  listening = true;
+  keyBox.textContent = '…';
+  changeBtn.disabled = true;
+  keyHint.textContent = 'Press the key you want to use. Escape cancels.';
+
+  const onKey = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    document.removeEventListener('keydown', onKey, true);
+    listening = false;
+    changeBtn.disabled = false;
+
+    if (e.key === 'Escape') {
+      const res = await chrome.storage.local.get(STOP_KEY_SETTING);
+      keyBox.textContent = pretty((res && res[STOP_KEY_SETTING]) || DEFAULT_STOP_KEY);
+      keyHint.textContent = NORMAL_HINT;
+      return;
+    }
+
+    await chrome.storage.local.set({ [STOP_KEY_SETTING]: e.key });
+    keyBox.textContent = pretty(e.key);
+    // A plain letter or digit is a poor choice: the barcode scanner types those
+    // into the page, so one could stop a recording by accident.
+    keyHint.textContent = /^[a-z0-9]$/i.test(e.key)
+      ? 'Saved — but your scanner types letters and numbers, so this one could fire by accident. Enter or a function key is safer.'
+      : 'Saved. Refresh the VMS tab to use it.';
+  };
+
+  document.addEventListener('keydown', onKey, true);
+});
+
 chrome.storage.local.get('_updateInfo').then(res => render(res._updateInfo));
 chrome.runtime.sendMessage({ type: 'CHECK_UPDATE' }, info => {
   void chrome.runtime.lastError;

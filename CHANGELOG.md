@@ -3,6 +3,17 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.3.0 — 30 August 2026
+
+- **Stop a recording from the keyboard.** On the VMS packing screen, press a key
+  instead of reaching for the mouse and finding the Stop button between every
+  parcel. **Enter** by default; change it to any other key from the extension's
+  popup if your barcode scanner sends Enter of its own accord.
+- It only acts while a recording is actually running, and ignores the key for the
+  first moment of one, so a stray keystroke cannot cut a parcel short.
+- Added the measured time saving to the README and the manual, from our own VMS
+  scan timestamps rather than an estimate.
+
 ## 1.2.0 — 30 August 2026
 
 - **The extension now tells you when a new version is out.** A ZIP install cannot

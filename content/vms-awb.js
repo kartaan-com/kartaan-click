@@ -1,6 +1,9 @@
 // ─── Kartaan Click — VMS packing screen ─────────────────────────────
-// Runs on the SynLabs VMS operator screen and does one thing: empties the AWB
-// box by itself the moment a recording stops, then puts the cursor back in it.
+// Runs on the SynLabs VMS operator screen and does two things:
+//   1. empties the AWB box by itself the moment a recording stops, and puts the
+//      cursor back in it
+//   2. lets a key on the keyboard stop the recording, so the operator does not
+//      have to find the Stop button with the mouse between every parcel
 //
 // WHY THIS EXISTS: on the VMS packing screen, scanning an AWB starts the
 // recording on its own, but stopping it does NOT clear the box. So between every
@@ -45,22 +48,28 @@ function clearAwbBox() {
 
 // Found by its text, not by a class name — the button swaps classes when it
 // flips between Record and Stop, but the words stay put.
-function recordButtonLabel() {
+function recordButton() {
   const buttons = [...document.querySelectorAll('button')];
-  const button = buttons.filter(b => {
+  return buttons.filter(b => {
     const text = (b.innerText || '').trim().toLowerCase();
     return text === IDLE || text === BUSY;
-  }).pop();
+  }).pop() || null;
+}
+
+function recordButtonLabel() {
+  const button = recordButton();
   return button ? (button.innerText || '').trim().toLowerCase() : null;
 }
 
 let lastLabel = recordButtonLabel();
+let recordingSince = 0;   // when the current recording started, for the guard below
 
 function checkForStop() {
   const label = recordButtonLabel();
   if (label === lastLabel) return;
   const previous = lastLabel;
   lastLabel = label;
+  if (previous === IDLE && label === BUSY) recordingSince = Date.now();
   if (previous === BUSY && label === IDLE && clearAwbBox()) {
     console.log(`[Kartaan Click ${BUILD}] recording stopped — AWB box cleared, cursor back in it`);
   }
@@ -77,6 +86,70 @@ new MutationObserver(() => {
   checkQueued = true;
   requestAnimationFrame(() => { checkQueued = false; checkForStop(); });
 }).observe(document.body, { childList: true, subtree: true, characterData: true });
+
+// The watcher above only runs on an animation frame, and the browser stops
+// handing those out while a tab is not being drawn. That is fine for clearing
+// the box — it happens as soon as the tab is looked at again — but the keyboard
+// shortcut's safety guard needs to know exactly when a recording started, so it
+// cannot depend on it. This slow timer calls the same function on the same
+// terms; nothing about the behaviour changes, only how often it is checked.
+setInterval(checkForStop, 300);
+
+// ── Stop the recording from the keyboard ────────────────────────────────────
+// Stopping a recording meant reaching for the mouse, finding the Stop button and
+// clicking it, between every single parcel. This does it from one key instead.
+//
+// Enter by default, because the operator's hand is already there after a scan.
+// Anyone whose barcode scanner sends Enter of its own accord can change the key
+// from the extension's popup — for them, Enter would stop a recording the moment
+// it started.
+//
+// TWO GUARDS, and both matter:
+//   1. it only ever acts while the button actually says "Stop", so the key does
+//      nothing at all when no recording is running
+//   2. it ignores the key for the first moment of a recording, so a scanner that
+//      sends its own Enter cannot cut a parcel short before it has been filmed
+const STOP_KEY_SETTING = 'kcVmsStopKey';
+const DEFAULT_STOP_KEY = 'Enter';
+const MIN_RECORDING_MS = 1500;
+
+let stopKey = DEFAULT_STOP_KEY;
+
+try {
+  chrome.storage.local.get(STOP_KEY_SETTING).then(res => {
+    if (res && res[STOP_KEY_SETTING]) stopKey = res[STOP_KEY_SETTING];
+  });
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes[STOP_KEY_SETTING]) {
+      stopKey = changes[STOP_KEY_SETTING].newValue || DEFAULT_STOP_KEY;
+      console.log(`[Kartaan Click ${BUILD}] stop key is now "${stopKey}"`);
+    }
+  });
+} catch (e) {
+  // The extension was reloaded and this copy is orphaned. The shortcut simply
+  // stays on its default; the page will be refreshed sooner or later.
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== stopKey) return;
+  if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
+
+  const button = recordButton();
+  if (!button) return;
+  if ((button.innerText || '').trim().toLowerCase() !== BUSY) return;   // guard 1
+  // Fail SAFE: if we never saw this recording start, we cannot know how long it
+  // has been running, so the key does nothing rather than risk cutting it short.
+  // (Happens only if the page was already recording when this script loaded —
+  // the next parcel works normally.)
+  if (!recordingSince || Date.now() - recordingSince < MIN_RECORDING_MS) return;   // guard 2
+
+  // Nothing else should also act on this key — Enter in the AWB box would
+  // otherwise reach the page's own handler as well.
+  e.preventDefault();
+  e.stopPropagation();
+  button.click();
+  console.log(`[Kartaan Click ${BUILD}] "${stopKey}" pressed — recording stopped`);
+}, true);
 
 // On a fresh page load the box is already empty and nothing is recording, so put
 // the cursor there straight away — the first scan of a shift should work without

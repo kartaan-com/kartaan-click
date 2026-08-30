@@ -23,12 +23,27 @@
   .update .notes { margin-top: 3px; color: #7a6634; }
   .update a { display: inline-block; margin-top: 6px; }
   #version { margin-top: 10px; font-size: 11px; color: #98a3b8; }
+  .setting { border: 1px solid #e2e6ee; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+  .setting h2 { margin: 0 0 3px; font-size: 13px; }
+  .setting p { margin: 0 0 8px; font-size: 12px; color: #55617a; }
+  .keyrow { display: flex; align-items: center; gap: 8px; }
+  kbd { font: 600 12px/1 ui-monospace, Consolas, monospace; background: #eef1f7; border: 1px solid #d3dae6;
+        border-bottom-width: 2px; border-radius: 5px; padding: 5px 9px; color: #16233a; }
+  .setting button { font: inherit; font-size: 12px; padding: 5px 10px; border: 1px solid #d3dae6;
+        background: #fff; color: #1e3a8a; border-radius: 6px; cursor: pointer; }
+  .setting button:hover { background: #f4f6fa; }
+  .hint { font-size: 11px; color: #6b7890; margin-top: 6px; }
   a { color: #1e3a8a; font-weight: 600; text-decoration: none; }
   a:hover { text-decoration: underline; }
   @media (prefers-color-scheme: dark) {
     body { background: #14181f; color: #e8ecf4; }
     .tool { border-color: #2a3140; }
     .tool p, .tag, footer { color: #98a3b8; }
+    .setting { border-color: #2a3140; }
+    .setting p, .hint { color: #98a3b8; }
+    kbd { background: #232936; border-color: #39415280; color: #e8ecf4; }
+    .setting button { background: #1b202a; border-color: #2a3140; color: #8fb0ff; }
+    .setting button:hover { background: #232936; }
     .update.muted { color: #98a3b8; background: #1b202a; }
     .update.new { color: #f0d68a; background: #2e2400; border-color: #5a4400; }
     .update .notes { color: #c4ad6e; }
@@ -42,7 +57,7 @@
 
 <div class="tool">
   <h2>VMS packing — auto-clear AWB</h2>
-  <p>When you stop a recording, the AWB box empties itself and takes the cursor, so the next parcel scans straight in.</p>
+  <p>Stop a recording with a key instead of the mouse, and the AWB box empties itself and takes the cursor, so the next parcel scans straight in.</p>
   <span class="on">Active on VMS screens</span>
 </div>
 
@@ -50,6 +65,16 @@
   <h2>Flipkart orders — one click at a time</h2>
   <p>For the days when Flipkart's bulk actions don't go through. A panel works down the list for you: mark RTD, print labels, or accept orders. You press Start; it never runs on its own.</p>
   <span class="on">Active on Flipkart Active Orders</span>
+</div>
+
+<div class="setting">
+  <h2>Stop recording with a key</h2>
+  <p>On the VMS packing screen, press this key instead of reaching for the Stop button.</p>
+  <div class="keyrow">
+    <kbd id="stopKey">Enter</kbd>
+    <button id="changeKey" type="button">Change</button>
+  </div>
+  <div class="hint" id="keyHint">It only works while a recording is actually running.</div>
 </div>
 
 <div class="update muted" id="update">Checking for updates…</div>

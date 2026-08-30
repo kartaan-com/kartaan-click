@@ -29,6 +29,10 @@ parcels you had to click Stop, wipe the number out by hand, and click the box
 again before the scanner would work. Now you click Stop and the box empties itself
 and takes the cursor. The next parcel scans straight in.
 
+You can also **stop a recording by pressing a key** rather than reaching for the
+mouse — Enter by default, changeable from the extension's popup if your scanner
+already sends Enter.
+
 We pack our own orders on that screen every day, which is how we came to build
 this.
 

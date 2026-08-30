@@ -76,7 +76,34 @@ Over a shift that is hundreds of clicks you no longer make.
 - It waits until the page has finished with the number before clearing it, so the
   AWB is always read before it disappears.
 
-There is nothing to set up and nothing to press. It just works on that screen.
+There is nothing to set up for the clearing. It just works on that screen.
+
+### Stopping a recording without the mouse
+
+Between every parcel you had to move the mouse to the Stop button and click it.
+You can press a key instead.
+
+**Enter, by default.** Your hand is already there after a scan.
+
+It is deliberately careful about when it listens:
+
+- It does nothing at all unless a recording is actually running.
+- It ignores the key for the first moment of a recording, so a stray keystroke
+  cannot cut a parcel short before it has been filmed.
+- Holding the key down does nothing. Neither does the key with Ctrl, Alt or
+  Shift held.
+
+**To change the key:** click the Kartaan Click icon in your browser's toolbar,
+find *Stop recording with a key*, click **Change**, and press the key you want.
+Escape cancels. Refresh the VMS tab afterwards.
+
+**When you should change it:** if your barcode scanner sends Enter of its own
+accord after each barcode. Some do. If yours does, Enter would try to stop the
+recording the moment a scan starts it — pick a function key such as **F4**
+instead, which no scanner sends.
+
+Avoid plain letters and numbers: the scanner types those into the page, so one
+could stop a recording by accident. The popup warns you if you pick one.
 
 ### What it saved us
 
