@@ -78,6 +78,18 @@ Over a shift that is hundreds of clicks you no longer make.
 
 There is nothing to set up and nothing to press. It just works on that screen.
 
+### What it saved us
+
+Every parcel scanned into the VMS is timestamped, so we could measure this rather
+than guess at it. Across the eleven working days before we started using it, the
+median parcel took **41 seconds**. On the first day with it, **30 seconds** — 11
+seconds quicker on every parcel, and faster than any of those eleven earlier days.
+
+Over 500 parcels that is roughly an hour and a half of scanning you get back.
+
+It is one day of 37 parcels against eleven days before it, so treat it as what we
+actually saw rather than a laboratory result.
+
 ---
 
 ## Tool 2 — Flipkart orders, one click at a time

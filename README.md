@@ -53,6 +53,32 @@ the order it is on.
 Full detail, including every button and what to do when something goes wrong, is
 in **[the manual](MANUAL.md)**.
 
+## What it actually saves
+
+Measured on our own packing screen, not estimated.
+
+Every parcel scanned into the VMS is timestamped, so the gap between one parcel
+and the next is how long that parcel took. Comparing the eleven working days
+before the extension with the first day using it:
+
+| | Parcels | Median time per parcel |
+|---|---|---|
+| 13–27 August, before | 537 | **41 seconds** |
+| 29 August, with the extension | 37 | **30 seconds** |
+
+That is **11 seconds off every parcel**. And 30 seconds was faster than every one
+of those eleven earlier days — the quickest of them was 37 seconds — so it is not
+simply a good day.
+
+**Over 500 parcels that is about an hour and a half.** Measured against our own
+fastest day before the extension rather than the average, it is still just under
+an hour.
+
+Being straight about the limits: this is one day of 37 parcels against eleven days
+before it, and it is a before-and-after observation rather than a controlled test
+— staff and order mix vary too. Gaps longer than five minutes were counted as
+breaks and left out of both figures.
+
 ## Install
 
 1. [Download the ZIP](https://github.com/kartaan-com/kartaan-click/releases/latest/download/kartaan-click.zip)
