@@ -1,0 +1,28 @@
+# The same release rules the pre-commit hook runs, enforced again on GitHub.
+#
+# WHY BOTH: a hook only exists on a machine where someone configured it, and it
+# can be skipped. This one cannot. If these two ever disagree, believe this one.
+name: Release rules
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: windows-latest   # make-zip.js and the ZIP check both use PowerShell
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check every shipped file parses
+        run: |
+          node --check background.js
+          node --check popup.js
+          node --check content/fk-orders.js
+          node --check content/vms-awb.js
+      - name: Release rules
+        run: node tools/check.js

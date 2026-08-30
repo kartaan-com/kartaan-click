@@ -86,6 +86,26 @@ the panel appears at the bottom-left.
 
 `node tools/make-zip.js` — packages the files Chrome needs and nothing else.
 
+### The release rules
+
+`node tools/check.js` — the rules this repository will not accept a change
+without. It refuses a commit that, among other things, adds a permission without
+explaining it in PRIVACY.md and STORE-LISTING.md, leaves a file out of the
+package, contacts a server the privacy policy does not name, or ships a ZIP whose
+folders came out wrong. `--release` adds the stricter checks that only matter when
+submitting to a store.
+
+It runs in two places, on purpose:
+
+- **Before every commit**, once per machine, via
+  `git config core.hooksPath .githooks`. A machine without that line set is not
+  protected by the hook.
+- **On every push to GitHub**, which nobody can skip. If the two ever disagree,
+  believe GitHub.
+
+Each rule is there because something actually went wrong once, and the reason is
+written above it. Do not delete a rule to make a commit pass.
+
 ## Privacy
 
 It collects nothing about you. No accounts, no tracking, no analytics. Everything

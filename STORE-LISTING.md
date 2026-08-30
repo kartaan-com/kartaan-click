@@ -111,8 +111,8 @@ machine:
 - `background.js` — the version check described above. The only remote request in
   the extension.
 - `content/fk-orders.js` — reads a `blob:` address, which is a file the Flipkart
-  page has already built in local memory. It contacts no server. This one is a
-  temporary diagnostic behind `const BLOB_TEST`, and is removed before submission.
+  page has already built in local memory. Nothing leaves the machine. This one is
+  a temporary diagnostic behind `const BLOB_TEST`, removed before submission.
 
 There is no `XMLHttpRequest` anywhere, and no http URL other than
 `seller.flipkart.com` and `kartaan.com`.

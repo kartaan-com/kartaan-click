@@ -1,0 +1,23 @@
+#!/bin/sh
+# Refuses the commit if it breaks a release rule. The rules are in tools/check.js.
+#
+# This is turned on by:  git config core.hooksPath .githooks
+# It is not the only guard — GitHub runs the same checks on every push, so a
+# machine without this configured still cannot get a broken commit onto main.
+
+echo "checking the release rules..."
+node tools/check.js || {
+  echo ""
+  echo "COMMIT REFUSED — see above."
+  echo "Nothing has been committed. Fix the points listed, then commit again."
+  exit 1
+}
+
+# The commit must be his, and must not credit anyone else (a standing rule).
+who="$(git config user.email)"
+if [ "$who" != "kartaan.com" ]; then
+  echo ""
+  echo "COMMIT REFUSED — this repository commits as kartaan.com,"
+  echo "but this commit would be authored by '$who'."
+  exit 1
+fi
