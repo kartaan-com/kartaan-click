@@ -65,22 +65,22 @@ Every parcel scanned into the VMS is timestamped, so the gap between one parcel
 and the next is how long that parcel took. Comparing the eleven working days
 before the extension with the first day using it:
 
-| | Parcels | Median time per parcel |
-|---|---|---|
-| 13–27 August, before | 537 | **41 seconds** |
-| 29 August, with the extension | 37 | **30 seconds** |
+| | Days | Parcels | Median time per parcel |
+|---|---|---|---|
+| 13–27 August, before | 12 | 640 | **40 seconds** |
+| 29–30 August, with the extension | 2 | 58 | **31 seconds** |
 
-That is **11 seconds off every parcel**. And 30 seconds was faster than every one
-of those eleven earlier days — the quickest of them was 37 seconds — so it is not
-simply a good day.
+That is **9 seconds off every parcel**. Both days using it came in faster than
+every one of the twelve days before — the quickest of those was 36 seconds — so
+it is not simply a good day.
 
-**Over 500 parcels that is about an hour and a half.** Measured against our own
-fastest day before the extension rather than the average, it is still just under
-an hour.
+**Over 500 parcels that is about an hour and a quarter.** Measured against our own
+fastest day before the extension rather than the average, it is still about
+40 minutes.
 
-Being straight about the limits: this is one day of 37 parcels against eleven days
-before it, and it is a before-and-after observation rather than a controlled test
-— staff and order mix vary too. Gaps longer than five minutes were counted as
+Being straight about the limits: this is two days and 58 parcels against twelve
+days before it, and it is a before-and-after observation rather than a controlled
+test — staff and order mix vary too. Gaps longer than five minutes were counted as
 breaks and left out of both figures.
 
 ## Install

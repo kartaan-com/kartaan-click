@@ -12,7 +12,8 @@ change whose version is not listed.
 - It only acts while a recording is actually running, and ignores the key for the
   first moment of one, so a stray keystroke cannot cut a parcel short.
 - Added the measured time saving to the README and the manual, from our own VMS
-  scan timestamps rather than an estimate.
+  scan timestamps rather than an estimate: 40 seconds a parcel before, 31 after,
+  across 698 parcels.
 
 ## 1.2.0 — 30 August 2026
 

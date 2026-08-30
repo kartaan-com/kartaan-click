@@ -108,14 +108,15 @@ could stop a recording by accident. The popup warns you if you pick one.
 ### What it saved us
 
 Every parcel scanned into the VMS is timestamped, so we could measure this rather
-than guess at it. Across the eleven working days before we started using it, the
-median parcel took **41 seconds**. On the first day with it, **30 seconds** — 11
-seconds quicker on every parcel, and faster than any of those eleven earlier days.
+than guess at it. Across the twelve working days before we started using it, the
+median parcel took **40 seconds**. Over the first two days with it, **31 seconds**
+— 9 seconds quicker on every parcel, and faster than any of those twelve earlier
+days.
 
-Over 500 parcels that is roughly an hour and a half of scanning you get back.
+Over 500 parcels that is roughly an hour and a quarter of scanning you get back.
 
-It is one day of 37 parcels against eleven days before it, so treat it as what we
-actually saw rather than a laboratory result.
+It is two days and 58 parcels against twelve days before them, so treat it as what
+we actually saw rather than a laboratory result.
 
 ---
 
