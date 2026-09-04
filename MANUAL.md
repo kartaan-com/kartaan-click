@@ -278,8 +278,11 @@ actually clicked.
 
 ### What it will not do
 
-- **It cannot sign you in.** If your session has expired the round finds nothing,
-  says so in the list, and stops. Nothing is forced.
+- **It cannot sign you in.** If a portal wants you to sign in, the round leaves
+  that tab open with a line across the bottom asking you to, and carries straight
+  on to the next portal. Later rounds skip that portal while its tab is still
+  open, so sign-in tabs never pile up — close the tab once you have signed in and
+  it picks that portal back up.
 - **It does not work when your browser is closed.** It is a browser extension, not
   a service running somewhere — if the browser is shut, no rounds happen.
 - **It does not read your orders.** It reads tab names to find them, and nothing
@@ -302,17 +305,27 @@ an automatic round is not the same as a seller checking in. It is your shop and
 your call; this is written down so you make it knowing where it stands. The same
 warning is on the settings page.
 
+### Each portal gets its own tab, loaded once
+
+A round opens a fresh tab for each portal, does its clicks there, and closes it.
+It never reloads a tab to try again — one page load, one attempt. If a portal
+bounces the round somewhere else on the way in, that is the end of that portal for
+that round; it is not retried in the same tab.
+
 ### If a round stops early
 
 The list at the bottom of the settings page will say something like:
 
 ```
 stopped: could not find "Ready to Ship" on the page
+            page: Orders · Meesho Supplier  —  supplier.meesho.com/panel/orders
 ```
 
-That means the tab is called something else now — portals rename things. The words
-it looks for are a short list in the extension, and correcting them is a small
-change. Report what it said and it gets fixed.
+That means the tab is called something else now — portals rename things. The
+second line names the page it was actually looking at, which is what tells you
+whether the word is wrong or whether the portal put a different page in front of
+it. The words it looks for are a short list in the extension, and correcting them
+is a small change. Report what it said and it gets fixed.
 
 ---
 

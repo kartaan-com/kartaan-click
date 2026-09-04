@@ -260,7 +260,15 @@ const CHECKIN_SITES = {
   amazon: { name: 'Amazon', url: 'https://sellercentral.amazon.in/' },
 };
 
-const ROUND_TIMEOUT_MS = 90000;   // a portal that never answers must not hold the round up
+// Long enough for the slowest honest case — a cold portal start-up, which the
+// content script waits 30 seconds for, plus the clicks after it — and no longer.
+const ROUND_TIMEOUT_MS = 75000;
+
+// Tabs left open on a portal that needs signing in, one per portal. Kept so the
+// next round does not open a SECOND tab on the same sign-in page, and the one
+// after that a third. While that tab is still open the portal is skipped; once
+// the seller closes it, the portal is tried again.
+const CHECKIN_SIGNIN_TABS = 'kcCheckinSignInTabs';
 const checkinRand = (a, b) => Math.floor(a + Math.random() * (b - a));
 
 async function checkinSettings() {
@@ -323,12 +331,34 @@ async function scheduleCheckin(reason) {
 let _roundTabId  = null;
 let _roundFinish = null;
 
+// Permission to act in the round tab is handed out ONCE. These portals redirect
+// on the way in — to sign-in, to a marketplace picker — and each redirect starts
+// the content script again from nothing. Without this, every one of those loads
+// would start another attempt in the same tab, which is what looked like Amazon
+// reloading over and over. One page load, one attempt.
+let _roundTabClaimed = false;
+
 // This worker is shut down after roughly half a minute of quiet, which would
 // abandon a round halfway through and leave its tab open. Touching a browser API
 // every so often keeps it awake for the half minute a round actually takes.
 function keepAwake() {
   const id = setInterval(() => { chrome.runtime.getPlatformInfo(() => {}); }, 20000);
   return () => clearInterval(id);
+}
+
+// Is a tab still open? Used to tell "the seller has not signed in yet" from "the
+// seller closed that tab, so try the portal again".
+function tabStillOpen(id) {
+  return new Promise(resolve => {
+    if (id == null) return resolve(false);
+    chrome.tabs.get(id, (tab) => resolve(!chrome.runtime.lastError && !!tab));
+  });
+}
+
+async function rememberSignInTab(key, tabId) {
+  const all = (await chrome.storage.local.get(CHECKIN_SIGNIN_TABS))[CHECKIN_SIGNIN_TABS] || {};
+  if (tabId == null) delete all[key]; else all[key] = tabId;
+  await chrome.storage.local.set({ [CHECKIN_SIGNIN_TABS]: all });
 }
 
 function visitOnce(key) {
@@ -341,10 +371,18 @@ function visitOnce(key) {
       settled = true;
       clearTimeout(timer);
       const tabId = _roundTabId;
-      _roundTabId  = null;
-      _roundFinish = null;
+      _roundTabId      = null;
+      _roundFinish     = null;
+      _roundTabClaimed = false;
       await chrome.storage.local.remove(CHECKIN_TAB);
-      if (tabId != null) chrome.tabs.remove(tabId, () => void chrome.runtime.lastError);
+
+      // A tab is closed only when the round on it actually finished. Anything
+      // unusual — needs signing in, or never answered at all — leaves the tab
+      // where it is, so the seller can see for themselves what the page was
+      // doing instead of being told about a tab that has already vanished.
+      const keep = !!(result.signedOut || result.timedOut);
+      if (tabId != null && !keep) chrome.tabs.remove(tabId, () => void chrome.runtime.lastError);
+      if (tabId != null && result.signedOut) await rememberSignInTab(key, tabId);
       resolve(result);
     };
 
@@ -361,7 +399,8 @@ function visitOnce(key) {
         finish({ site: cfg.name, done: [], stoppedAt: null, failed: true });
         return;
       }
-      _roundTabId = tab.id;
+      _roundTabId      = tab.id;
+      _roundTabClaimed = false;
       // Written down as well as held in memory: if this worker is shut down
       // mid-round, the next start-up finds the abandoned tab and closes it.
       chrome.storage.local.set({ [CHECKIN_TAB]: tab.id });
@@ -402,6 +441,16 @@ async function runCheckinRound(force) {
         await checkinLog({ site: 'Flipkart', done: [], stoppedAt: null, skipped: true });
         continue;
       }
+
+      // A tab is still sitting on this portal's sign-in page from a previous
+      // round. Opening another would just stack up sign-in tabs all day.
+      const waiting = (await chrome.storage.local.get(CHECKIN_SIGNIN_TABS))[CHECKIN_SIGNIN_TABS] || {};
+      if (await tabStillOpen(waiting[key])) {
+        await checkinLog({ site: CHECKIN_SITES[key].name, done: [], stillSignedOut: true });
+        continue;
+      }
+      await rememberSignInTab(key, null);
+
       const r = await visitOnce(key);
       await checkinLog(r);
       // A breath between portals, so three tabs are not opened in one burst.
@@ -425,13 +474,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // Asked by content/checkin.js on every page it loads on. Answering "no" is the
   // normal case — it means the seller opened that tab themselves.
   if (msg.type === 'CHECKIN_HELLO') {
-    sendResponse({ run: !!(sender && sender.tab && sender.tab.id === _roundTabId) });
+    const mine = !!(sender && sender.tab && sender.tab.id === _roundTabId);
+    const first = mine && !_roundTabClaimed;
+    if (first) _roundTabClaimed = true;    // one page load, one attempt
+    sendResponse({ run: first });
     return true;
   }
 
   if (msg.type === 'CHECKIN_DONE') {
     if (sender && sender.tab && sender.tab.id === _roundTabId && _roundFinish) {
-      _roundFinish({ site: msg.site, done: msg.done || [], stoppedAt: msg.stoppedAt || null });
+      _roundFinish({
+        site:      msg.site,
+        done:      msg.done || [],
+        stoppedAt: msg.stoppedAt || null,
+        signedOut: !!msg.signedOut,
+        page:      msg.page || '',
+        at:        msg.at   || '',
+      });
     }
     sendResponse({ ok: true });
     return true;

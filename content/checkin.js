@@ -11,18 +11,26 @@
 // background.js, because a content script dies with its tab.
 //
 // IT IS COMPLETELY INERT unless the background worker opened this exact tab for a
-// round. On a tab the seller opened themselves it asks once, is told no, and
-// stops. It never clicks anything on a page the seller is working on.
+// round AND no attempt has been made in it yet. On a tab the seller opened
+// themselves it asks, is told no, and stops. It never clicks anything on a page
+// the seller is working on.
 //
-// ⚠️ TWO THINGS THAT WILL BITE ANYONE EDITING THIS:
-//   1. The round tab is opened BEHIND whatever the seller is doing, so it is a
+// ⚠️ FOUR THINGS THAT WILL BITE ANYONE EDITING THIS:
+//   1. ONE PAGE LOAD, ONE ATTEMPT. These portals redirect on the way in — to a
+//      sign-in page, to a marketplace picker — and every redirect starts this
+//      script again from nothing. Left unguarded that reads as the page reloading
+//      over and over, which is exactly what it looked like on Amazon. The worker
+//      hands out permission ONCE per tab; every later load in the same tab is
+//      told no.
+//   2. The round tab is opened BEHIND whatever the seller is doing, so it is a
 //      hidden tab. Chrome slows a hidden tab's timers to one tick a SECOND, and
 //      after it has been hidden five MINUTES, to one tick a minute. So a round
-//      has to finish well inside five minutes. It does — a round is about half a
-//      minute — but do not add long waits here.
-//   2. Never use requestAnimationFrame in this file. It does not just slow down
+//      has to finish well inside five minutes.
+//   3. Never use requestAnimationFrame in this file. It does not just slow down
 //      in a hidden tab, it stops completely. A guard written with it once looked
 //      like it was working and was in fact dead. Plain setTimeout only.
+//   4. Signing in is the seller's job, not ours. When the page is a sign-in page
+//      this says so on the page, leaves the tab open, and gets out of the way.
 
 (function () {
 'use strict';
@@ -34,9 +42,9 @@
 // thing that gets a seller account into trouble, and those addresses change
 // without warning. Clicking what is on screen is what a person does.
 //
-// If a step's words are not on the page, the round says so in its log and stops
-// there. Nothing is forced, nothing breaks, and the log tells us which word to
-// correct.
+// If a step's words are not on the page, the round says so — with the name of the
+// page it was actually looking at — and stops there. Nothing is forced, nothing
+// breaks, and the log tells us which word to correct.
 const SITES = {
   'seller.flipkart.com': {
     name:  'Flipkart',
@@ -54,6 +62,13 @@ const SITES = {
 
 const site = SITES[location.hostname];
 if (!site) return;
+
+// How long to wait for the FIRST thing to appear. Much longer than the rest,
+// because on the first step the whole seller portal is still starting up — these
+// are big single-page applications and a cold start is not quick. Later steps are
+// only redrawing a list that is already there.
+const FIRST_STEP_MS = 30000;
+const NEXT_STEP_MS  = 12000;
 
 // ── small helpers ───────────────────────────────────────────────────────────
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -86,13 +101,29 @@ function findByWords(words) {
   return hits.filter(e => !hits.some(o => o !== e && e.contains(o)))[0] || null;
 }
 
+// Is this a sign-in page rather than the portal? Checked three ways because each
+// portal announces it differently, and getting this wrong in either direction is
+// costly: miss it and the round waits thirty seconds for a tab that will never
+// appear; call it wrongly and a perfectly good round is abandoned.
+function looksSignedOut() {
+  const url = (location.href || '').toLowerCase();
+  if (/\/(ap\/signin|signin|sign-in|login|log-in)\b/.test(url)) return true;
+  if (/[?&](referral_url|openid\.)/.test(url)) return true;
+  if (document.querySelector('input[type="password"]')) return true;
+  const title = (document.title || '').toLowerCase();
+  return /\b(sign in|log in|login|amazon sign-in)\b/.test(title);
+}
+
 // Waits for `fn()` to return something, or gives up. Deliberately coarse (half a
 // second) because a hidden tab cannot tick faster than once a second anyway.
+// Stops early the moment the page turns into a sign-in page, so a portal that
+// signs us out mid-round is not waited on for the full thirty seconds.
 async function waitFor(fn, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const v = fn();
     if (v) return v;
+    if (looksSignedOut()) return null;
     if (Date.now() > deadline) return null;
     await sleep(500);
   }
@@ -113,12 +144,46 @@ function humanClick(el) {
   if (typeof el.click === 'function') el.click();
 }
 
+// The prompt on a portal that needs signing in. The tab is left open on purpose,
+// so this is the first thing the seller sees when they get to it. Deliberately
+// plain and deliberately dismissable — it is a note, not an alarm, and it must
+// never sit on top of the sign-in box itself.
+function showSignInPrompt() {
+  if (document.getElementById('__kcSignIn')) return;
+  const bar = document.createElement('div');
+  bar.id = '__kcSignIn';
+  bar.style.cssText = [
+    'position:fixed', 'left:0', 'right:0', 'bottom:0', 'z-index:2147483647',
+    'background:#1e3a8a', 'color:#fff', 'padding:12px 16px',
+    'font:600 14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif',
+    'display:flex', 'align-items:center', 'gap:12px',
+    'box-shadow:0 -2px 12px rgba(0,0,0,.25)',
+  ].join(';');
+
+  const msg = document.createElement('span');
+  msg.style.flex = '1';
+  msg.textContent = 'Kartaan Click — please sign in to ' + site.name
+    + '. Check-ins for this portal are paused until you do. The other portals carried on.';
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = 'Got it';
+  close.style.cssText = 'font:inherit;padding:5px 12px;border:0;border-radius:6px;'
+    + 'background:#fff;color:#1e3a8a;cursor:pointer';
+  close.addEventListener('click', () => bar.remove());
+
+  bar.appendChild(msg);
+  bar.appendChild(close);
+  (document.body || document.documentElement).appendChild(bar);
+}
+
 // ── are we even meant to be here? ───────────────────────────────────────────
 //
-// The background worker knows which tab it opened for a round. Asking it is the
-// only reliable way for this script to know whether this tab is that one — a
-// content script cannot see its own tab number. On the seller's own tab the
-// answer is no and this file does nothing at all for the rest of the page's life.
+// The background worker knows which tab it opened for a round, and hands out
+// permission for it exactly once. Asking is the only reliable way for this script
+// to know — a content script cannot see its own tab number. On the seller's own
+// tab, and on every redirect after the first attempt, the answer is no and this
+// file does nothing at all for the rest of that page's life.
 function ask(message) {
   return new Promise(resolve => {
     chrome.runtime.sendMessage(message, reply => {
@@ -126,6 +191,16 @@ function ask(message) {
       resolve(reply || null);
     });
   });
+}
+
+// Where the round actually got to, for the log on the settings page. The address
+// is cut down to the site and the path — never the part after "?", which on these
+// portals can carry order numbers and search terms.
+function whereWeAre() {
+  return {
+    page: (document.title || '').slice(0, 120),
+    at:   location.hostname + location.pathname,
+  };
 }
 
 async function run() {
@@ -139,16 +214,32 @@ async function run() {
   }
   if (!hello || !hello.run) return;
 
+  // Let the page settle enough to know what kind of page it is. Kept short: a
+  // portal that is going to bounce us to sign-in usually does it immediately, and
+  // saying so quickly is better than waiting to be redirected out from under.
+  await sleep(rand(2000, 3200));
+
+  if (looksSignedOut()) {
+    showSignInPrompt();
+    await ask({ type: 'CHECKIN_DONE', site: site.name, done: [], signedOut: true, ...whereWeAre() });
+    return;
+  }
+
   const done = [];
   let   stoppedAt = null;
 
-  // The page has only just started loading. Give it room to draw before hunting
-  // for anything, or the first step fails on a page that was merely slow.
-  await sleep(rand(2500, 4500));
+  for (let i = 0; i < site.steps.length; i++) {
+    const words = site.steps[i];
+    const el = await waitFor(() => findByWords(words), i === 0 ? FIRST_STEP_MS : NEXT_STEP_MS);
 
-  for (const words of site.steps) {
-    const el = await waitFor(() => findByWords(words), 12000);
+    // Signed out part-way through — the session ran out, or the portal bounced us.
+    if (!el && looksSignedOut()) {
+      showSignInPrompt();
+      await ask({ type: 'CHECKIN_DONE', site: site.name, done, signedOut: true, ...whereWeAre() });
+      return;
+    }
     if (!el) { stoppedAt = words; break; }
+
     humanClick(el);
     done.push(words);
     // A real person reads the list before moving on. This is also what makes the
@@ -156,12 +247,7 @@ async function run() {
     await sleep(rand(1800, 5000));
   }
 
-  await ask({
-    type:    'CHECKIN_DONE',
-    site:    site.name,
-    done,
-    stoppedAt,
-  });
+  await ask({ type: 'CHECKIN_DONE', site: site.name, done, stoppedAt, ...whereWeAre() });
 }
 
 run();

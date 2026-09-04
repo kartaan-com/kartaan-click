@@ -82,14 +82,39 @@ async function showNext() {
   $('next').textContent = 'Next round: ' + new Date(when).toLocaleString();
 }
 
+// The name and address of the page the round was actually looking at. This is the
+// line that says whether a step failed because the words are wrong or because the
+// portal had put a completely different page in front of us.
+function whereLine(e) {
+  if (!e.page && !e.at) return '';
+  return '\n            page: ' + [e.page, e.at].filter(Boolean).join('  —  ');
+}
+
 function describe(e) {
   const at = new Date(e.ts).toLocaleString();
-  if (e.skipped)  return at + '  ' + e.site + ' — skipped, the order panel was mid-run on this portal';
-  if (e.failed)   return at + '  ' + e.site + ' — the tab could not be opened';
-  if (e.timedOut) return at + '  ' + e.site + ' — no answer from the page (signed out, or very slow)';
+
+  if (e.skipped)
+    return at + '  ' + e.site + ' — skipped, the order panel was mid-run on this portal';
+
+  if (e.stillSignedOut)
+    return at + '  ' + e.site + ' — skipped, still waiting for you to sign in'
+             + '\n            (its tab is still open; close it once you have, and it resumes)';
+
+  if (e.signedOut)
+    return at + '  ' + e.site + ' — NEEDS SIGNING IN. Its tab has been left open for you;'
+             + ' the other portals carried on.' + whereLine(e);
+
+  if (e.failed)
+    return at + '  ' + e.site + ' — the tab could not be opened';
+
+  if (e.timedOut)
+    return at + '  ' + e.site + ' — the page never answered. Its tab has been left open'
+             + ' so you can see what it was doing.';
+
   const did = (e.done && e.done.length) ? e.done.join(' → ') : 'nothing';
   return at + '  ' + e.site + ' — ' + did
-       + (e.stoppedAt ? '\n            stopped: could not find "' + e.stoppedAt + '" on the page' : '');
+       + (e.stoppedAt ? '\n            stopped: could not find "' + e.stoppedAt + '" on the page'
+                        + whereLine(e) : '');
 }
 
 async function showLog() {

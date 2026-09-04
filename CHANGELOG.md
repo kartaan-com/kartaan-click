@@ -3,6 +3,28 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.4.1 — 4 September 2026
+
+Fixes to portal check-ins, from the first real round on live portals.
+
+- **One page load, one attempt.** These portals redirect on the way in — to a
+  sign-in page, to a marketplace picker — and every redirect was starting the
+  round again from nothing in the same tab. On Amazon that looked like the page
+  reloading over and over. Permission to act is now handed out once per tab.
+- **A portal that needs signing in is left alone, and says so.** Instead of being
+  closed, its tab stays open with a line across the bottom asking you to sign in,
+  and the round carries straight on to the next portal. The next round skips that
+  portal while its tab is still open, so sign-in tabs cannot stack up all day —
+  close the tab once you have signed in and it resumes.
+- **Longer wait for the first thing on the page** — 30 seconds rather than 12.
+  These are big portals and a cold start is not quick; the round was giving up
+  before Flipkart had finished starting.
+- **The log now names the page the round was actually looking at** when a step
+  fails, so a wrong tab name can be told apart from a portal showing something
+  else entirely.
+- A round now stops the moment a page turns into a sign-in page, rather than
+  waiting out the full timeout on a page that will never show an order tab.
+
 ## 1.4.0 — 4 September 2026
 
 - **New tool: portal check-ins.** Flipkart, Meesho and Amazon all take note of how
