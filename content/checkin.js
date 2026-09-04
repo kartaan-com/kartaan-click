@@ -308,7 +308,16 @@ function overlayBoxes() {
   const out = [];
 
   for (const el of document.querySelectorAll('div, section, aside, dialog')) {
-    if (el.id === '__kcSignIn') continue;              // our own note
+    // Our own furniture. `#__kcPanel` is the Flipkart order panel from
+    // content/fk-orders.js, and it is on screen for every Flipkart check-in.
+    // ⚠️ MEASURED ON HIS REAL SCREEN 4 SEP 2026: the panel is 340px wide, which
+    // against his 1707px window is 19.9% — a tenth of one per cent under the
+    // shape test. On any window narrower than 1700px it passes, and a round would
+    // start treating our own panel as a pop-up to be closed. Nothing inside it
+    // would actually be pressed (checked: the minimise button has words, so the
+    // corner rule refuses it) but it is not ours to guess at. Excluded by name.
+    if (el.id === '__kcSignIn' || el.id === '__kcPanel') continue;
+    if (el.closest('#__kcSignIn, #__kcPanel')) continue;
     if (el.closest(NOT_A_POPUP)) continue;             // page furniture, not a pop-up
     const s = getComputedStyle(el);
     if (s.position !== 'fixed' && s.position !== 'absolute') continue;

@@ -3,6 +3,19 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.4.13 — 4 September 2026
+
+- **The check-in round no longer treats our own Flipkart panel as a pop-up.**
+  Watched on the real Flipkart orders page rather than reasoned about: the order
+  panel is 340 pixels wide, which on that screen is 19.9% of the window — one
+  tenth of one per cent under the line at which a floating box starts counting as
+  a pop-up. On any window narrower than about 1700 pixels it would have crossed
+  that line, and a round would have started looking for a way to close our own
+  panel. Nothing inside it would have been pressed — the minimise button has
+  words on it, and the corner rule refuses anything with words — but our own
+  furniture has no business being guessed at. It is now excluded by name, the
+  same way the sign-in note already was.
+
 ## 1.4.12 — 4 September 2026
 
 Everything in this version came out of an independent review of the check-in
