@@ -70,6 +70,19 @@ scans straight in.
 
 Over a shift that is hundreds of clicks you no longer make.
 
+### Pop-ups in the way
+
+Portals put things in front of you — a "what's new" card, a rate-us box, a cookie
+strip. One of those sitting over the order tabs is enough to stop a round, so it
+closes them first, and again if one appears while it is waiting.
+
+It is deliberately timid about this, because these are live seller portals. It only
+presses something that is **both** inside a box the page itself calls a dialog
+**and** says one of a short list of words that can only mean "go away" — Got it,
+OK, Close, Dismiss, No thanks, Not now, Skip. It will not press Cancel, Continue,
+Done or anything beginning with Accept. Whatever it closed is listed with the round
+on the settings page, so it is never doing this out of sight.
+
 ### What it will not do
 
 - It never clicks anything for you, including Stop. You are still in control of

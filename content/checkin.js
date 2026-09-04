@@ -16,12 +16,14 @@
 // the seller is working on.
 //
 // ⚠️ FOUR THINGS THAT WILL BITE ANYONE EDITING THIS:
-//   1. ONE PAGE LOAD, ONE ATTEMPT. These portals redirect on the way in — to a
-//      sign-in page, to a marketplace picker — and every redirect starts this
-//      script again from nothing. Left unguarded that reads as the page reloading
-//      over and over, which is exactly what it looked like on Amazon. The worker
-//      hands out permission ONCE per tab; every later load in the same tab is
-//      told no.
+//   1. A REDIRECT CHAIN GETS A FEW HOPS, NOT UNLIMITED AND NOT ONE. These portals
+//      redirect on the way in — to a sign-in page, to a marketplace picker, from a
+//      front door into the real panel — and every redirect starts this script
+//      again from nothing. Letting every load try reads as the page reloading over
+//      and over, which is what Amazon looked like. Letting exactly one try was
+//      worse the other way: Meesho's front door redirected, the first script was
+//      carried off mid-sentence, the second was refused, and nobody ever reported
+//      back. The worker allows three, then stops answering.
 //   2. The round tab is opened BEHIND whatever the seller is doing, so it is a
 //      hidden tab. Chrome slows a hidden tab's timers to one tick a SECOND, and
 //      after it has been hidden five MINUTES, to one tick a minute. So a round
@@ -126,6 +128,11 @@ function isVisible(el) {
   return s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0';
 }
 
+function isDisabled(el) {
+  return !!(el.disabled || el.getAttribute('aria-disabled') === 'true'
+         || (el.className && typeof el.className === 'string' && /disabled/.test(el.className)));
+}
+
 // A tab's label is rarely just its words — it usually carries a count, as
 // "To Accept 12" or "Pending (4)". Strip the numbers and brackets off before
 // comparing, so the count changing never breaks the match.
@@ -185,6 +192,69 @@ function humanClick(el) {
     el.dispatchEvent(new Ctor(type, opts));
   }
   if (typeof el.click === 'function') el.click();
+}
+
+// ── pop-ups ─────────────────────────────────────────────────────────────────
+//
+// These portals put things in the way: a "what's new" box, a rate-us card, a
+// cookie strip. One of those sitting over the order tabs is enough to stop a
+// round, so they are closed first.
+//
+// DELIBERATELY TIMID, and it must stay that way. This is a live seller portal —
+// clicking the wrong thing here could act on real orders. So it only ever presses
+// something that is BOTH inside a box the page itself calls a dialog AND says one
+// of a short list of words that can only mean "go away". No "Cancel" (it can
+// abandon something the seller started), no "Continue", no guessing from an icon.
+const DISMISS_WORDS = [
+  'got it', 'ok', 'okay', 'close', 'dismiss', 'no thanks', 'no, thanks',
+  'not now', 'maybe later', 'later', 'skip', 'skip for now', 'i understand',
+];
+// Kept OUT on purpose, and each for a reason:
+//   "Cancel"      — can abandon something the seller started.
+//   "Continue"    — that is going forward, not closing.
+//   "Done"        — on a form that means submit it.
+//   "Accept all"  — a cookie strip's wording, but "Accept" is also the word this
+//                   very extension presses on real Flipkart orders. Nothing that
+//                   starts with it goes anywhere near this list.
+
+const DIALOG_SELECTOR = [
+  '[role="dialog"]', '[role="alertdialog"]', '[aria-modal="true"]',
+  '.modal', '.ReactModal__Content', '.ant-modal', '.MuiDialog-root',
+].join(',');
+
+// One pass. Returns what it closed, so the log can say so rather than the round
+// quietly behaving differently from one day to the next.
+function dismissOnce() {
+  for (const box of document.querySelectorAll(DIALOG_SELECTOR)) {
+    if (!isVisible(box)) continue;
+
+    // The page's own close control, named as such by the page. This is the
+    // safest thing in here — it is a cross, and it says so.
+    const named = [...box.querySelectorAll('[aria-label], button, [role="button"]')].find(el => {
+      const label = (el.getAttribute('aria-label') || '').toLowerCase();
+      return /(^|\s)(close|dismiss)(\s|$)/.test(label) && isVisible(el) && !isDisabled(el);
+    });
+    if (named) { humanClick(named); return named.getAttribute('aria-label') || 'close'; }
+
+    const worded = [...box.querySelectorAll('button, [role="button"], a')].find(el =>
+      DISMISS_WORDS.indexOf(norm(txt(el))) !== -1 && isVisible(el) && !isDisabled(el));
+    if (worded) { humanClick(worded); return txt(worded); }
+  }
+  return null;
+}
+
+// Boxes sometimes come in twos — a cookie strip under a welcome card. Three
+// passes is plenty; more than that and something is putting them back, which is
+// not a fight worth having in a background tab.
+async function dismissPopups() {
+  const closed = [];
+  for (let i = 0; i < 3; i++) {
+    const what = dismissOnce();
+    if (!what) break;
+    closed.push(what);
+    await sleep(rand(500, 1100));
+  }
+  return closed;
 }
 
 // The prompt on a portal that needs signing in. The tab is left open on purpose,
@@ -264,21 +334,34 @@ async function run() {
 
   if (looksSignedOut()) {
     showSignInPrompt();
-    await ask({ type: 'CHECKIN_DONE', site: site.name, done: [], signedOut: true, ...whereWeAre() });
+    await ask({ type: 'CHECKIN_DONE', site: site.name, done: [], closed: [], signedOut: true, ...whereWeAre() });
     return;
   }
 
   const done = [];
+  const closed = [];
   let   stoppedAt = null;
+
+  closed.push(...await dismissPopups());
 
   for (let i = 0; i < site.steps.length; i++) {
     const words = site.steps[i];
-    const el = await waitFor(() => findByWords(words), i === 0 ? FIRST_STEP_MS : NEXT_STEP_MS);
+    let el = await waitFor(() => findByWords(words), i === 0 ? FIRST_STEP_MS : NEXT_STEP_MS);
+
+    // Nothing found, but a box appeared while we were waiting and is sitting over
+    // the tabs. Close it and give the step one more go before giving up.
+    if (!el) {
+      const late = await dismissPopups();
+      if (late.length) {
+        closed.push(...late);
+        el = await waitFor(() => findByWords(words), NEXT_STEP_MS);
+      }
+    }
 
     // Signed out part-way through — the session ran out, or the portal bounced us.
     if (!el && looksSignedOut()) {
       showSignInPrompt();
-      await ask({ type: 'CHECKIN_DONE', site: site.name, done, signedOut: true, ...whereWeAre() });
+      await ask({ type: 'CHECKIN_DONE', site: site.name, done, closed, signedOut: true, ...whereWeAre() });
       return;
     }
     if (!el) { stoppedAt = words; break; }
@@ -290,7 +373,7 @@ async function run() {
     await sleep(rand(1800, 5000));
   }
 
-  await ask({ type: 'CHECKIN_DONE', site: site.name, done, stoppedAt, ...whereWeAre() });
+  await ask({ type: 'CHECKIN_DONE', site: site.name, done, closed, stoppedAt, ...whereWeAre() });
 }
 
 run();

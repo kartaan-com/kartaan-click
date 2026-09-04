@@ -383,12 +383,21 @@ async function scheduleCheckin(reason) {
 let _roundTabId  = null;
 let _roundFinish = null;
 
-// Permission to act in the round tab is handed out ONCE. These portals redirect
-// on the way in — to sign-in, to a marketplace picker — and each redirect starts
-// the content script again from nothing. Without this, every one of those loads
-// would start another attempt in the same tab, which is what looked like Amazon
-// reloading over and over. One page load, one attempt.
-let _roundTabClaimed = false;
+// How many page loads in the round tab have been allowed to try. These portals
+// redirect on the way in — to sign-in, to a marketplace picker, from a front door
+// to the real panel — and every redirect starts the content script again from
+// nothing.
+//
+// Allowing every one of them is what made Amazon look like it was reloading over
+// and over. Allowing exactly ONE was worse in the other direction: Meesho's front
+// door redirects into the panel, the first script was carried off mid-sentence,
+// the second was refused, and nobody ever reported back — which is exactly the
+// "the page never answered" that came out of the 4 Sep round.
+//
+// So: a small handful. A genuine way in is one or two hops. Anything still
+// bouncing after three is a loop, and gets nothing.
+const MAX_ATTEMPTS_PER_TAB = 3;
+let _roundAttempts = 0;
 
 // This worker is shut down after roughly half a minute of quiet, which would
 // abandon a round halfway through and leave its tab open. Touching a browser API
@@ -423,9 +432,9 @@ function visitOnce(key, url) {
       settled = true;
       clearTimeout(timer);
       const tabId = _roundTabId;
-      _roundTabId      = null;
-      _roundFinish     = null;
-      _roundTabClaimed = false;
+      _roundTabId    = null;
+      _roundFinish   = null;
+      _roundAttempts = 0;
       await chrome.storage.local.remove(CHECKIN_TAB);
 
       // A tab is closed only when the round on it actually finished. Anything
@@ -451,8 +460,8 @@ function visitOnce(key, url) {
         finish({ site: cfg.name, done: [], stoppedAt: null, failed: true });
         return;
       }
-      _roundTabId      = tab.id;
-      _roundTabClaimed = false;
+      _roundTabId    = tab.id;
+      _roundAttempts = 0;
       // Written down as well as held in memory: if this worker is shut down
       // mid-round, the next start-up finds the abandoned tab and closes it.
       chrome.storage.local.set({ [CHECKIN_TAB]: tab.id });
@@ -527,9 +536,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // normal case — it means the seller opened that tab themselves.
   if (msg.type === 'CHECKIN_HELLO') {
     const mine = !!(sender && sender.tab && sender.tab.id === _roundTabId);
-    const first = mine && !_roundTabClaimed;
-    if (first) _roundTabClaimed = true;    // one page load, one attempt
-    sendResponse({ run: first });
+    const allow = mine && _roundAttempts < MAX_ATTEMPTS_PER_TAB;
+    if (allow) _roundAttempts += 1;
+    sendResponse({ run: allow });
     return true;
   }
 

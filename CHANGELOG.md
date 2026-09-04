@@ -3,6 +3,26 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.4.4 — 4 September 2026
+
+- **A round closes pop-ups that are in the way.** A "what's new" card or a cookie
+  strip sitting over the order tabs was enough to stop a round. It now closes them
+  first, and again if one appears while it is waiting.
+  - Deliberately timid, and it stays that way: it only presses something that is
+    both inside a box the page itself calls a dialog and says one of a short list
+    of words that can only mean "go away" — Got it, OK, Close, Dismiss, No thanks,
+    Not now, Skip. Never Cancel, never Continue, never Accept.
+  - The settings page lists what it closed, so it is never doing this invisibly.
+- **Fixed Meesho never answering.** A round tab was allowed exactly one page load,
+  but Meesho's front door redirects into the panel — so the first attempt was
+  carried off mid-sentence and the second was refused, and nothing ever reported
+  back. A redirect chain now gets three hops, which is enough for a real way in and
+  still short enough that a reload loop gets nowhere.
+- The release rules now read every shipped script the way the browser will. A
+  broken line got past every other rule while building this version — the package
+  was well formed and the documents all matched, and the extension would simply
+  have refused to load.
+
 ## 1.4.3 — 4 September 2026
 
 - **Meesho now sorts itself out.** You no longer paste anything. The code Meesho

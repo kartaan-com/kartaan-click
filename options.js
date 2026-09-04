@@ -141,8 +141,10 @@ function describe(e) {
     return at + '  ' + e.site + ' — the page never answered. Its tab has been left open'
              + ' so you can see what it was doing.';
 
-  const did = (e.done && e.done.length) ? e.done.join(' → ') : 'nothing';
-  return at + '  ' + e.site + ' — ' + did
+  const did  = (e.done && e.done.length) ? e.done.join(' → ') : 'nothing';
+  const shut = (e.closed && e.closed.length)
+    ? '\n            closed on the way: ' + e.closed.join(', ') : '';
+  return at + '  ' + e.site + ' — ' + did + shut
        + (e.stoppedAt ? '\n            stopped: could not find "' + e.stoppedAt + '" on the page'
                         + whereLine(e) : '');
 }

@@ -268,6 +268,23 @@ if (exists('STORE-LISTING.md') && !read('STORE-LISTING.md').includes(`kartaan-cl
     `manifest.json is version ${manifest.version} but STORE-LISTING.md still names a different ZIP`);
 }
 
+// ── 12. Every shipped script must actually be valid JavaScript ──────────────
+// WHY: a broken string literal reached a built ZIP on 4 Sep 2026 and every other
+// rule here passed it, because none of them read the code as code — the package
+// was well-formed, the documents matched, the version was written up, and the
+// extension would simply have refused to load. Reading each file the way the
+// browser will is one line and catches it.
+{
+  const vm = require('vm');
+  for (const f of shipped) {
+    try {
+      new vm.Script(read(f), { filename: f });
+    } catch (e) {
+      fail('broken JavaScript', `${f} will not parse — ${e.message}`);
+    }
+  }
+}
+
 // ── report ──────────────────────────────────────────────────────────────────
 for (const w of warnings) console.log(`  note: ${w.rule} — ${w.detail}`);
 
