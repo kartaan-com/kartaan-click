@@ -76,12 +76,20 @@ Portals put things in front of you — a "what's new" card, a rate-us box, a coo
 strip. One of those sitting over the order tabs is enough to stop a round, so it
 closes them first, and again if one appears while it is waiting.
 
-It is deliberately timid about this, because these are live seller portals. It only
-presses something that is **both** inside a box the page itself calls a dialog
-**and** says one of a short list of words that can only mean "go away" — Got it,
-OK, Close, Dismiss, No thanks, Not now, Skip. It will not press Cancel, Continue,
-Done or anything beginning with Accept. Whatever it closed is listed with the round
-on the settings page, so it is never doing this out of sight.
+Not every pop-up announces itself as one — Meesho's are often plain boxes floated
+over the page — so anything *behaving* like one counts too: lifted off the page,
+stacked above it, and big enough to be in the way.
+
+That widens where it looks, **not what it presses**. It is deliberately timid,
+because these are live seller portals: it only ever presses a close control, a bare
+cross, or one of a short list of words that can only mean "go away" — Got it, OK,
+Close, Dismiss, No thanks, Not now, Skip. It will not press Cancel, Continue, Done
+or anything beginning with Accept. If a box is plainly there but has no way out
+that can be found, it presses Escape, which closes most of them and on a page with
+nothing open does nothing at all.
+
+Whatever it closed is listed with the round on the settings page, so it is never
+doing this out of sight.
 
 ### What it will not do
 
@@ -356,19 +364,20 @@ in a tab of yours. If it is, it uses that one — a tab you already have is alre
 signed in, which a brand new one may not be, and it is one fewer tab on your
 screen.
 
-- **Your tab is put back on the page it was on** when the round finishes, and it is
-  never closed. Only a tab the extension opened itself gets closed.
+- **Nothing is ever closed.** Your tab is put back on the page it was on, and a tab
+  the extension opened is left on your orders page — so the next round finds it
+  already open and already signed in, and there is no login to get past again. One
+  tab per portal, and no more than that.
 - **If you are looking at that portal right now, the round skips it.** Working in a
   page you are reading would take it out from under you — and there is nothing to
   prove anyway, since being on it is the very thing a check-in stands in for.
 - The list of rounds says which ones used your own tab.
 
-### Each portal gets its own tab, loaded once
+### One page load, one attempt
 
-A round opens a fresh tab for each portal, does its clicks there, and closes it.
-It never reloads a tab to try again — one page load, one attempt. If a portal
-bounces the round somewhere else on the way in, that is the end of that portal for
-that round; it is not retried in the same tab.
+A round does not reload a tab to try again. If a portal bounces it somewhere else
+on the way in, that is the end of that portal for that round — it is picked up
+again at the next one, in the tab that was left open.
 
 ### If a round stops early
 

@@ -134,13 +134,10 @@ function describe(e) {
              + ((e.done && e.done.length) ? e.done.join(' → ') : 'nothing')
              + (e.stoppedAt ? ' (stopped at "' + e.stoppedAt + '")' : '');
 
-  if (e.stillSignedOut)
-    return at + '  ' + e.site + ' — skipped, still waiting for you to sign in'
-             + '\n            (its tab is open and waiting; sign in there and it picks up by itself)';
-
   if (e.signedOut)
-    return at + '  ' + e.site + ' — NEEDS SIGNING IN. Its tab has been left open for you;'
-             + ' the other portals carried on.' + whereLine(e);
+    return at + '  ' + e.site + ' — NEEDS SIGNING IN. Its tab is open and waiting for you;'
+             + ' sign in there and it picks that portal up by itself. The others carried on.'
+             + whereLine(e);
 
   if (e.failed)
     return at + '  ' + e.site + ' — the tab could not be opened';

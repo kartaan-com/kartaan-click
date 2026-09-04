@@ -241,10 +241,50 @@ const DIALOG_SELECTOR = [
   '.modal', '.ReactModal__Content', '.ant-modal', '.MuiDialog-root',
 ].join(',');
 
+// Not every pop-up says it is one. Meesho's in particular are plain boxes floated
+// over the page with none of the markings above, and one of those sitting over the
+// order tabs stops a round dead. So anything BEHAVING like a pop-up counts too:
+// lifted off the page, stacked above it, and big enough to be in the way but not
+// so big it is the page itself.
+//
+// This only decides where to LOOK. What actually gets pressed is still just a
+// close control or one of the words that can only mean "go away" — widening the
+// search does not widen what is clicked.
+function overlayBoxes() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const out = [];
+
+  for (const el of document.querySelectorAll('div, section, aside, dialog')) {
+    if (el.id === '__kcSignIn') continue;              // our own note
+    const s = getComputedStyle(el);
+    if (s.position !== 'fixed' && s.position !== 'absolute') continue;
+    if ((parseInt(s.zIndex, 10) || 0) < 50) continue;
+    if (!isVisible(el)) continue;
+
+    const r = el.getBoundingClientRect();
+    const area = (r.width * r.height) / (vw * vh);
+    if (area < 0.04 || area > 0.98) continue;          // a crumb, or the whole page
+
+    // Something that holds another candidate is the backdrop, not the box.
+    out.push(el);
+  }
+  return out.filter(e => !out.some(o => o !== e && e.contains(o)));
+}
+
+function candidateBoxes() {
+  const named = [...document.querySelectorAll(DIALOG_SELECTOR)].filter(isVisible);
+  return [...new Set([...named, ...overlayBoxes()])];
+}
+
+// A bare cross, in any of the shapes pages draw one. On its own it means nothing
+// else, which is why a one-character button is safe to press and a one-word one
+// would not be.
+const CROSS = /^[×✕✖⨯xX]$/;
+
 // One pass. Returns what it closed, so the log can say so rather than the round
 // quietly behaving differently from one day to the next.
 function dismissOnce() {
-  for (const box of document.querySelectorAll(DIALOG_SELECTOR)) {
+  for (const box of candidateBoxes()) {
     if (!isVisible(box)) continue;
 
     // The page's own close control, named as such by the page. This is the
@@ -258,8 +298,23 @@ function dismissOnce() {
     const worded = [...box.querySelectorAll('button, [role="button"], a')].find(el =>
       DISMISS_WORDS.indexOf(norm(txt(el))) !== -1 && isVisible(el) && !isDisabled(el));
     if (worded) { humanClick(worded); return txt(worded); }
+
+    const cross = [...box.querySelectorAll('button, [role="button"], a, span, i, svg')].find(el =>
+      CROSS.test(txt(el)) && isVisible(el) && !isDisabled(el));
+    if (cross) { humanClick(cross); return 'the cross'; }
   }
   return null;
+}
+
+// Escape closes most pop-ups that have no visible way out, and on a page that has
+// none open it does nothing at all — which is what makes it safe to try. It is
+// last, after every way of actually finding the button.
+function pressEscape() {
+  for (const type of ['keydown', 'keyup']) {
+    document.dispatchEvent(new KeyboardEvent(type, {
+      key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true,
+    }));
+  }
 }
 
 // Boxes sometimes come in twos — a cookie strip under a welcome card. Three
@@ -272,6 +327,14 @@ async function dismissPopups() {
     if (!what) break;
     closed.push(what);
     await sleep(rand(500, 1100));
+  }
+
+  // Still something over the page with no way out that could be found. Escape is
+  // the last thing left to try.
+  if (candidateBoxes().length) {
+    pressEscape();
+    await sleep(rand(500, 900));
+    if (!candidateBoxes().length) closed.push('Escape');
   }
   return closed;
 }

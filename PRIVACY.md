@@ -102,8 +102,10 @@ the portal check-in described above, and only while you have it switched on. On 
 other page of those sites the extension does nothing at all.
 
 A check-in also borrows a portal tab you already have open rather than adding a new
-one. Your tab is put back on the page it was on afterwards and is never closed, and
-if you are looking at that portal at the time it is left alone completely.
+one, and if you are looking at that portal at the time it is left alone completely.
+Nothing is ever closed: your own tab is put back on the page it was on, and a tab
+the extension opened is left on your orders page so the next round can use it
+instead of opening another.
 
 The extension cannot save files anywhere outside your Downloads folder — browsers
 do not allow that — and it cannot see or change your browser's own download

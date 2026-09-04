@@ -3,6 +3,27 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.4.8 — 4 September 2026
+
+- **A portal tab is left open when the round finishes.** Closing it meant the next
+  round started from nothing again — the front door, the sign-in, the whole wall.
+  Left open, the next round finds it and is already through. One tab per portal,
+  sitting there signed in, and no login to get past again.
+  - A tab that was yours to begin with is still put back on the page it was on.
+    One the extension opened stays on the orders page, which is where the next
+    round wants it anyway.
+- **Pop-ups that do not announce themselves are now closed too.** Meesho's in
+  particular are plain boxes floated over the page with none of the usual
+  markings, and one of those over the order tabs stops a round dead. Anything
+  *behaving* like a pop-up — lifted off the page, stacked above it, big enough to
+  be in the way — is now looked at as well.
+  - **This widens where it looks, not what it presses.** It is still only a close
+    control, a bare cross, or one of the short list of words that can only mean
+    "go away". Never Cancel, never Continue, never anything beginning with Accept.
+  - If a box is plainly there but has no way out that can be found, it presses
+    Escape — which closes most of them, and on a page with nothing open does
+    nothing at all.
+
 ## 1.4.7 — 4 September 2026
 
 - **A round uses a portal tab you already have open, instead of opening another
