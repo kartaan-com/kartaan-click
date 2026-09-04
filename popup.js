@@ -113,3 +113,17 @@ chrome.runtime.sendMessage({ type: 'CHECK_UPDATE' }, info => {
   void chrome.runtime.lastError;
   render(info);
 });
+
+// ── portal check-ins: on or off, and when the next round is ─────────────────
+// The settings themselves live on the options page; this is only the one-line
+// summary on the popup, so there is somewhere obvious to see it is running.
+chrome.storage.local.get(['kcCheckin', 'kcCheckinNext']).then(res => {
+  const badge = document.getElementById('checkinState');
+  if (!badge) return;
+  const on   = !!(res.kcCheckin && res.kcCheckin.enabled);
+  const next = res.kcCheckinNext;
+  badge.className   = on ? 'on' : 'off';
+  badge.textContent = !on ? 'Off'
+    : (next ? 'On — next round ' + new Date(next).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+            : 'On');
+});

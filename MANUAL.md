@@ -9,6 +9,7 @@ without it.
 - [Installing it](#installing-it)
 - [Tool 1 — the VMS packing screen clears its own AWB box](#tool-1--the-vms-packing-screen-clears-its-own-awb-box)
 - [Tool 2 — Flipkart orders, one click at a time](#tool-2--flipkart-orders-one-click-at-a-time)
+- [Tool 3 — portal check-ins](#tool-3--portal-check-ins)
 - [Getting updates](#getting-updates)
 - [What it does with your information](#what-it-does-with-your-information)
 - [When something goes wrong](#when-something-goes-wrong)
@@ -20,11 +21,12 @@ without it.
 Kartaan Click is a free browser extension that removes repeated clicking from the
 websites seller and warehouse teams use all day.
 
-It does not run in the background, it does not sync anything, and it has no
-account. It sits quietly and does nothing at all until you are on one of the two
-pages it works on.
+It has no account and it syncs nothing. Two of its three tools sit quietly and do
+nothing at all until you are on the page they work on. The third — portal
+check-ins — does run on a timer, and it is switched off until you turn it on
+yourself.
 
-It currently does two things. Both are described below.
+It currently does three things. All three are described below.
 
 ---
 
@@ -220,6 +222,100 @@ at each label until you save it, and never clicks ahead in the meantime.
 
 ---
 
+## Tool 3 — portal check-ins
+
+**This one is switched off when you install it. Nothing happens until you turn it
+on yourself.**
+
+### Why it exists
+
+Flipkart, Meesho and Amazon all keep an eye on how often a seller is actually on
+the portal looking at their orders. They treat it as a sign that somebody is
+minding the shop — that new orders will be seen and accepted quickly rather than
+sitting there.
+
+Doing that by hand means stopping whatever you are doing, opening three portals,
+clicking through the order tabs, and closing them again — every half hour, all
+day. That is a job in itself.
+
+### What it does instead
+
+Every so often it opens each portal you have chosen **behind whatever you are
+working on**, clicks through the order tabs the way you would, and closes the tab
+again. You are not interrupted and nothing takes your screen.
+
+The round on each portal is:
+
+| Portal | What it clicks |
+|---|---|
+| Flipkart | To Accept → To Pack → back to To Accept |
+| Meesho | Orders → On Hold → Pending → Ready to Ship |
+| Amazon | Manage Orders → Pending → Unshipped |
+
+Those are the seller portals themselves — `seller.flipkart.com`,
+`supplier.meesho.com` and `sellercentral.amazon.in`. It opens no other site, and it
+uses your existing login on each; there is nowhere to enter a password and it never
+asks for one.
+
+### Setting it up
+
+Right-click the extension's icon and choose **Options** (or open
+`chrome://extensions`, find Kartaan Click, and click **Extension options**). You
+get one page with everything on it:
+
+| Setting | What it means | Starts as |
+|---|---|---|
+| Switch check-ins on | Nothing at all happens until this is ticked | Off |
+| Check in every … to … minutes | A different, random gap each time, somewhere between the two numbers. Never the same beat over and over | 20 to 60 minutes |
+| Only between … and … | Your working hours. Nothing runs outside them | 9 AM to 9 PM |
+| Which portals | Tick the ones you sell on | All three |
+
+Press **Save**. The page then tells you when the next round is due.
+
+**Do one round now** runs a round immediately so you can watch it work rather than
+waiting to find out. Underneath, **What the last rounds did** lists what each round
+actually clicked.
+
+### What it will not do
+
+- **It cannot sign you in.** If your session has expired the round finds nothing,
+  says so in the list, and stops. Nothing is forced.
+- **It does not work when your browser is closed.** It is a browser extension, not
+  a service running somewhere — if the browser is shut, no rounds happen.
+- **It does not read your orders.** It reads tab names to find them, and nothing
+  else. No order details, no customer information, nothing about your account.
+- **It does not accept, cancel, or change anything.** All it does is look.
+- **It never touches a tab you opened.** Before it clicks anything it checks that
+  the tab it is in is one the extension opened for a round. On your own tabs the
+  answer is no and it does nothing for the life of that page.
+
+### One thing to think about before you switch it on
+
+The platforms count how often you open your orders because they are trying to
+measure **you** — whether there is somebody paying attention to this shop. If the
+extension does that looking for you, the number stops being about you.
+
+Nothing here fakes data, breaks into anything, or hides what it is. It opens your
+own portal, with your own login, and clicks your own tabs — the same pages you
+would have opened yourself. But a platform looking closely could take the view that
+an automatic round is not the same as a seller checking in. It is your shop and
+your call; this is written down so you make it knowing where it stands. The same
+warning is on the settings page.
+
+### If a round stops early
+
+The list at the bottom of the settings page will say something like:
+
+```
+stopped: could not find "Ready to Ship" on the page
+```
+
+That means the tab is called something else now — portals rename things. The words
+it looks for are a short list in the extension, and correcting them is a small
+change. Report what it said and it gets fixed.
+
+---
+
 ## Getting updates
 
 Because this is installed from a ZIP rather than from a browser's store, it does
@@ -247,10 +343,11 @@ Nothing leaves your computer, with one exception, described below.
   dragged the panel — is stored by your own browser, on your own machine.
 - It reads the pages named above only to find the buttons to press and to list
   your SKUs. That information is used on the page it came from and nowhere else.
-- It asks the browser for two things: `storage`, to remember the items above
-  between page loads, and `downloads`, used only to file a shipping label into
-  your Downloads folder in the seconds after you press Print Labels. Files you
-  download yourself are never touched, renamed, moved, or read.
+- It asks the browser for three things: `storage`, to remember the items above
+  between page loads; `downloads`, used only to file a shipping label into your
+  Downloads folder in the seconds after you press Print Labels — files you
+  download yourself are never touched, renamed, moved, or read; and `alarms`,
+  which holds the time the next portal check-in is due and nothing else.
 
 **The one exception:** once a day it reads a small public file on kartaan.com to
 find out the newest version number, so it can tell you. Nothing about you is sent

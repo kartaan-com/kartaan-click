@@ -9,7 +9,7 @@ unless you want to reword it.
    your Microsoft account, and choose the **Microsoft Edge** program.
    There is no fee for Edge — unlike Chrome, which charges $5.
 2. Build the upload file: `node tools/make-zip.js`, which produces
-   `kartaan-click-1.3.0.zip` with `manifest.json` at the top level.
+   `kartaan-click-1.4.0.zip` with `manifest.json` at the top level.
 
 ## Listing fields
 
@@ -38,6 +38,12 @@ Kartaan Click puts a small panel on the Active Orders page that works through th
 
 Printing labels saves each one into a Kartaan Click Labels folder inside your normal Downloads folder.
 
+Portal check-ins — off until you switch them on:
+
+Flipkart, Meesho and Amazon all take note of how often a seller is actually on the portal looking at their orders. If you would rather not stop what you are doing to open three portals every half hour, Kartaan Click can do that round for you: it opens each one behind whatever you are working on, clicks through the order tabs, and closes the tab again.
+
+You set the hours it may do this in, how far apart the rounds are, and which portals are included. It is off out of the box, it reads no order or customer details, and nothing from those pages ever leaves your computer.
+
 Privacy: it collects nothing about you. No accounts, no tracking, no analytics. Everything it remembers stays in your own browser. It makes one network request in its life: once a day it reads a small public file on kartaan.com to see whether a newer version is out, so it can tell you. Nothing about you is sent in it.
 
 More free tools are on the way. Learn more at kartaan.com
@@ -60,7 +66,7 @@ https://kartaan.com — the contact details live there.
 rather than a page, use a business address on the kartaan.com domain.)
 
 **Search terms**
-vms, packing, awb, warehouse, barcode scanner, flipkart, seller tools
+vms, packing, awb, warehouse, barcode scanner, flipkart, meesho, amazon, seller tools
 
 ## Questions the review asks
 
@@ -81,12 +87,20 @@ successfully. It is armed by the extension only in the seconds after the user
 presses Print Labels, and is completely inert at all other times: downloads the
 user starts themselves are never touched, renamed, moved, or cancelled.
 
-*Host permissions* — three entries. `https://*.synlabs.io/*` and
+*alarms* — the portal check-in feature has to know when the next round is due. A
+browser alarm is the only timer that survives a Manifest V3 service worker being
+suspended, which happens within about 30 seconds of idle. It stores one scheduled
+time and is used for nothing else.
+
+*Host permissions and content script matches* — `https://*.synlabs.io/*` and
 `https://seller.flipkart.com/*` are required for the content scripts to run on
-those pages. `https://kartaan.com/*` is used once a day to read a single small
-public file holding the current version number, so users on a manual install can
-be told when a new version exists. Nothing is sent in that request and no other
-site is accessed.
+those pages. `https://supplier.meesho.com/*` and `https://sellercentral.amazon.in/*`
+are required for the portal check-in content script, which is inert unless the user
+has switched check-ins on and the tab is one the extension opened for a round; it
+clicks the site's own order tabs and reads nothing else. `https://kartaan.com/*` is
+used once a day to read a single small public file holding the current version
+number, so users on a manual install can be told when a new version exists. Nothing
+is sent in that request and no other site is accessed.
 
 **Is any user data collected?**
 No. There is no analytics, no tracking and no account. The extension makes exactly
@@ -108,7 +122,14 @@ source, which is small:
 - `background.js` — two jobs only: saving a shipping label, and the once-a-day
   version check. Every download path in it returns immediately unless the panel
   armed it within the last 60 seconds.
+- `content/checkin.js` — the portal check-in. It asks the background worker whether
+  the tab it is in was opened for a check-in round; on any tab the user opened
+  themselves the answer is no and it does nothing for the life of the page. When
+  the answer is yes it clicks a short, fixed list of the site's own tab names and
+  reports back. No `fetch`, no `XMLHttpRequest`, and it reads no order data.
 - `popup.js` — reads the result of that version check and puts it on screen.
+- `options.js` — the settings page for check-ins. Reads and writes local settings
+  only.
 
 Searching the package finds two `fetch(` calls, and only one of them leaves the
 machine:
@@ -118,8 +139,10 @@ machine:
   page has already built in local memory. Nothing leaves the machine. This one is
   a temporary diagnostic behind `const BLOB_TEST`, removed before submission.
 
-There is no `XMLHttpRequest` anywhere, and no http URL other than
-`seller.flipkart.com` and `kartaan.com`.
+There is no `XMLHttpRequest` anywhere. The only URLs in the package are
+`seller.flipkart.com`, `supplier.meesho.com`, `sellercentral.amazon.in` — the three
+seller portals the user already works on, opened only for a check-in round — and
+`kartaan.com` for the version file.
 
 ## Screenshots
 

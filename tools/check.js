@@ -36,14 +36,21 @@ function manifestFiles() {
   const out = [];
   if (manifest.background && manifest.background.service_worker) out.push(manifest.background.service_worker);
   for (const cs of manifest.content_scripts || []) for (const js of cs.js || []) out.push(js);
-  if (manifest.action && manifest.action.default_popup) out.push(manifest.action.default_popup);
+  // Every page the extension owns — the popup and the settings page. Both are
+  // real pages, and whatever each of them loads has to ship with it. This is the
+  // rule popup.js would have failed, and the settings page is no different.
+  const pages = [];
+  if (manifest.action && manifest.action.default_popup) pages.push(manifest.action.default_popup);
+  if (manifest.options_ui && manifest.options_ui.page)  pages.push(manifest.options_ui.page);
+  if (manifest.options_page)                            pages.push(manifest.options_page);
+  out.push(...pages);
+
   for (const set of [manifest.icons, manifest.action && manifest.action.default_icon]) {
     for (const k of Object.keys(set || {})) out.push(set[k]);
   }
-  // A popup is a real page: whatever it loads has to ship with it. This is the
-  // rule that popup.js would have failed.
-  if (manifest.action && manifest.action.default_popup && exists(manifest.action.default_popup)) {
-    const html = read(manifest.action.default_popup);
+  for (const page of pages) {
+    if (!exists(page)) continue;
+    const html = read(page);
     for (const m of html.matchAll(/<script[^>]+src=["']([^"']+)["']/g)) out.push(m[1]);
   }
   return [...new Set(out)];
@@ -177,7 +184,7 @@ for (const f of shipped) {
 // repository went public. Anywhere a contact is needed, point at kartaan.com and
 // let people take it from there.
 const PUBLIC_FILES = ['LICENSE', 'README.md', 'MANUAL.md', 'CHANGELOG.md', 'PRIVACY.md',
-                      'STORE-LISTING.md', 'popup.html', ...shipped,
+                      'STORE-LISTING.md', 'popup.html', 'options.html', ...shipped,
                       '.githooks/pre-commit', '.github/workflows/check.yml'];
 for (const f of PUBLIC_FILES) {
   if (!exists(f)) continue;
@@ -195,7 +202,7 @@ const SECRET = [
   [/"private_key"\s*:/,                'a credentials file'],
   [/"client_secret"\s*:/,              'a client secret'],
 ];
-for (const f of [...shipped, 'manifest.json', 'popup.html']) {
+for (const f of [...shipped, 'manifest.json', 'popup.html', 'options.html']) {
   if (!exists(f)) continue;
   const src = read(f);
   for (const [re, what] of SECRET) {

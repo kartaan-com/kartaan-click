@@ -15,6 +15,8 @@
   .tool p { margin: 0; font-size: 12px; color: #55617a; }
   .on { display: inline-block; margin-top: 8px; font-size: 11px; font-weight: 600;
         color: #0a7d36; background: #e6f5ec; border-radius: 20px; padding: 2px 9px; }
+  .off { display: inline-block; margin-top: 8px; font-size: 11px; font-weight: 600;
+        color: #6b7890; background: #f0f2f7; border-radius: 20px; padding: 2px 9px; }
   footer { margin-top: 14px; font-size: 12px; color: #6b7890; }
   .update { margin-top: 12px; font-size: 12px; border-radius: 8px; padding: 9px 11px; }
   .update.muted { color: #6b7890; background: #f4f6fa; }
@@ -48,6 +50,7 @@
     .update.new { color: #f0d68a; background: #2e2400; border-color: #5a4400; }
     .update .notes { color: #c4ad6e; }
     .on { color: #6ee7a0; background: #10281a; }
+    .off { color: #98a3b8; background: #232936; }
     a { color: #8fb0ff; }
   }
 </style>
@@ -65,6 +68,13 @@
   <h2>Flipkart orders — one click at a time</h2>
   <p>For the days when Flipkart's bulk actions don't go through. A panel works down the list for you: mark RTD, print labels, or accept orders. You press Start; it never runs on its own.</p>
   <span class="on">Active on Flipkart Active Orders</span>
+</div>
+
+<div class="tool">
+  <h2>Portal check-ins</h2>
+  <p>Opens Flipkart, Meesho and Amazon behind whatever you're doing, clicks through the order tabs the way you would, and closes again — so the portals see you checking in. Off until you switch it on.</p>
+  <span class="off" id="checkinState">Off</span>
+  <div class="hint"><a href="options.html" target="_blank">Settings</a></div>
 </div>
 
 <div class="setting">

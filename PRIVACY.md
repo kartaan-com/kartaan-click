@@ -1,6 +1,6 @@
 # Privacy Policy — Kartaan Click
 
-Last updated: 30 August 2026
+Last updated: 4 September 2026
 
 **This extension collects no data whatsoever.**
 
@@ -29,7 +29,7 @@ the extension carries on exactly as normal.
 
 ## What it actually does
 
-The extension runs on two sites and nowhere else.
+The extension runs on the sites listed below and nowhere else.
 
 ### 1. The VMS packing screen — `https://*.synlabs.io/*`
 
@@ -53,19 +53,44 @@ own browser. It is never sent anywhere.
 On every other page of seller.flipkart.com the panel does not appear and the
 extension does nothing.
 
+### 3. Portal check-ins — `supplier.meesho.com` and `sellercentral.amazon.in`
+
+**Off unless you switch it on**, from the extension's own settings page.
+
+When it is on, the extension opens your seller portal every so often — behind
+whatever you are doing — clicks through your order tabs the way you would, and
+closes the tab again. Flipkart, Meesho and Amazon each judge a seller partly on how
+often they are actually on the portal looking at their orders, and this does that
+round for you. You choose the hours, how far apart the rounds are, and which
+portals are included.
+
+It clicks tabs and reads their names to find them. **It reads no order details, no
+customer information and nothing about your account, and nothing from those pages
+ever leaves your computer.** It cannot sign you in; if you are signed out, the round simply finds
+nothing and stops.
+
+The only thing it writes down is a short list of what the last few rounds clicked,
+kept in your own browser so you can see it working, which you can clear at any
+time.
+
 ## Permissions
 
-Here is exactly what each of the three things it asks for is used for.
+Here is exactly what each of the things it asks for is used for.
 
 | Permission | What it is used for |
 |---|---|
 | `storage` | Remembering things between page loads on your own computer: whether a run is in progress and how far it has got, which SKUs you ticked, where you dragged the panel, and the panel's log. This is your browser's own storage. Nothing in it is sent anywhere. |
 | `downloads` | Saving Flipkart shipping labels. When you print labels, the extension files each one into a **Kartaan Click Labels** folder inside your normal Downloads folder, and reports back whether it saved. |
+| `alarms` | Knowing when the next portal check-in is due. A browser alarm is the only timer that survives the extension being put to sleep, which browsers do within about half a minute of it doing nothing. It holds one time and nothing else. |
 | access to `kartaan.com` | Reading the version file described above, once a day, so the extension can tell you when a new version is out. It is used for nothing else, and no other website is contacted. |
 
 The `downloads` permission is used **only** in the seconds after you press Print
 Labels, and only for the label file itself. Downloads you start yourself are never
 touched, renamed, moved, cancelled, or read.
+
+Access to `supplier.meesho.com` and `sellercentral.amazon.in` is used **only** for
+the portal check-in described above, and only while you have it switched on. On any
+other page of those sites the extension does nothing at all.
 
 The extension cannot save files anywhere outside your Downloads folder — browsers
 do not allow that — and it cannot see or change your browser's own download

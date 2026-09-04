@@ -54,6 +54,30 @@ You can scan your SKUs first and tick only the ones you want. It never starts on
 its own — you press Start, you set how many to stop after, and Stop halts it after
 the order it is on.
 
+**3. Portal check-ins — off until you switch them on.**
+Flipkart, Meesho and Amazon all take note of how often a seller is actually on the
+portal looking at their orders. Doing that by hand means stopping what you are
+doing to open three portals every half hour, all day.
+
+Instead, this opens each portal behind whatever you are working on, clicks through
+the order tabs the way you would, and closes the tab again:
+
+| Portal | The round |
+|---|---|
+| Flipkart | To Accept → To Pack → back to To Accept |
+| Meesho | Orders → On Hold → Pending → Ready to Ship |
+| Amazon | Manage Orders → Pending → Unshipped |
+
+You set the hours (9 AM to 9 PM to begin with), the gap between rounds (a random
+one each time, 20 to 60 minutes to begin with), and which portals are included. It
+reads no order or customer details and it accepts, cancels and changes nothing —
+all it does is look.
+
+One thing worth knowing before you turn it on: the platforms count these visits
+because they are trying to measure *you*. Nothing here fakes anything — it is your
+login, your portal, your own tabs — but a platform could take the view that an
+automatic round is not the same as a seller checking in. The manual says so too.
+
 Full detail, including every button and what to do when something goes wrong, is
 in **[the manual](MANUAL.md)**.
 

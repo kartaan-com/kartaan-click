@@ -1,0 +1,128 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Kartaan Click — settings</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    max-width: 640px; margin: 0 auto; padding: 30px 22px 60px;
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #ffffff; color: #16233a;
+  }
+  h1 { margin: 0 0 4px; font-size: 20px; letter-spacing: -0.01em; }
+  .tag { margin: 0 0 24px; font-size: 13px; color: #6b7890; }
+  .card { border: 1px solid #e2e6ee; border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
+  .card h2 { margin: 0 0 4px; font-size: 15px; }
+  .card p  { margin: 0 0 14px; font-size: 13px; color: #55617a; }
+  .row { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; flex-wrap: wrap; }
+  .row label { font-size: 13px; }
+  input[type=number] { width: 62px; }
+  input[type=number], select {
+    font: inherit; font-size: 13px; padding: 5px 7px;
+    border: 1px solid #d3dae6; border-radius: 6px; background: #fff; color: #16233a;
+  }
+  input[type=checkbox] { width: 15px; height: 15px; }
+  button {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 7px 14px;
+    border: 1px solid #d3dae6; background: #fff; color: #1e3a8a;
+    border-radius: 7px; cursor: pointer;
+  }
+  button:hover { background: #f4f6fa; }
+  button.primary { background: #1e3a8a; border-color: #1e3a8a; color: #fff; }
+  button.primary:hover { background: #16306f; }
+  .actions { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+  .saved { font-size: 12px; color: #0a7d36; }
+  .next { margin-top: 12px; font-size: 12px; color: #6b7890; }
+  .warn { border-color: #f0dca6; background: #fff5db; color: #6b4a00; }
+  .warn h2 { color: #6b4a00; }
+  .warn p  { color: #7a6634; }
+  .log { font: 12px/1.6 ui-monospace, Consolas, monospace; max-height: 260px; overflow: auto;
+         background: #f4f6fa; border-radius: 7px; padding: 10px 12px; white-space: pre-wrap; }
+  .muted { color: #6b7890; font-size: 12px; }
+  a { color: #1e3a8a; font-weight: 600; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #14181f; color: #e8ecf4; }
+    .card { border-color: #2a3140; }
+    .card p, .tag, .next, .muted { color: #98a3b8; }
+    input[type=number], select { background: #1b202a; border-color: #2a3140; color: #e8ecf4; }
+    button { background: #1b202a; border-color: #2a3140; color: #8fb0ff; }
+    button:hover { background: #232936; }
+    button.primary { background: #2d4ea8; border-color: #2d4ea8; color: #fff; }
+    .log { background: #1b202a; }
+    .warn { border-color: #5a4400; background: #2e2400; color: #f0d68a; }
+    .warn h2 { color: #f0d68a; }
+    .warn p  { color: #c4ad6e; }
+    .saved { color: #6ee7a0; }
+    a { color: #8fb0ff; }
+  }
+</style>
+
+<h1>Kartaan Click — settings</h1>
+<p class="tag">Portal check-ins. Everything here is off until you switch it on.</p>
+
+<div class="card warn">
+  <h2>Read this before switching it on</h2>
+  <p>The platforms count how often you open your orders because they are trying to
+     measure <b>you</b>. If this does the looking for you, the number stops being
+     about you — and a platform that looked closely could take that view. It is
+     your shop and your call; this is here so you make it knowingly.</p>
+  <p style="margin:0">It also only works while your browser is open and you are
+     still signed in to the portal. It cannot sign you in.</p>
+</div>
+
+<div class="card">
+  <h2>Portal check-ins</h2>
+  <p>Every so often, open each portal behind whatever you are doing, click through
+     the order tabs the way you would, and close it again.</p>
+
+  <div class="row">
+    <input type="checkbox" id="enabled">
+    <label for="enabled"><b>Switch check-ins on</b></label>
+  </div>
+
+  <div class="row" style="margin-top:16px">
+    <label>Check in every</label>
+    <input type="number" id="minGap" min="1" max="720">
+    <label>to</label>
+    <input type="number" id="maxGap" min="1" max="720">
+    <label>minutes</label>
+  </div>
+  <p class="muted" style="margin:0 0 14px">
+     A different, random gap each time, somewhere between those two — never the
+     same beat over and over.</p>
+
+  <div class="row">
+    <label>Only between</label>
+    <select id="fromHour"></select>
+    <label>and</label>
+    <select id="toHour"></select>
+  </div>
+  <p class="muted" style="margin:0 0 14px">Your working hours. Nothing runs outside them.</p>
+
+  <div class="row"><b>Which portals</b></div>
+  <div class="row"><input type="checkbox" id="siteFlipkart"><label for="siteFlipkart">Flipkart — To Accept, To Pack, back to To Accept</label></div>
+  <div class="row"><input type="checkbox" id="siteMeesho"><label for="siteMeesho">Meesho — Orders, On Hold, Pending, Ready to Ship</label></div>
+  <div class="row"><input type="checkbox" id="siteAmazon"><label for="siteAmazon">Amazon — Manage Orders, Pending, Unshipped</label></div>
+
+  <div class="actions" style="margin-top:16px">
+    <button class="primary" id="save" type="button">Save</button>
+    <button id="runNow" type="button">Do one round now</button>
+    <span class="saved" id="saved"></span>
+  </div>
+  <div class="next" id="next"></div>
+</div>
+
+<div class="card">
+  <h2>What the last rounds did</h2>
+  <p>If a round stopped early, the words it could not find are named here. Tell us
+     what they should be and they get corrected.</p>
+  <div class="log" id="log">Nothing yet.</div>
+  <div class="actions" style="margin-top:12px">
+    <button id="clearLog" type="button">Clear this list</button>
+  </div>
+</div>
+
+<p class="muted">Full guide: <a href="https://github.com/kartaan-com/kartaan-click/blob/main/MANUAL.md" target="_blank" rel="noopener">the manual</a> ·
+   <a href="https://kartaan.com" target="_blank" rel="noopener">kartaan.com</a></p>
+
+<script src="options.js"></script>
