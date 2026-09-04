@@ -90,6 +90,7 @@ Here is exactly what each of the things it asks for is used for.
 | `storage` | Remembering things between page loads on your own computer: whether a run is in progress and how far it has got, which SKUs you ticked, where you dragged the panel, and the panel's log. This is your browser's own storage. Nothing in it is sent anywhere. |
 | `downloads` | Saving Flipkart shipping labels. When you print labels, the extension files each one into a **Kartaan Click Labels** folder inside your normal Downloads folder, and reports back whether it saved. |
 | `alarms` | Knowing when the next portal check-in is due. A browser alarm is the only timer that survives the extension being put to sleep, which browsers do within about half a minute of it doing nothing. It holds one time and nothing else. |
+| access to `seller.flipkart.com`, `supplier.meesho.com`, `sellercentral.amazon.in` | Two things, both about your own seller portals: running the tools described above on those pages, and — before a check-in opens a new tab — asking the browser whether you already have that portal open, so it can use your tab instead of adding another. Tabs on any other site are never looked at. |
 | access to `kartaan.com` | Reading the version file described above, once a day, so the extension can tell you when a new version is out. It is used for nothing else, and no other website is contacted. |
 
 The `downloads` permission is used **only** in the seconds after you press Print
@@ -99,6 +100,10 @@ touched, renamed, moved, cancelled, or read.
 Access to `supplier.meesho.com` and `sellercentral.amazon.in` is used **only** for
 the portal check-in described above, and only while you have it switched on. On any
 other page of those sites the extension does nothing at all.
+
+A check-in also borrows a portal tab you already have open rather than adding a new
+one. Your tab is put back on the page it was on afterwards and is never closed, and
+if you are looking at that portal at the time it is left alone completely.
 
 The extension cannot save files anywhere outside your Downloads folder — browsers
 do not allow that — and it cannot see or change your browser's own download

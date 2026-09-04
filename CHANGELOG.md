@@ -3,6 +3,24 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.4.7 — 4 September 2026
+
+- **A round uses a portal tab you already have open, instead of opening another
+  one.** A brand new tab starts from nothing, which on Meesho means the shop
+  window and a sign-in — the thing that had stopped every Meesho round. A tab you
+  already have open is already signed in and already through the door, so the
+  problem goes away rather than being worked around. It is also one fewer tab.
+  - Your tab is **put back on the page it was on** when the round finishes, and it
+    is never closed. Only a tab the extension opened itself gets closed.
+  - **If you are looking at that portal right now, the round skips it.** Working in
+    a page somebody is reading would take it out from under them — and there is
+    nothing to prove anyway, since being on it is the very thing a check-in stands
+    in for.
+  - The list of rounds says which ones used your own tab.
+- The three seller portals are now listed as sites the extension may ask the
+  browser about, which is what lets it find an already-open tab. It is used for
+  that and nothing else; tabs on any other site are never looked at.
+
 ## 1.4.6 — 4 September 2026
 
 - **Meesho: being on the shop window is not being signed in.** `supplier.meesho.com`

@@ -9,7 +9,7 @@ unless you want to reword it.
    your Microsoft account, and choose the **Microsoft Edge** program.
    There is no fee for Edge — unlike Chrome, which charges $5.
 2. Build the upload file: `node tools/make-zip.js`, which produces
-   `kartaan-click-1.4.6.zip` with `manifest.json` at the top level.
+   `kartaan-click-1.4.7.zip` with `manifest.json` at the top level.
 
 ## Listing fields
 
@@ -91,6 +91,12 @@ user starts themselves are never touched, renamed, moved, or cancelled.
 browser alarm is the only timer that survives a Manifest V3 service worker being
 suspended, which happens within about 30 seconds of idle. It stores one scheduled
 time and is used for nothing else.
+
+The three seller portals are also listed under `host_permissions`, for one reason:
+before a check-in round opens a new tab it asks the browser whether that portal is
+already open in a tab of the user's own, and uses that instead. Answering that
+question needs permission for those hosts. It is used for nothing else — no other
+site is queried, and tabs on any other site are never looked at.
 
 *Host permissions and content script matches* — `https://*.synlabs.io/*` and
 `https://seller.flipkart.com/*` are required for the content scripts to run on

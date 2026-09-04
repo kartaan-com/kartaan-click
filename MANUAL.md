@@ -349,6 +349,20 @@ an automatic round is not the same as a seller checking in. It is your shop and
 your call; this is written down so you make it knowing where it stands. The same
 warning is on the settings page.
 
+### It uses a tab you already have open
+
+Before opening anything, a round looks to see whether that portal is already open
+in a tab of yours. If it is, it uses that one — a tab you already have is already
+signed in, which a brand new one may not be, and it is one fewer tab on your
+screen.
+
+- **Your tab is put back on the page it was on** when the round finishes, and it is
+  never closed. Only a tab the extension opened itself gets closed.
+- **If you are looking at that portal right now, the round skips it.** Working in a
+  page you are reading would take it out from under you — and there is nothing to
+  prove anyway, since being on it is the very thing a check-in stands in for.
+- The list of rounds says which ones used your own tab.
+
 ### Each portal gets its own tab, loaded once
 
 A round opens a fresh tab for each portal, does its clicks there, and closes it.

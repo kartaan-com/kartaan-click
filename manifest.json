@@ -1,13 +1,18 @@
 {
   "manifest_version": 3,
   "name": "Kartaan Click",
-  "version": "1.4.6",
+  "version": "1.4.7",
   "description": "Free fixes for seller tools: the VMS packing box clears itself, Flipkart orders go one click at a time, portals get checked on.",
   "homepage_url": "https://kartaan.com",
 
   "permissions": ["storage", "downloads", "alarms"],
 
-  "host_permissions": ["https://kartaan.com/*"],
+  "host_permissions": [
+    "https://kartaan.com/*",
+    "https://seller.flipkart.com/*",
+    "https://supplier.meesho.com/*",
+    "https://sellercentral.amazon.in/*"
+  ],
 
   "background": {
     "service_worker": "background.js"

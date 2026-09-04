@@ -126,6 +126,9 @@ function describe(e) {
   if (e.skipped)
     return at + '  ' + e.site + ' — skipped, the order panel was mid-run on this portal';
 
+  if (e.onItAlready)
+    return at + '  ' + e.site + ' — skipped, you were on it yourself at the time';
+
   if (e.resumed)
     return at + '  ' + e.site + ' — you signed in, so it carried on: '
              + ((e.done && e.done.length) ? e.done.join(' → ') : 'nothing')
@@ -146,10 +149,11 @@ function describe(e) {
     return at + '  ' + e.site + ' — the page never answered. Its tab has been left open'
              + ' so you can see what it was doing.';
 
-  const did  = (e.done && e.done.length) ? e.done.join(' → ') : 'nothing';
+  const where = e.reused ? ' (in your own tab)' : '';
+  const did   = (e.done && e.done.length) ? e.done.join(' → ') : 'nothing';
   const shut = (e.closed && e.closed.length)
     ? '\n            closed on the way: ' + e.closed.join(', ') : '';
-  return at + '  ' + e.site + ' — ' + did + shut
+  return at + '  ' + e.site + where + ' — ' + did + shut
        + (e.stoppedAt ? '\n            stopped: could not find "' + e.stoppedAt + '" on the page'
                         + whereLine(e) : '');
 }

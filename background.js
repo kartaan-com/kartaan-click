@@ -422,9 +422,33 @@ async function rememberSignInTab(key, tabId) {
   await chrome.storage.local.set({ [CHECKIN_SIGNIN_TABS]: all });
 }
 
-function visitOnce(key, url) {
+// Is this portal already open somewhere in the browser?
+//
+// HIS IDEA, AND A GOOD ONE. A brand new tab starts from nothing, which on Meesho
+// means the shop window and a sign-in — the thing that has stopped every Meesho
+// round so far. A tab he already has open is already signed in and already
+// through the door. Using it removes the whole problem rather than working round
+// it, and it is one fewer tab on his screen.
+//
+// Returns the tab, and whether it is the one he is actually looking at.
+async function findPortalTab(key) {
+  try {
+    const tabs = await chrome.tabs.query({ url: 'https://' + CHECKIN_SITES[key].host + '/*' });
+    if (!tabs || !tabs.length) return null;
+    // Prefer one sitting in the background. Working in a tab somebody is watching
+    // is the rude option, so it is the last resort, not the first.
+    const idle = tabs.find(t => !t.active);
+    return { tab: idle || tabs[0], watching: !idle };
+  } catch (e) {
+    return null;   // no permission, or the browser is not ready — fall back to a new tab
+  }
+}
+
+function visitOnce(key, url, reuse) {
   return new Promise(resolve => {
     const cfg = CHECKIN_SITES[key];
+    // Where his own tab was before the round borrowed it, so it can be put back.
+    const cameFrom = reuse ? reuse.url : null;
     let settled = false;
 
     const finish = async (result) => {
@@ -437,14 +461,24 @@ function visitOnce(key, url) {
       _roundAttempts = 0;
       await chrome.storage.local.remove(CHECKIN_TAB);
 
-      // A tab is closed only when the round on it actually finished. Anything
-      // unusual — needs signing in, or never answered at all — leaves the tab
-      // where it is, so the seller can see for themselves what the page was
-      // doing instead of being told about a tab that has already vanished.
-      const keep = !!(result.signedOut || result.timedOut);
-      if (tabId != null && !keep) chrome.tabs.remove(tabId, () => void chrome.runtime.lastError);
-      if (tabId != null && result.signedOut) await rememberSignInTab(key, tabId);
-      resolve(result);
+      if (tabId != null) {
+        if (reuse) {
+          // His tab, borrowed. Never closed, and put back where it was — unless
+          // it wants signing in, in which case the sign-in page is the single
+          // most useful thing that could be in front of him.
+          if (!result.signedOut && cameFrom) {
+            chrome.tabs.update(tabId, { url: cameFrom }, () => void chrome.runtime.lastError);
+          }
+        } else {
+          // Our tab. Closed only when the round on it actually finished; anything
+          // unusual leaves it, so he can see for himself what the page was doing
+          // instead of being told about a tab that has already vanished.
+          const keep = !!(result.signedOut || result.timedOut);
+          if (!keep) chrome.tabs.remove(tabId, () => void chrome.runtime.lastError);
+        }
+        if (result.signedOut) await rememberSignInTab(key, tabId);
+      }
+      resolve({ ...result, reused: !!reuse });
     };
 
     const timer = setTimeout(() => {
@@ -453,9 +487,7 @@ function visitOnce(key, url) {
 
     _roundFinish = finish;
 
-    // Opened behind whatever the seller is doing — a round must never take the
-    // screen away from them mid-task.
-    chrome.tabs.create({ url, active: false }, (tab) => {
+    const started = (tab) => {
       if (chrome.runtime.lastError || !tab) {
         finish({ site: cfg.name, done: [], stoppedAt: null, failed: true });
         return;
@@ -463,9 +495,18 @@ function visitOnce(key, url) {
       _roundTabId    = tab.id;
       _roundAttempts = 0;
       // Written down as well as held in memory: if this worker is shut down
-      // mid-round, the next start-up finds the abandoned tab and closes it.
-      chrome.storage.local.set({ [CHECKIN_TAB]: tab.id });
-    });
+      // mid-round, the next start-up finds the abandoned tab and closes it. Only
+      // ever a tab we opened — his own is never closed by that.
+      if (!reuse) chrome.storage.local.set({ [CHECKIN_TAB]: tab.id });
+    };
+
+    if (reuse) {
+      chrome.tabs.update(reuse.id, { url, active: false }, started);
+    } else {
+      // Opened behind whatever the seller is doing — a round must never take the
+      // screen away from them mid-task.
+      chrome.tabs.create({ url, active: false }, started);
+    }
   });
 }
 
@@ -512,7 +553,19 @@ async function runCheckinRound(force) {
       }
       await rememberSignInTab(key, null);
 
-      const r = await visitOnce(key, await checkinUrlFor(key, s));
+      // Already open somewhere? Borrow it rather than starting a new one from
+      // nothing — a tab he already has is signed in, which a new one may not be.
+      const open = await findPortalTab(key);
+
+      // He is looking at that portal right now. Checking in on a page somebody is
+      // reading would take it out from under them, and there is nothing to prove
+      // anyway: being on it is the very thing a check-in is standing in for.
+      if (open && open.watching) {
+        await checkinLog({ site: CHECKIN_SITES[key].name, done: [], onItAlready: true });
+        continue;
+      }
+
+      const r = await visitOnce(key, await checkinUrlFor(key, s), open ? open.tab : null);
       await checkinLog(r);
       // A breath between portals, so three tabs are not opened in one burst.
       await new Promise(res => setTimeout(res, checkinRand(4000, 12000)));
