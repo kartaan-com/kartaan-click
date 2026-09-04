@@ -16,6 +16,15 @@ const DEFAULTS = {
   fromHour:  9,
   toHour:    21,
   sites:     { flipkart: true, meesho: true, amazon: true },
+  urls:      { flipkart: '', meesho: '', amazon: '' },
+};
+
+// Which portal each address box belongs to, so the same address can never be
+// saved against the wrong portal.
+const PORTAL_HOSTS = {
+  flipkart: 'seller.flipkart.com',
+  meesho:   'supplier.meesho.com',
+  amazon:   'sellercentral.amazon.in',
 };
 
 const $ = id => document.getElementById(id);
@@ -46,6 +55,22 @@ function fill(s) {
   $('siteFlipkart').checked = !!s.sites.flipkart;
   $('siteMeesho').checked   = !!s.sites.meesho;
   $('siteAmazon').checked   = !!s.sites.amazon;
+  $('urlFlipkart').value = s.urls.flipkart || '';
+  $('urlMeesho').value   = s.urls.meesho   || '';
+  $('urlAmazon').value   = s.urls.amazon   || '';
+}
+
+// An address is kept only if it is a secure address on that portal's own site.
+// Anything else — a typo, a link pasted from somewhere else — is dropped rather
+// than saved, so a round can never be sent off to another website.
+function cleanUrl(key, raw) {
+  const v = (raw || '').trim();
+  if (!v) return '';
+  try {
+    const u = new URL(v);
+    if (u.protocol === 'https:' && u.hostname === PORTAL_HOSTS[key]) return u.href;
+  } catch (e) { /* not an address at all */ }
+  return '';
 }
 
 // Reads the boxes back. A typed number can be blank or nonsense, and the two gaps
@@ -70,6 +95,11 @@ function collect() {
       flipkart: $('siteFlipkart').checked,
       meesho:   $('siteMeesho').checked,
       amazon:   $('siteAmazon').checked,
+    },
+    urls: {
+      flipkart: cleanUrl('flipkart', $('urlFlipkart').value),
+      meesho:   cleanUrl('meesho',   $('urlMeesho').value),
+      amazon:   cleanUrl('amazon',   $('urlAmazon').value),
     },
   };
 }
@@ -159,7 +189,11 @@ $('clearLog').addEventListener('click', async () => {
 
 chrome.storage.local.get(KEY).then(res => {
   const saved = res[KEY] || {};
-  fill({ ...DEFAULTS, ...saved, sites: { ...DEFAULTS.sites, ...(saved.sites || {}) } });
+  fill({
+    ...DEFAULTS, ...saved,
+    sites: { ...DEFAULTS.sites, ...(saved.sites || {}) },
+    urls:  { ...DEFAULTS.urls,  ...(saved.urls  || {}) },
+  });
   showNext();
   showLog();
 });

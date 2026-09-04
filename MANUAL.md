@@ -246,11 +246,11 @@ again. You are not interrupted and nothing takes your screen.
 
 The round on each portal is:
 
-| Portal | What it clicks |
-|---|---|
-| Flipkart | To Accept → To Pack → back to To Accept |
-| Meesho | Orders → On Hold → Pending → Ready to Ship |
-| Amazon | Manage Orders → Pending → Unshipped |
+| Portal | It opens | Then clicks |
+|---|---|---|
+| Flipkart | Active Orders → To Accept | To Pack → back to To Accept |
+| Meesho | Orders | On Hold → Pending → Ready to Ship |
+| Amazon | Manage Orders | Pending → Unshipped |
 
 Those are the seller portals themselves — `seller.flipkart.com`,
 `supplier.meesho.com` and `sellercentral.amazon.in`. It opens no other site, and it
@@ -269,8 +269,25 @@ get one page with everything on it:
 | Check in every … to … minutes | A different, random gap each time, somewhere between the two numbers. Never the same beat over and over | 20 to 60 minutes |
 | Only between … and … | Your working hours. Nothing runs outside them | 9 AM to 9 PM |
 | Which portals | Tick the ones you sell on | All three |
+| Your orders page on each portal | The address a round opens. See below | Empty |
 
 Press **Save**. The page then tells you when the next round is due.
+
+#### The orders page address — and why Meesho needs yours
+
+A round opens your orders page directly rather than the portal's front door.
+Flipkart's and Amazon's addresses are the same for every seller, so those two boxes
+can be left empty and the built-in one is used.
+
+**Meesho's cannot.** Its orders address looks something like
+`supplier.meesho.com/panel/v3/new/fulfillment/xxxxx/orders/pending`, and that
+`xxxxx` belongs to your own account — there is no address that works for everybody.
+Open your orders page on Meesho, copy what is in the browser's address bar, and
+paste it into the Meesho box.
+
+Anything that is not a secure address on that portal's own site is dropped rather
+than saved, so a mistyped or wrongly pasted link can never send a round off to
+another website.
 
 **Do one round now** runs a round immediately so you can watch it work rather than
 waiting to find out. Underneath, **What the last rounds did** lists what each round

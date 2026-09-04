@@ -3,6 +3,23 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.4.2 — 4 September 2026
+
+- **A round now opens your orders page directly** instead of the portal's front
+  door and clicking its way in. One less thing to get wrong, and it is what a
+  person does when they have the page bookmarked.
+- **You can set your own orders page address for each portal**, on the settings
+  page. **Meesho has to be filled in:** its orders address contains a code
+  belonging to your own account, so there is no address that works for everybody —
+  open your orders page and copy what is in the address bar. Flipkart and Amazon
+  have working built-in addresses and can be left empty.
+- An address is only kept if it is a secure address on that portal's own site.
+  Anything else is dropped rather than saved, so a round can never be sent off to
+  another website by a typo or a link pasted from somewhere else.
+- The click lists are shorter to match, because the first tab is now already open
+  when the round starts: Flipkart is To Pack then back to To Accept, Meesho is On
+  Hold, Pending, Ready to Ship, and Amazon is Pending then Unshipped.
+
 ## 1.4.1 — 4 September 2026
 
 Fixes to portal check-ins, from the first real round on live portals.

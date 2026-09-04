@@ -45,18 +45,22 @@
 // If a step's words are not on the page, the round says so — with the name of the
 // page it was actually looking at — and stops there. Nothing is forced, nothing
 // breaks, and the log tells us which word to correct.
+// The round LANDS ON THE ORDERS PAGE ITSELF, so the first tab in each list is
+// already open when these steps start — which is why "To Accept", "Orders" and
+// "Manage Orders" are not in them. Opening the page is the first step; these are
+// the ones after it.
 const SITES = {
   'seller.flipkart.com': {
     name:  'Flipkart',
-    steps: ['To Accept', 'To Pack', 'To Accept'],
+    steps: ['To Pack', 'To Accept'],          // lands on To Accept
   },
   'supplier.meesho.com': {
     name:  'Meesho',
-    steps: ['Orders', 'On Hold', 'Pending', 'Ready to Ship'],
+    steps: ['On Hold', 'Pending', 'Ready to Ship'],   // lands on Orders → Pending
   },
   'sellercentral.amazon.in': {
     name:  'Amazon',
-    steps: ['Manage Orders', 'Pending', 'Unshipped'],
+    steps: ['Pending', 'Unshipped'],          // lands on Manage Orders
   },
 };
 

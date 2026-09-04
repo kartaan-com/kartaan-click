@@ -16,7 +16,8 @@
   .row { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; flex-wrap: wrap; }
   .row label { font-size: 13px; }
   input[type=number] { width: 62px; }
-  input[type=number], select {
+  input[type=url] { width: 100%; box-sizing: border-box; }
+  input[type=number], input[type=url], select {
     font: inherit; font-size: 13px; padding: 5px 7px;
     border: 1px solid #d3dae6; border-radius: 6px; background: #fff; color: #16233a;
   }
@@ -44,7 +45,7 @@
     body { background: #14181f; color: #e8ecf4; }
     .card { border-color: #2a3140; }
     .card p, .tag, .next, .muted { color: #98a3b8; }
-    input[type=number], select { background: #1b202a; border-color: #2a3140; color: #e8ecf4; }
+    input[type=number], input[type=url], select { background: #1b202a; border-color: #2a3140; color: #e8ecf4; }
     button { background: #1b202a; border-color: #2a3140; color: #8fb0ff; }
     button:hover { background: #232936; }
     button.primary { background: #2d4ea8; border-color: #2d4ea8; color: #fff; }
@@ -103,6 +104,21 @@
   <div class="row"><input type="checkbox" id="siteFlipkart"><label for="siteFlipkart">Flipkart — To Accept, To Pack, back to To Accept</label></div>
   <div class="row"><input type="checkbox" id="siteMeesho"><label for="siteMeesho">Meesho — Orders, On Hold, Pending, Ready to Ship</label></div>
   <div class="row"><input type="checkbox" id="siteAmazon"><label for="siteAmazon">Amazon — Manage Orders, Pending, Unshipped</label></div>
+
+  <div class="row" style="margin-top:18px"><b>Your orders page on each portal</b></div>
+  <p class="muted" style="margin:0 0 12px">
+     Leave a box empty and the built-in address is used. <b>Meesho has to be filled
+     in</b> — its orders page address contains a code belonging to your own account,
+     so there is no address that works for everybody. Open your orders page on the
+     portal and copy what is in the address bar. Anything that is not an address on
+     that portal is ignored.</p>
+
+  <div class="row"><label style="width:70px">Flipkart</label>
+    <input type="url" id="urlFlipkart" placeholder="https://seller.flipkart.com/..."></div>
+  <div class="row"><label style="width:70px">Meesho</label>
+    <input type="url" id="urlMeesho" placeholder="https://supplier.meesho.com/panel/..."></div>
+  <div class="row"><label style="width:70px">Amazon</label>
+    <input type="url" id="urlAmazon" placeholder="https://sellercentral.amazon.in/orders-v3"></div>
 
   <div class="actions" style="margin-top:16px">
     <button class="primary" id="save" type="button">Save</button>

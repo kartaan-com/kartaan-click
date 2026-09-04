@@ -236,6 +236,7 @@ const CHECKIN_ALARM = 'kcCheckinRound';
 
 const CHECKIN_DEFAULTS = {
   enabled:   false,
+  urls:      { flipkart: '', meesho: '', amazon: '' },   // blank means use the built-in
   minGapMin: 20,     // never closer together than this
   maxGapMin: 60,     // never further apart than this
   fromHour:  9,      // 9 AM — the default; the seller can change both
@@ -253,12 +254,42 @@ const CHECKIN_DEFAULTS = {
 const CHECKIN_SITES = {
   flipkart: {
     name: 'Flipkart',
+    host: 'seller.flipkart.com',
     url:  'https://seller.flipkart.com/index.html#dashboard/active-orders?query='
           + encodeURIComponent('{"activeShipmentTile":"pendingToAccept"}'),
   },
-  meesho: { name: 'Meesho', url: 'https://supplier.meesho.com/' },
-  amazon: { name: 'Amazon', url: 'https://sellercentral.amazon.in/' },
+  meesho: {
+    name: 'Meesho',
+    host: 'supplier.meesho.com',
+    // ⚠️ MEESHO HAS NO ADDRESS THAT WORKS FOR EVERYBODY. A real one looks like
+    // .../panel/v3/new/fulfillment/<code>/orders/pending, and that <code> belongs
+    // to one seller's account. Hard-coding one would send every other user of this
+    // extension at somebody else's shop, and would put a real account code in a
+    // public repository. So the front door is the fallback, and each seller pastes
+    // their own address on the settings page.
+    url: 'https://supplier.meesho.com/',
+  },
+  amazon: {
+    name: 'Amazon',
+    host: 'sellercentral.amazon.in',
+    url:  'https://sellercentral.amazon.in/orders-v3',
+  },
 };
+
+// The address a round starts at for one portal: the seller's own if they have
+// given one, otherwise the built-in. Checked against that portal's own hostname
+// before it is used, so a typo or a pasted wrong link can never send a round
+// somewhere else entirely.
+function checkinUrlFor(key, s) {
+  const cfg    = CHECKIN_SITES[key];
+  const custom = ((s.urls || {})[key] || '').trim();
+  if (!custom) return cfg.url;
+  try {
+    const u = new URL(custom);
+    if (u.protocol === 'https:' && u.hostname === cfg.host) return u.href;
+  } catch (e) { /* not a web address at all */ }
+  return cfg.url;
+}
 
 // Long enough for the slowest honest case — a cold portal start-up, which the
 // content script waits 30 seconds for, plus the clicks after it — and no longer.
@@ -273,7 +304,11 @@ const checkinRand = (a, b) => Math.floor(a + Math.random() * (b - a));
 
 async function checkinSettings() {
   const saved = (await chrome.storage.local.get(CHECKIN_KEY))[CHECKIN_KEY] || {};
-  return { ...CHECKIN_DEFAULTS, ...saved, sites: { ...CHECKIN_DEFAULTS.sites, ...(saved.sites || {}) } };
+  return {
+    ...CHECKIN_DEFAULTS, ...saved,
+    sites: { ...CHECKIN_DEFAULTS.sites, ...(saved.sites || {}) },
+    urls:  { ...CHECKIN_DEFAULTS.urls,  ...(saved.urls  || {}) },
+  };
 }
 
 async function checkinLog(entry) {
@@ -361,9 +396,10 @@ async function rememberSignInTab(key, tabId) {
   await chrome.storage.local.set({ [CHECKIN_SIGNIN_TABS]: all });
 }
 
-function visitOnce(key) {
+function visitOnce(key, settings) {
   return new Promise(resolve => {
     const cfg = CHECKIN_SITES[key];
+    const url = checkinUrlFor(key, settings);
     let settled = false;
 
     const finish = async (result) => {
@@ -394,7 +430,7 @@ function visitOnce(key) {
 
     // Opened behind whatever the seller is doing — a round must never take the
     // screen away from them mid-task.
-    chrome.tabs.create({ url: cfg.url, active: false }, (tab) => {
+    chrome.tabs.create({ url, active: false }, (tab) => {
       if (chrome.runtime.lastError || !tab) {
         finish({ site: cfg.name, done: [], stoppedAt: null, failed: true });
         return;
@@ -451,7 +487,7 @@ async function runCheckinRound(force) {
       }
       await rememberSignInTab(key, null);
 
-      const r = await visitOnce(key);
+      const r = await visitOnce(key, s);
       await checkinLog(r);
       // A breath between portals, so three tabs are not opened in one burst.
       await new Promise(res => setTimeout(res, checkinRand(4000, 12000)));
