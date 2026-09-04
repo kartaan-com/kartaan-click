@@ -126,9 +126,14 @@ function describe(e) {
   if (e.skipped)
     return at + '  ' + e.site + ' — skipped, the order panel was mid-run on this portal';
 
+  if (e.resumed)
+    return at + '  ' + e.site + ' — you signed in, so it carried on: '
+             + ((e.done && e.done.length) ? e.done.join(' → ') : 'nothing')
+             + (e.stoppedAt ? ' (stopped at "' + e.stoppedAt + '")' : '');
+
   if (e.stillSignedOut)
     return at + '  ' + e.site + ' — skipped, still waiting for you to sign in'
-             + '\n            (its tab is still open; close it once you have, and it resumes)';
+             + '\n            (its tab is open and waiting; sign in there and it picks up by itself)';
 
   if (e.signedOut)
     return at + '  ' + e.site + ' — NEEDS SIGNING IN. Its tab has been left open for you;'

@@ -88,7 +88,13 @@ const MEESHO_CODE_KEY = 'kcMeeshoCode';
 
 function learnMeeshoCode() {
   if (location.hostname !== 'supplier.meesho.com') return;
-  const m = location.pathname.match(/\/fulfillment\/([A-Za-z0-9_-]{3,40})(?:\/|$)/);
+  // The code sits after the section name in every panel address, not just the
+  // orders one — .../panel/v3/new/fulfillment/<code>/orders/pending and
+  // .../panel/v3/new/growth/<code>/home both carry it. Reading only the orders
+  // shape was why a round that landed on the panel HOME learned nothing and then
+  // went to the front door again next time.
+  const m = location.pathname.match(/\/panel\/v[0-9]+\/[a-z]+\/[a-z-]+\/([A-Za-z0-9_-]{3,40})(?:\/|$)/i)
+         || location.pathname.match(/\/fulfillment\/([A-Za-z0-9_-]{3,40})(?:\/|$)/);
   if (!m) return;
   chrome.storage.local.get(MEESHO_CODE_KEY, (res) => {
     void chrome.runtime.lastError;
@@ -276,7 +282,8 @@ function showSignInPrompt() {
   const msg = document.createElement('span');
   msg.style.flex = '1';
   msg.textContent = 'Kartaan Click — please sign in to ' + site.name
-    + '. Check-ins for this portal are paused until you do. The other portals carried on.';
+    + ' in this tab. It picks up on its own the moment you are in, and carries on '
+    + 'from here. The other portals were checked as normal.';
 
   const close = document.createElement('button');
   close.type = 'button';
@@ -316,6 +323,32 @@ function whereWeAre() {
   };
 }
 
+// A portal often says "signed out" when the browser has the sign-in saved and one
+// press of its own Log in button would walk straight through. So that press is
+// tried once before anybody is asked to do anything.
+//
+// TO BE CLEAR ABOUT WHAT THIS DOES NOT DO: it never types a password, never fills
+// a field, and never touches saved credentials. It presses the portal's own Log in
+// button and sees what happens. If the portal wants anything typed, that is the
+// seller's to do and the round stops and says so.
+const LOGIN_WORDS = ['log in', 'login', 'sign in', 'signin', 'continue'];
+
+async function tryTheLoginButton() {
+  const btn = [...document.querySelectorAll('button, a, [role="button"], input[type="submit"]')]
+    .filter(el => {
+      const t = norm(txt(el) || el.value || '');
+      return LOGIN_WORDS.indexOf(t) !== -1 && isVisible(el) && !isDisabled(el);
+    })[0];
+  if (!btn) return false;
+
+  humanClick(btn);
+  // Signing in is a round trip to their server, and this tab is hidden, so give it
+  // room. If the page navigates, this script dies here and the next one picks the
+  // story up — which is why a round tab is allowed more than one attempt.
+  const backIn = await waitFor(() => !looksSignedOut(), 15000);
+  return !!backIn;
+}
+
 async function run() {
   // Asked twice, a moment apart, only because this page can finish loading before
   // the worker has finished writing down which tab it just opened. Being told
@@ -327,15 +360,31 @@ async function run() {
   }
   if (!hello || !hello.run) return;
 
+  // "resume" means this is a tab that was left open asking the seller to sign in,
+  // and they have now loaded a page in it. If they are in, the round for that
+  // portal is picked up here rather than abandoned — being blocked by a sign-in
+  // page must never mean that portal is dropped for the day.
+  const resuming = hello.mode === 'resume';
+
   // Let the page settle enough to know what kind of page it is. Kept short: a
   // portal that is going to bounce us to sign-in usually does it immediately, and
   // saying so quickly is better than waiting to be redirected out from under.
   await sleep(rand(2000, 3200));
 
   if (looksSignedOut()) {
-    showSignInPrompt();
-    await ask({ type: 'CHECKIN_DONE', site: site.name, done: [], closed: [], signedOut: true, ...whereWeAre() });
-    return;
+    const gotIn = await tryTheLoginButton();
+    if (!gotIn) {
+      showSignInPrompt();
+      // On a resume attempt this says nothing new — the seller has already been
+      // asked and the tab is already open in front of them. Saying it again every
+      // time they load a page would bury the log in repeats.
+      if (!resuming) {
+        await ask({ type: 'CHECKIN_DONE', site: site.name, done: [], closed: [], signedOut: true, ...whereWeAre() });
+      }
+      return;
+    }
+    // Through the door. Let the portal draw the page behind it.
+    await sleep(rand(2000, 3500));
   }
 
   const done = [];
@@ -361,7 +410,10 @@ async function run() {
     // Signed out part-way through — the session ran out, or the portal bounced us.
     if (!el && looksSignedOut()) {
       showSignInPrompt();
-      await ask({ type: 'CHECKIN_DONE', site: site.name, done, closed, signedOut: true, ...whereWeAre() });
+      await ask({
+        type: resuming ? 'CHECKIN_RESUMED_DONE' : 'CHECKIN_DONE',
+        site: site.name, done, closed, signedOut: true, ...whereWeAre(),
+      });
       return;
     }
     if (!el) { stoppedAt = words; break; }
@@ -373,7 +425,10 @@ async function run() {
     await sleep(rand(1800, 5000));
   }
 
-  await ask({ type: 'CHECKIN_DONE', site: site.name, done, closed, stoppedAt, ...whereWeAre() });
+  await ask({
+    type: resuming ? 'CHECKIN_RESUMED_DONE' : 'CHECKIN_DONE',
+    site: site.name, done, closed, stoppedAt, ...whereWeAre(),
+  });
 }
 
 run();

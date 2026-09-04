@@ -535,10 +535,48 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // Asked by content/checkin.js on every page it loads on. Answering "no" is the
   // normal case — it means the seller opened that tab themselves.
   if (msg.type === 'CHECKIN_HELLO') {
-    const mine = !!(sender && sender.tab && sender.tab.id === _roundTabId);
-    const allow = mine && _roundAttempts < MAX_ATTEMPTS_PER_TAB;
-    if (allow) _roundAttempts += 1;
-    sendResponse({ run: allow });
+    const tabId = sender && sender.tab ? sender.tab.id : null;
+
+    if (tabId != null && tabId === _roundTabId && _roundAttempts < MAX_ATTEMPTS_PER_TAB) {
+      _roundAttempts += 1;
+      sendResponse({ run: true, mode: 'round' });
+      return true;
+    }
+
+    // A tab left open asking the seller to sign in, which has just loaded a page.
+    // If they are through, the round for that portal is picked up here instead of
+    // being dropped for the day — being stopped by a sign-in page is a pause, not
+    // an ending. The content script decides: it only carries on if the page it is
+    // looking at is no longer a sign-in page.
+    chrome.storage.local.get(CHECKIN_SIGNIN_TABS, (res) => {
+      void chrome.runtime.lastError;
+      const waiting = (res && res[CHECKIN_SIGNIN_TABS]) || {};
+      const isWaitingTab = tabId != null
+        && Object.keys(waiting).some(k => waiting[k] === tabId);
+      sendResponse(isWaitingTab ? { run: true, mode: 'resume' } : { run: false });
+    });
+    return true;
+  }
+
+  // The seller signed in and the round for that portal ran in the tab that was
+  // left open for them. The tab is theirs now and stays where it is — closing a
+  // tab somebody is looking at is not ours to do — but the portal is no longer
+  // waiting, so the next round treats it normally again.
+  if (msg.type === 'CHECKIN_RESUMED_DONE') {
+    const tabId = sender && sender.tab ? sender.tab.id : null;
+    (async () => {
+      if (!msg.signedOut) {
+        const all = (await chrome.storage.local.get(CHECKIN_SIGNIN_TABS))[CHECKIN_SIGNIN_TABS] || {};
+        for (const k of Object.keys(all)) if (all[k] === tabId) delete all[k];
+        await chrome.storage.local.set({ [CHECKIN_SIGNIN_TABS]: all });
+        await checkinLog({
+          site: msg.site, done: msg.done || [], closed: msg.closed || [],
+          stoppedAt: msg.stoppedAt || null, resumed: true,
+          page: msg.page || '', at: msg.at || '',
+        });
+      }
+      sendResponse({ ok: true });
+    })();
     return true;
   }
 

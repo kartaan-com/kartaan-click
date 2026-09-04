@@ -317,11 +317,16 @@ actually clicked.
 
 ### What it will not do
 
-- **It cannot sign you in.** If a portal wants you to sign in, the round leaves
-  that tab open with a line across the bottom asking you to, and carries straight
-  on to the next portal. Later rounds skip that portal while its tab is still
-  open, so sign-in tabs never pile up — close the tab once you have signed in and
-  it picks that portal back up.
+- **It will press the portal's own Log in button once**, because browsers usually
+  have the sign-in saved and that one press walks straight through. It never types
+  a password, never fills a box, and never touches your saved passwords. If the
+  portal wants something typed, that is yours to do.
+- **If it cannot get in, the portal is paused, not dropped.** The tab is left open
+  with a line across the bottom asking you to sign in, and the round carries on to
+  the next portal. **Sign in in that tab and it picks up by itself** — it finishes
+  that portal's round there and then, and the next round treats it normally again.
+  Later rounds skip that portal while it is still waiting, so sign-in tabs never
+  pile up.
 - **It does not work when your browser is closed.** It is a browser extension, not
   a service running somewhere — if the browser is shut, no rounds happen.
 - **It does not read your orders.** It reads tab names to find them, and nothing

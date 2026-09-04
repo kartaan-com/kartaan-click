@@ -3,6 +3,23 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.4.5 — 4 September 2026
+
+- **A sign-in page pauses a portal now, it does not drop it.** Three changes, all
+  from watching a real round:
+  - The round presses the portal's own **Log in** button once. Browsers usually
+    have the sign-in saved and that press walks straight through. It never types a
+    password, never fills a box, and never touches saved passwords.
+  - If that does not get in, the tab is left open asking you to sign in — and
+    **when you do, it picks up by itself in that tab** and finishes that portal's
+    round there. You do not have to do anything else, and the portal is back to
+    normal from the next round.
+  - The other portals are checked as usual meanwhile, as before.
+- **Meesho finds your account from any panel page, not just the orders one.** A
+  round that landed on the panel home was reading nothing and going back to the
+  front door next time. The code is in the address of every panel page and is now
+  read from all of them.
+
 ## 1.4.4 — 4 September 2026
 
 - **A round closes pop-ups that are in the way.** A "what's new" card or a cookie

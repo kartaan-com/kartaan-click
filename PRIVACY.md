@@ -66,8 +66,13 @@ portals are included.
 
 It clicks tabs and reads their names to find them. **It reads no order details, no
 customer information and nothing about your account, and nothing from those pages
-ever leaves your computer.** It cannot sign you in; if you are signed out, the round simply finds
-nothing and stops.
+ever leaves your computer.**
+
+If the portal shows a sign-in page, the round presses that page's own **Log in**
+button once — browsers usually have the sign-in saved and that press walks straight
+through. **It never types a password, never fills in a box, and never touches your
+saved passwords.** If that does not get you in, it says so on the page, leaves the
+tab for you, and moves on to the next portal.
 
 Two things are written down, both in your own browser and neither sent anywhere: a
 short list of what the last few rounds clicked, which you can clear at any time,
