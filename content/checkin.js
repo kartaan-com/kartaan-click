@@ -302,6 +302,35 @@ function dismissOnce() {
     const cross = [...box.querySelectorAll('button, [role="button"], a, span, i, svg')].find(el =>
       CROSS.test(txt(el)) && isVisible(el) && !isDisabled(el));
     if (cross) { humanClick(cross); return 'the cross'; }
+
+    // Named in the markup rather than to a reader: class="close-icon",
+    // data-testid="modal-close", id="dismissBtn". Common, and unambiguous.
+    const marked = [...box.querySelectorAll('button, [role="button"], a, span, i, div')].find(el => {
+      const bits = [el.id || '', el.getAttribute('data-testid') || '',
+                    (typeof el.className === 'string' ? el.className : '')].join(' ').toLowerCase();
+      return /(^|[^a-z])(close|dismiss|cross)([^a-z]|$)/.test(bits) && isVisible(el) && !isDisabled(el);
+    });
+    if (marked) { humanClick(marked); return 'the close button'; }
+
+    // Last resort inside the box: the cross drawn as a picture, with no text, no
+    // label and no helpful class — which is what Meesho's promotion box uses. It
+    // is found by where it sits and how big it is: a small, wordless, clickable
+    // thing tucked into the top-right corner of the pop-up is a close button and
+    // is not anything else. Bounded entirely inside a box already judged to be a
+    // pop-up, and it must have no words of its own — so a real button like
+    // "Participate Now" can never be mistaken for it.
+    const b = box.getBoundingClientRect();
+    const corner = [...box.querySelectorAll('button, [role="button"], a, span, i, svg, img, div')].find(el => {
+      if (!isVisible(el) || isDisabled(el)) return false;
+      const t = txt(el);
+      if (t && !CROSS.test(t)) return false;                 // it has words: not an icon
+      const r = el.getBoundingClientRect();
+      if (r.width > 56 || r.height > 56) return false;       // too big to be an icon
+      if (r.width < 8  || r.height < 8)  return false;       // too small to be a target
+      return (b.right - r.right) <= b.width * 0.18           // tucked to the right
+          && (r.top - b.top)    <= b.height * 0.18;          // and to the top
+    });
+    if (corner) { humanClick(corner); return 'the close icon'; }
   }
   return null;
 }
@@ -343,7 +372,16 @@ async function dismissPopups() {
 // so this is the first thing the seller sees when they get to it. Deliberately
 // plain and deliberately dismissable — it is a note, not an alarm, and it must
 // never sit on top of the sign-in box itself.
+// Portals redraw their whole page after a sign-in step, which throws this away
+// along with everything else — and then he never sees the one message that was
+// asking him to do something. So it is put back a few times over the next half
+// minute. Plain timers: requestAnimationFrame is dead in a hidden tab.
+function keepSignInPromptUp() {
+  for (const ms of [2000, 6000, 12000, 25000]) setTimeout(showSignInPrompt, ms);
+}
+
 function showSignInPrompt() {
+  if (!document.body) return;
   if (document.getElementById('__kcSignIn')) return;
   const bar = document.createElement('div');
   bar.id = '__kcSignIn';
@@ -451,6 +489,7 @@ async function run() {
     const gotIn = await tryTheLoginButton();
     if (!gotIn) {
       showSignInPrompt();
+      keepSignInPromptUp();
       // On a resume attempt this says nothing new — the seller has already been
       // asked and the tab is already open in front of them. Saying it again every
       // time they load a page would bury the log in repeats.
@@ -486,6 +525,7 @@ async function run() {
     // Signed out part-way through — the session ran out, or the portal bounced us.
     if (!el && needsSignIn()) {
       showSignInPrompt();
+      keepSignInPromptUp();
       await ask({
         type: resuming ? 'CHECKIN_RESUMED_DONE' : 'CHECKIN_DONE',
         site: site.name, done, closed, signedOut: true, ...whereWeAre(),

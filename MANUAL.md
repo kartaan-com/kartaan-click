@@ -80,6 +80,12 @@ Not every pop-up announces itself as one — Meesho's are often plain boxes floa
 over the page — so anything *behaving* like one counts too: lifted off the page,
 stacked above it, and big enough to be in the way.
 
+It also copes with a close button that is only a picture — a cross drawn as an
+icon, with no text and no name behind it, which is what Meesho's promotion box
+uses. Failing everything else, a small wordless clickable thing in the pop-up's
+top-right corner is taken as the way out, because inside a pop-up that is what it
+always is. Anything with words of its own is never treated that way.
+
 That widens where it looks, **not what it presses**. It is deliberately timid,
 because these are live seller portals: it only ever presses a close control, a bare
 cross, or one of a short list of words that can only mean "go away" — Got it, OK,

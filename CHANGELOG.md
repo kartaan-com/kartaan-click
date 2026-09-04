@@ -3,6 +3,23 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.4.9 — 4 September 2026
+
+- **Closes a pop-up whose close button is only a picture.** Meesho's promotion box
+  — "Update Now!", with a Participate Now button — has a cross in its corner that
+  is a drawing with no text, no label and no helpful name in the markup, so
+  nothing could find it and the round sat behind it. Three more ways of finding
+  the way out, tried in order: a close named in the markup (`close-icon`,
+  `modal-close`), then a small, wordless, clickable thing tucked into the pop-up's
+  top-right corner, which is a close button and is not anything else.
+  - It must have **no words of its own**, so a real button like "Participate Now"
+    can never be mistaken for it, and it is only ever looked for inside a box
+    already judged to be a pop-up.
+- **The "please sign in" message stays put.** Portals redraw the whole page after
+  a sign-in step, which was throwing the message away along with everything else —
+  so the one thing asking you to do something was the thing that vanished. It is
+  now put back for the next half minute.
+
 ## 1.4.8 — 4 September 2026
 
 - **A portal tab is left open when the round finishes.** Closing it meant the next
