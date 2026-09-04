@@ -78,21 +78,36 @@ closes them first, and again if one appears while it is waiting.
 
 Not every pop-up announces itself as one — Meesho's are often plain boxes floated
 over the page — so anything *behaving* like one counts too: lifted off the page,
-stacked above it, and big enough to be in the way.
+stacked above it, and **box-shaped**. That last part matters. A strip across the
+top of the page and a menu down the side are also lifted off the page, and without
+a shape test they were being treated as pop-ups to be closed. A pop-up has to be
+at least a fifth of the width *and* an eighth of the height of the window; a
+header and a side menu each fail one of those, and a real pop-up passes both.
 
 It also copes with a close button that is only a picture — a cross drawn as an
 icon, with no text and no name behind it, which is what Meesho's promotion box
-uses. Failing everything else, a small wordless clickable thing in the pop-up's
-top-right corner is taken as the way out, because inside a pop-up that is what it
-always is. Anything with words of its own is never treated that way.
+uses. Failing everything else, a small clickable thing tucked into the pop-up's
+top-right corner is taken as the way out, because inside a pop-up that is usually
+what it is.
 
-That widens where it looks, **not what it presses**. It is deliberately timid,
-because these are live seller portals: it only ever presses a close control, a bare
-cross, or one of a short list of words that can only mean "go away" — Got it, OK,
-Close, Dismiss, No thanks, Not now, Skip. It will not press Cancel, Continue, Done
-or anything beginning with Accept. If a box is plainly there but has no way out
-that can be found, it presses Escape, which closes most of them and on a page with
-nothing open does nothing at all.
+**That corner rule is the least certain thing in here, so it is fenced in.** The
+thing pressed must have no words of its own, must not sit inside a button that
+does, must not be inside a link to another page — an advert or a cross-sell tile
+would be — and must not be named in the page as a menu, a gear, a bell or any of
+the other things that live in a corner. Working-it-out clicks like that one are
+also rationed: three for the whole visit, not three every time it looks.
+
+Everything else it presses, it presses because the page said so: a close control
+the page labelled as one, a bare cross, or one of a short list of words that can
+only mean "go away" — Got it, Close, Dismiss, No thanks, Not now, Skip. It will
+not press Cancel, Continue, Done, OK, Yes, No, Confirm, Submit, Save, Delete, or
+anything beginning with Accept. **OK is on that list on purpose:** on a notice it
+means "go away", but on a question — *Cancel this order? Cancel / OK* — it is the
+answer, and this cannot tell the two apart. A box with nothing but an OK on it is
+left alone and Escape is tried instead. If a box is plainly there but has no way
+out that can be found, it presses Escape, which closes most of them and on a page
+with nothing open does nothing at all. It will not press Escape while you are
+typing in a box.
 
 Whatever it closed is listed with the round on the settings page, so it is never
 doing this out of sight.
@@ -268,8 +283,12 @@ day. That is a job in itself.
 ### What it does instead
 
 Every so often it opens each portal you have chosen **behind whatever you are
-working on**, clicks through the order tabs the way you would, and closes the tab
-again. You are not interrupted and nothing takes your screen.
+working on**, clicks through the order tabs the way you would, and leaves the tab
+open. You are not interrupted and nothing takes your screen.
+
+**Nothing is ever closed**, and that is on purpose — a tab left open on your
+orders page is already signed in, so the next round has no front door and no login
+to get past. One tab per portal, and no more than that.
 
 The round on each portal is:
 
@@ -339,16 +358,29 @@ actually clicked.
   with a line across the bottom asking you to sign in, and the round carries on to
   the next portal. **Sign in in that tab and it picks up by itself** — it finishes
   that portal's round there and then, and the next round treats it normally again.
-  Later rounds skip that portal while it is still waiting, so sign-in tabs never
-  pile up.
+  Sign-in tabs do not pile up, because the next round borrows the same tab rather
+  than opening another one.
 - **It does not work when your browser is closed.** It is a browser extension, not
   a service running somewhere — if the browser is shut, no rounds happen.
 - **It does not read your orders.** It reads tab names to find them, and nothing
   else. No order details, no customer information, nothing about your account.
-- **It does not accept, cancel, or change anything.** All it does is look.
-- **It never touches a tab you opened.** Before it clicks anything it checks that
-  the tab it is in is one the extension opened for a round. On your own tabs the
-  answer is no and it does nothing for the life of that page.
+- **It does not accept, cancel, or change anything on your orders.** It clicks the
+  order tabs, and it closes pop-ups that are in the way. Closing a pop-up is the
+  one place where it is working something out rather than being told, so the rules
+  above are what keep that narrow — and everything it closed is written down
+  against the round, so you can see it.
+- **It never touches the tab you are looking at.** This is worth being exact
+  about, because it does sometimes act in a tab *you* opened. Before it clicks
+  anything it asks the extension whether this tab is part of a round, and there
+  are only three answers that are yes:
+  - a tab the extension opened for the round;
+  - a **background** tab of yours already on that portal, which the round borrows
+    rather than opening a fourth Meesho tab — and puts back on the page it was on
+    when it is done;
+  - a tab that was left open asking you to sign in, once you have.
+
+  If you are actually looking at that portal, the round skips it entirely. On
+  every other tab the answer is no, and it does nothing for the life of that page.
 
 ### One thing to think about before you switch it on
 
@@ -358,10 +390,17 @@ extension does that looking for you, the number stops being about you.
 
 Nothing here fakes data, breaks into anything, or hides what it is. It opens your
 own portal, with your own login, and clicks your own tabs — the same pages you
-would have opened yourself. But a platform looking closely could take the view that
-an automatic round is not the same as a seller checking in. It is your shop and
-your call; this is written down so you make it knowing where it stands. The same
-warning is on the settings page.
+would have opened yourself.
+
+One part of it is worth being plain about rather than leaving you to find: the gap
+between rounds is random, and so is the pause between clicks. That is deliberate.
+Three clicks in the same instant, at the same minute of every hour, does not look
+like somebody at a screen — and this is written to resemble somebody at a screen.
+Say it out loud and it is clear enough what it is, which is the point of saying it.
+
+A platform looking closely could take the view that an automatic round is not the
+same as a seller checking in. It is your shop and your call; this is written down
+so you make it knowing where it stands. The same warning is on the settings page.
 
 ### It uses a tab you already have open
 
@@ -379,11 +418,18 @@ screen.
   prove anyway, since being on it is the very thing a check-in stands in for.
 - The list of rounds says which ones used your own tab.
 
-### One page load, one attempt
+### Three page loads, then it stops
 
-A round does not reload a tab to try again. If a portal bounces it somewhere else
-on the way in, that is the end of that portal for that round — it is picked up
-again at the next one, in the tab that was left open.
+Portals redirect on the way in — to a sign-in page, to a marketplace picker, from
+a front door into the real panel — and every one of those starts the round's work
+over. So a round is allowed three goes in a tab and no more. One was not enough:
+Meesho's front door redirects on the way in, which used up the only go and left
+the round waiting for an answer that never came. Anything still bouncing after
+three is a loop, and gets nothing.
+
+A round does also reload a tab on purpose in one case: when the address it wants
+is the one the tab is already showing. Without that the browser does nothing at
+all, and the round sits waiting on a page that never loaded.
 
 ### If a round stops early
 

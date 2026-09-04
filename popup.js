@@ -18,8 +18,14 @@ function render(info) {
     box.className = 'update new';
     box.textContent = '';
 
+    // Built rather than written out as markup: the version number comes down from
+    // a web address, and text that came from somewhere else is put on a page as
+    // text, never as markup. Nothing else in the extension does, and this was the
+    // one place left.
     const line = document.createElement('div');
-    line.innerHTML = '<b>Version ' + info.latest + ' is available.</b>';
+    const strong = document.createElement('b');
+    strong.textContent = 'Version ' + info.latest + ' is available.';
+    line.appendChild(strong);
     box.appendChild(line);
 
     if (info.notes) {

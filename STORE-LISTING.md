@@ -9,7 +9,7 @@ unless you want to reword it.
    your Microsoft account, and choose the **Microsoft Edge** program.
    There is no fee for Edge — unlike Chrome, which charges $5.
 2. Build the upload file: `node tools/make-zip.js`, which produces
-   `kartaan-click-1.4.11.zip` with `manifest.json` at the top level.
+   `kartaan-click-1.4.12.zip` with `manifest.json` at the top level.
 
 ## Listing fields
 
@@ -40,7 +40,7 @@ Printing labels saves each one into a Kartaan Click Labels folder inside your no
 
 Portal check-ins — off until you switch them on:
 
-Flipkart, Meesho and Amazon all take note of how often a seller is actually on the portal looking at their orders. If you would rather not stop what you are doing to open three portals every half hour, Kartaan Click can do that round for you: it opens each one behind whatever you are working on, clicks through the order tabs, and closes the tab again.
+Flipkart, Meesho and Amazon all take note of how often a seller is actually on the portal looking at their orders. If you would rather not stop what you are doing to open three portals every half hour, Kartaan Click can do that round for you: it opens each one behind whatever you are working on, clicks through the order tabs, and leaves the tab open — one per portal, already signed in, so the next round has no login to get past.
 
 You set the hours it may do this in, how far apart the rounds are, and which portals are included. It is off out of the box, it reads no order or customer details, and nothing from those pages ever leaves your computer.
 
@@ -101,9 +101,17 @@ site is queried, and tabs on any other site are never looked at.
 *Host permissions and content script matches* — `https://*.synlabs.io/*` and
 `https://seller.flipkart.com/*` are required for the content scripts to run on
 those pages. `https://supplier.meesho.com/*` and `https://sellercentral.amazon.in/*`
-are required for the portal check-in content script, which is inert unless the user
-has switched check-ins on and the tab is one the extension opened for a round; it
-clicks the site's own order tabs and reads nothing else. `https://kartaan.com/*` is
+are required for the portal check-in content script. That script does nothing at
+all unless the user has switched check-ins on AND the background worker confirms
+this tab is part of a round — which it does for a tab the extension opened, for a
+background tab the user already had open on that portal (borrowed for the round and
+put back on the page it was on afterwards), and for a tab left open asking the user
+to sign in. It never acts in the tab the user is looking at: if they are on that
+portal at the time, the round skips that portal. It clicks the site's own order
+tabs, closes pop-ups that are in its way, and reads nothing else. One further use,
+named for completeness: on a Meesho panel page it reads the seller's own account
+code out of the address bar, so a round can find their orders page without asking
+them to paste it. That code stays in the browser. `https://kartaan.com/*` is
 used once a day to read a single small public file holding the current version
 number, so users on a manual install can be told when a new version exists. Nothing
 is sent in that request and no other site is accessed.
@@ -125,14 +133,21 @@ source, which is small:
 - `content/fk-orders.js` — the Flipkart panel. It only ever presses buttons that are
   already on the page, and only after the user presses Start. No `fetch`, no
   `XMLHttpRequest`.
-- `background.js` — two jobs only: saving a shipping label, and the once-a-day
-  version check. Every download path in it returns immediately unless the panel
-  armed it within the last 60 seconds.
-- `content/checkin.js` — the portal check-in. It asks the background worker whether
-  the tab it is in was opened for a check-in round; on any tab the user opened
-  themselves the answer is no and it does nothing for the life of the page. When
-  the answer is yes it clicks a short, fixed list of the site's own tab names and
-  reports back. No `fetch`, no `XMLHttpRequest`, and it reads no order data.
+- `background.js` — three jobs: saving a shipping label, the once-a-day version
+  check, and the scheduling half of the portal check-ins. Every download path in it
+  returns immediately unless the panel armed it within the last 60 seconds.
+- `content/checkin.js` — the portal check-in. It asks the background worker on
+  every page load whether this tab is part of a round, and on almost every tab the
+  answer is no and it does nothing for the life of the page. The answer is yes for
+  three tabs and no others: one the extension opened for the round; a **background**
+  tab the user already had open on that portal, which the round borrows rather than
+  opening another and puts back on the page it was on afterwards; and a tab left
+  open asking the user to sign in, once they have. If the user is actually looking
+  at that portal, the round skips the portal entirely. So it is accurate to say it
+  never acts in the tab in front of the user — not that it never acts in a tab the
+  user opened. When the answer is yes it clicks a short, fixed list of the site's
+  own tab names, and closes pop-ups that are in the way under the rules set out in
+  MANUAL.md. No `fetch`, no `XMLHttpRequest`, and it reads no order data.
 - `popup.js` — reads the result of that version check and puts it on screen.
 - `options.js` — the settings page for check-ins. Reads and writes local settings
   only.

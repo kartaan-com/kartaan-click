@@ -2,9 +2,13 @@
 
 Last updated: 4 September 2026
 
-**This extension collects no data whatsoever.**
+**Nothing you do is sent anywhere. There is no server to send it to.**
 
 - It does not collect, store, or transmit personal information.
+- A few things are remembered inside your own browser so the tools work at all —
+  your settings, a short list of what the last few rounds did, and the Meesho
+  account code Meesho itself puts in your address bar. Every one of them is listed
+  below. None of them leaves your computer, and you can clear them.
 - There is no backend, no analytics, no telemetry, and no tracking of any kind.
 - It has no accounts and no login.
 - It does not read your browsing history or your activity on any other site.
@@ -59,7 +63,7 @@ extension does nothing.
 
 When it is on, the extension opens your seller portal every so often — behind
 whatever you are doing — clicks through your order tabs the way you would, and
-closes the tab again. Flipkart, Meesho and Amazon each judge a seller partly on how
+leaves the tab open. Flipkart, Meesho and Amazon each judge a seller partly on how
 often they are actually on the portal looking at their orders, and this does that
 round for you. You choose the hours, how far apart the rounds are, and which
 portals are included.
@@ -71,8 +75,12 @@ ever leaves your computer.**
 If the portal shows a sign-in page, the round presses that page's own **Log in**
 button once — browsers usually have the sign-in saved and that press walks straight
 through. **It never types a password, never fills in a box, and never touches your
-saved passwords.** If that does not get you in, it says so on the page, leaves the
-tab for you, and moves on to the next portal.
+saved passwords.** And it does not press even that button if there is anywhere on
+the page to type a password, a phone number or a code: a page asking for any of
+those is yours, not ours, and pressing Send or Log in on one would put your saved
+details in — which is not what a promise about your passwords should mean. In that
+case it says so on the page, leaves the tab for you, and moves on to the next
+portal.
 
 Two things are written down, both in your own browser and neither sent anywhere: a
 short list of what the last few rounds clicked, which you can clear at any time,
@@ -97,9 +105,13 @@ The `downloads` permission is used **only** in the seconds after you press Print
 Labels, and only for the label file itself. Downloads you start yourself are never
 touched, renamed, moved, cancelled, or read.
 
-Access to `supplier.meesho.com` and `sellercentral.amazon.in` is used **only** for
-the portal check-in described above, and only while you have it switched on. On any
-other page of those sites the extension does nothing at all.
+Access to `supplier.meesho.com` and `sellercentral.amazon.in` is used for the
+portal check-in described above. On a page that is not part of a round the
+extension does nothing at all, with one exception worth naming plainly: on any
+Meesho panel page it reads the account code out of your address bar, whether or not
+check-ins are switched on. That is so a round can find your orders page without
+ever asking you for the code. It is the same code Meesho shows you in your own
+address bar, it is kept in your browser, and it is sent nowhere.
 
 A check-in also borrows a portal tab you already have open rather than adding a new
 one, and if you are looking at that portal at the time it is left alone completely.

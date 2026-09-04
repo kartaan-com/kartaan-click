@@ -60,7 +60,8 @@ portal looking at their orders. Doing that by hand means stopping what you are
 doing to open three portals every half hour, all day.
 
 Instead, this opens each portal behind whatever you are working on, clicks through
-the order tabs the way you would, and closes the tab again:
+the order tabs the way you would, and leaves the tab open — one per portal, already
+signed in, so the next round has no login to get past:
 
 | Portal | The round |
 |---|---|

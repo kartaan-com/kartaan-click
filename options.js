@@ -76,13 +76,19 @@ function cleanUrl(key, raw) {
 // Reads the boxes back. A typed number can be blank or nonsense, and the two gaps
 // can be the wrong way round, so both are straightened out here rather than
 // letting a bad pair reach the scheduler.
+// Rounds are never put closer together than this. A minute apart would be thirty
+// rounds an hour on each of three portals — hundreds of automatic visits a day,
+// which is the very thing the warning on this page is about. Ten minutes is well
+// below anything useful and still nowhere near looking like a machine.
+const MIN_GAP = 10;
+
 function collect() {
   const num = (el, dflt) => {
     const n = parseInt(el.value, 10);
     return Number.isFinite(n) && n > 0 ? Math.min(n, 720) : dflt;
   };
-  let lo = num($('minGap'), DEFAULTS.minGapMin);
-  let hi = num($('maxGap'), DEFAULTS.maxGapMin);
+  let lo = Math.max(MIN_GAP, num($('minGap'), DEFAULTS.minGapMin));
+  let hi = Math.max(MIN_GAP, num($('maxGap'), DEFAULTS.maxGapMin));
   if (hi < lo) { const t = lo; lo = hi; hi = t; }
 
   return {

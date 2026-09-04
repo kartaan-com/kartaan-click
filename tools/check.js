@@ -158,24 +158,74 @@ for (const h of hostPerms) {
 }
 
 // ── 6. Any server the code talks to must be named in the privacy policy ─────
+//
+// ⚠️ THIS RULE WAS DECORATIVE UNTIL 4 SEP 2026 and an independent review said so.
+// It looked only for fetch( followed immediately by a quoted address or a CAPITALS
+// name. Every other way of reaching a server went straight past it: XMLHttpRequest,
+// sendBeacon, WebSocket, EventSource, an address built out of pieces, or simply
+// fetch(url) with an ordinary variable — which the extension already contains. A
+// rule that would not have caught anything is worse than no rule, because it is
+// quoted as the reason a release is safe.
+//
+// It now works the other way round. Instead of trying to recognise the ways of
+// sending something — a list that can never be complete — it says:
+//   a. every web address written anywhere in shipped code must be a host we have
+//      declared and PRIVACY.md explains; and
+//   b. the ways of reaching a server that this extension does not use are banned
+//      outright, so adding one is a decision somebody has to make on purpose; and
+//   c. a fetch whose address is not written down on the spot must carry a
+//      `NET-OK:` note saying where it goes, so it cannot slip in unexamined.
 const shipped = referenced.filter(f => f.endsWith('.js'));
+
+// The only hosts any shipped code may name. The three seller portals are the pages
+// the tools run on; kartaan.com is the version file. Anything else is a finding.
+const ALLOWED_HOSTS = [
+  'kartaan.com', 'seller.flipkart.com', 'supplier.meesho.com',
+  'sellercentral.amazon.in', 'www.w3.org',   // the last is the SVG namespace, not a server
+];
+
+const BANNED_WAYS = [
+  [/\bXMLHttpRequest\b/,          'XMLHttpRequest'],
+  [/\bnavigator\s*\.\s*sendBeacon\b/, 'navigator.sendBeacon'],
+  [/\bnew\s+WebSocket\b/,         'a WebSocket'],
+  [/\bnew\s+EventSource\b/,       'an EventSource'],
+  [/\bimport\s*\(/,               'a dynamic import()'],
+];
+
 for (const f of shipped) {
-  const src = read(f);
-  for (const m of src.matchAll(/fetch\(\s*['"`](https?:\/\/[^'"`\/]+)/g)) {
-    const host = m[1].replace(/^https?:\/\//, '');
-    if (!read('PRIVACY.md').includes(host)) {
-      fail('undisclosed server', `${f} contacts ${host}, which PRIVACY.md does not mention`);
+  const src   = read(f);
+  const lines = src.split(/\r?\n/);
+
+  for (const [re, what] of BANNED_WAYS) {
+    if (re.test(src)) {
+      fail('a new way of reaching a server',
+        `${f} uses ${what}. This extension talks to exactly one server, through fetch, in background.js. `
+        + 'If this is deliberate, say so in PRIVACY.md and add it here on purpose.');
     }
   }
-  for (const m of src.matchAll(/fetch\(\s*([A-Z_]{3,})\b/g)) {
-    const decl = new RegExp(`${m[1]}\\s*=\\s*['"\`](https?://[^'"\`/]+)`).exec(src);
-    if (decl) {
-      const host = decl[1].replace(/^https?:\/\//, '');
-      if (!read('PRIVACY.md').includes(host)) {
-        fail('undisclosed server', `${f} contacts ${host}, which PRIVACY.md does not mention`);
-      }
+
+  // (a) every address written in the code
+  for (const m of src.matchAll(/https?:\/\/([^\s'"`\/\\)>]+)/g)) {
+    const host = m[1].toLowerCase();
+    if (!ALLOWED_HOSTS.includes(host)) {
+      fail('undisclosed server', `${f} names ${host}, which is not in this rule's list of allowed hosts`);
+    } else if (host !== 'www.w3.org' && !read('PRIVACY.md').includes(host)) {
+      fail('undisclosed server', `${f} names ${host}, which PRIVACY.md does not mention`);
     }
   }
+
+  // (c) a fetch whose destination is not a plain address on the spot
+  lines.forEach((line, i) => {
+    if (!/\bfetch\s*\(/.test(line)) return;
+    if (/fetch\s*\(\s*['"`]https?:\/\//.test(line)) return;          // written out in full
+    // The note may run to a couple of lines above the call — it has to say where
+    // the request goes, and that rarely fits in the width of one comment.
+    const near = lines.slice(Math.max(0, i - 3), i + 1).join(' ');
+    if (/NET-OK:/.test(near)) return;                                 // declared on purpose
+    fail('a fetch nobody has accounted for',
+      `${f}:${i + 1} calls fetch() with something other than a plain address, and there is no `
+      + '"NET-OK: <where it goes>" note on it or the line above. Add the note, or write the address out.');
+  });
 }
 
 // ── 6b. No personal email addresses in a public repository ──────────────────
@@ -282,6 +332,22 @@ if (exists('STORE-LISTING.md') && !read('STORE-LISTING.md').includes(`kartaan-cl
     } catch (e) {
       fail('broken JavaScript', `${f} will not parse — ${e.message}`);
     }
+  }
+}
+
+// ── 13. The store's own limits on what is in the manifest ───────────────────
+// WHY: a 176-character description was written on 4 Sep 2026 and would have been
+// rejected at the store, which is a slow and public way to find out. Both stores
+// cut the description off at 132. Caught here it is a one-line edit.
+{
+  const d = (manifest.description || '');
+  if (!d) fail('no description', 'manifest.json has no description — the store requires one');
+  if (d.length > 132) {
+    fail('description too long',
+      `manifest.json's description is ${d.length} characters; Chrome and Edge both allow 132.`);
+  }
+  if (!manifest.version || !/^\d+(\.\d+){0,3}$/.test(manifest.version)) {
+    fail('bad version', `manifest.json's version "${manifest.version}" is not a plain number like 1.4.12`);
   }
 }
 

@@ -10,10 +10,16 @@
 // it is inside the seller's hours, which sites are switched on — all lives in
 // background.js, because a content script dies with its tab.
 //
-// IT IS COMPLETELY INERT unless the background worker opened this exact tab for a
-// round AND no attempt has been made in it yet. On a tab the seller opened
-// themselves it asks, is told no, and stops. It never clicks anything on a page
-// the seller is working on.
+// IT DOES NOTHING UNLESS THE BACKGROUND WORKER SAYS THIS TAB IS PART OF A ROUND.
+// It asks first, on every page load, and on almost every tab the answer is no and
+// this file stops there. There are exactly two tabs where the answer is yes:
+//   - a tab the worker opened for the round, or a background tab on that portal
+//     that it BORROWED for the round (a tab the seller opened themselves, but is
+//     not looking at — if they are looking at it, the round skips that portal);
+//   - a tab that was left open asking the seller to sign in, once they have.
+// Be honest about that second pair in the manual and the store listing: this does
+// act inside tabs the seller opened. It just never does it in the one in front of
+// them.
 //
 // ⚠️ FOUR THINGS THAT WILL BITE ANYONE EDITING THIS:
 //   1. A REDIRECT CHAIN GETS A FEW HOPS, NOT UNLIMITED AND NOT ONE. These portals
@@ -161,17 +167,40 @@ function isDisabled(el) {
 // comparing, so the count changing never breaks the match.
 const norm = t => t.replace(/[()\[\]\d,]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 
+// A word we are looking for as a TAB is very often also a value in the orders
+// table underneath it — "Pending" is a tab on Amazon and Meesho and also the
+// status of every second row. Clicking the cell instead of the tab opens one
+// order and the round then fails every step after it, having proved nothing.
+// So anything inside a table or a grid is not a tab, whatever it says.
+const IN_A_TABLE = 'table, thead, tbody, tr, td, th, [role="table"], [role="grid"], [role="row"], [role="gridcell"], [role="cell"], [role="rowheader"]';
+
 // Finds the thing on screen whose words are the ones we want. Several nested
 // elements usually match the same words — an outer box wrapping the real tab —
 // so the innermost one is taken, which is the one a person's click would land on.
+//
+// Where several are still left, the one the page itself calls a tab wins, then a
+// link or a button. Document order is the last thing consulted, not the first:
+// it was picking whichever happened to be higher up the markup.
 function findByWords(words) {
   const want  = words.toLowerCase();
   const nodes = [...document.querySelectorAll('a, button, li, span, div, p, [role="tab"], [role="button"], [role="menuitem"]')];
   const hits  = nodes.filter(el => {
     const t = txt(el);
-    return t && t.length <= 60 && norm(t) === want && isVisible(el);
+    if (!t || t.length > 60 || norm(t) !== want) return false;
+    if (!isVisible(el)) return false;
+    return !el.closest(IN_A_TABLE);
   });
-  return hits.filter(e => !hits.some(o => o !== e && e.contains(o)))[0] || null;
+  const inner = hits.filter(e => !hits.some(o => o !== e && e.contains(o)));
+  const rank  = (el) => {
+    if (el.getAttribute && el.getAttribute('role') === 'tab') return 0;
+    if (el.closest('[role="tablist"]')) return 1;
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'a' || tag === 'button') return 2;
+    if (el.getAttribute && el.getAttribute('role') === 'button') return 2;
+    return 3;
+  };
+  inner.sort((a, b) => rank(a) - rank(b));
+  return inner[0] || null;
 }
 
 // Is this a sign-in page rather than the portal? Checked three ways because each
@@ -236,7 +265,7 @@ function humanClick(el) {
 // of a short list of words that can only mean "go away". No "Cancel" (it can
 // abandon something the seller started), no "Continue", no guessing from an icon.
 const DISMISS_WORDS = [
-  'got it', 'ok', 'okay', 'close', 'dismiss', 'no thanks', 'no, thanks',
+  'got it', 'close', 'dismiss', 'no thanks', 'no, thanks',
   'not now', 'maybe later', 'later', 'skip', 'skip for now', 'i understand',
 ];
 // Kept OUT on purpose, and each for a reason:
@@ -246,6 +275,13 @@ const DISMISS_WORDS = [
 //   "Accept all"  — a cookie strip's wording, but "Accept" is also the word this
 //                   very extension presses on real Flipkart orders. Nothing that
 //                   starts with it goes anywhere near this list.
+//   "OK"          — REMOVED 2026-09-04 after review. It reads like a way out of a
+//                   notice, but on a question it is the ANSWER: "Cancel this
+//                   order? [Cancel] [OK]" is a dialog like any other, and this
+//                   list is used on anything the page calls an alertdialog. A
+//                   notice with nothing but an OK on it is now left alone and
+//                   Escape is tried instead — which closes it if it is a notice
+//                   and does nothing at all if it is a question.
 
 const DIALOG_SELECTOR = [
   '[role="dialog"]', '[role="alertdialog"]', '[aria-modal="true"]',
@@ -255,26 +291,35 @@ const DIALOG_SELECTOR = [
 // Not every pop-up says it is one. Meesho's in particular are plain boxes floated
 // over the page with none of the markings above, and one of those sitting over the
 // order tabs stops a round dead. So anything BEHAVING like a pop-up counts too:
-// lifted off the page, stacked above it, and big enough to be in the way but not
-// so big it is the page itself.
+// lifted off the page, stacked above it, and CARD-SHAPED — wide enough and tall
+// enough to be a box rather than a strip.
 //
-// This only decides where to LOOK. What actually gets pressed is still just a
-// close control or one of the words that can only mean "go away" — widening the
-// search does not widen what is clicked.
+// ⚠️ THE SHAPE TEST IS THE WHOLE POINT, and it was missing until 2026-09-04.
+// "Big enough to be in the way" on its own catches the furniture of every one of
+// these portals: a sticky header is the full width and a twentieth of the height,
+// a fixed side menu is the full height and a sixth of the width, and both were
+// being treated as pop-ups to be closed. Requiring BOTH a fifth of the width and
+// an eighth of the height rules both out, and a real dialog passes easily.
+const NOT_A_POPUP = 'header, nav, footer, [role="banner"], [role="navigation"], '
+                  + '[role="toolbar"], [role="menubar"], [role="tablist"], [role="tooltip"]';
+
 function overlayBoxes() {
   const vw = window.innerWidth, vh = window.innerHeight;
   const out = [];
 
   for (const el of document.querySelectorAll('div, section, aside, dialog')) {
     if (el.id === '__kcSignIn') continue;              // our own note
+    if (el.closest(NOT_A_POPUP)) continue;             // page furniture, not a pop-up
     const s = getComputedStyle(el);
     if (s.position !== 'fixed' && s.position !== 'absolute') continue;
     if ((parseInt(s.zIndex, 10) || 0) < 50) continue;
     if (!isVisible(el)) continue;
 
     const r = el.getBoundingClientRect();
+    if (r.width  < vw * 0.20) continue;                // a side rail, not a box
+    if (r.height < vh * 0.12) continue;                // a strip across the top
     const area = (r.width * r.height) / (vw * vh);
-    if (area < 0.04 || area > 0.98) continue;          // a crumb, or the whole page
+    if (area < 0.04 || area > 0.90) continue;          // a crumb, or the whole page
 
     // Something that holds another candidate is the backdrop, not the box.
     out.push(el);
@@ -292,6 +337,47 @@ function candidateBoxes() {
 // would not be.
 const CROSS = /^[×✕✖⨯xX]$/;
 
+// Words that must never be pressed, wherever they are found. Until 2026-09-04
+// this list only guarded ONE of the four ways a close button is looked for, so a
+// thing could be excluded by its words and then clicked anyway a few lines later
+// because of its class name or its position. It now guards all four.
+const NEVER_PRESS = ['cancel', 'continue', 'done', 'ok', 'okay', 'yes', 'no',
+                     'confirm', 'submit', 'save', 'delete', 'remove', 'proceed'];
+
+function forbiddenWords(el) {
+  // The words of the thing itself, and of the button it sits inside — a picture
+  // inside a "Participate Now" button has no words of its own, but pressing it
+  // presses the button.
+  const holder = el.closest('button, a, [role="button"]') || el;
+  for (const node of new Set([el, holder])) {
+    const t = norm(txt(node));
+    if (!t) continue;
+    if (CROSS.test(txt(node))) continue;          // a bare cross is not a word
+    if (t.indexOf('accept') === 0) return true;   // "Accept" is what we press on real orders
+    if (NEVER_PRESS.indexOf(t) !== -1) return true;
+    if (t.length > 24) return true;               // a paragraph is not a close button
+  }
+  return false;
+}
+
+// A close button does not take you somewhere else. Anything sitting inside a link
+// to another page is a promotion, a cross-sell tile or an advert — and clicking
+// one navigates the tab away in the middle of a round.
+function leadsAway(el) {
+  const a = el.closest('a[href]');
+  if (!a) return false;
+  const href = a.getAttribute('href') || '';
+  return /^(https?:)?\/\//i.test(href) || /^\/[^/]/.test(href);
+}
+
+// How many times a round may press something it worked out for itself — a close
+// control found by its class name or by where it sits, rather than by words the
+// page put there. Three passes were allowed per call and the call happens up to
+// three times a portal, so the ceiling was nine. It is now three for the whole of
+// this page's life, which is enough for a stack of two pop-ups and a spare.
+const HEURISTIC_CLICK_BUDGET = 3;
+let heuristicClicks = 0;
+
 // One pass. Returns what it closed, so the log can say so rather than the round
 // quietly behaving differently from one day to the next.
 function dismissOnce() {
@@ -300,9 +386,12 @@ function dismissOnce() {
 
     // The page's own close control, named as such by the page. This is the
     // safest thing in here — it is a cross, and it says so.
+    const pressable = el => isVisible(el) && !isDisabled(el)
+                         && !forbiddenWords(el) && !leadsAway(el);
+
     const named = [...box.querySelectorAll('[aria-label], button, [role="button"]')].find(el => {
       const label = (el.getAttribute('aria-label') || '').toLowerCase();
-      return /(^|\s)(close|dismiss)(\s|$)/.test(label) && isVisible(el) && !isDisabled(el);
+      return /(^|\s)(close|dismiss)(\s|$)/.test(label) && pressable(el);
     });
     if (named) { humanClick(named); return named.getAttribute('aria-label') || 'close'; }
 
@@ -311,17 +400,30 @@ function dismissOnce() {
     if (worded) { humanClick(worded); return txt(worded); }
 
     const cross = [...box.querySelectorAll('button, [role="button"], a, span, i, svg')].find(el =>
-      CROSS.test(txt(el)) && isVisible(el) && !isDisabled(el));
+      CROSS.test(txt(el)) && pressable(el));
     if (cross) { humanClick(cross); return 'the cross'; }
+
+    // Everything below here is the round WORKING IT OUT rather than being told, so
+    // it comes out of a small budget and stops when that budget is gone.
+    if (heuristicClicks >= HEURISTIC_CLICK_BUDGET) continue;
 
     // Named in the markup rather than to a reader: class="close-icon",
     // data-testid="modal-close", id="dismissBtn". Common, and unambiguous.
+    //
+    // "cross" USED TO BE IN THIS LIST and is not any more: it matched cross-sell,
+    // cross-border and cross-listing, which on a marketplace are the class names
+    // of advert tiles. A real cross is caught by the line above, by being one.
+    // The thing found here must also be wordless, so a button that happens to sit
+    // in a container called "close-panel" is not pressed for its neighbour's name.
     const marked = [...box.querySelectorAll('button, [role="button"], a, span, i, div')].find(el => {
       const bits = [el.id || '', el.getAttribute('data-testid') || '',
                     (typeof el.className === 'string' ? el.className : '')].join(' ').toLowerCase();
-      return /(^|[^a-z])(close|dismiss|cross)([^a-z]|$)/.test(bits) && isVisible(el) && !isDisabled(el);
+      if (!/(^|[^a-z])(close|dismiss)([^a-z]|$)/.test(bits)) return false;
+      const t = txt(el);
+      if (t && !CROSS.test(t)) return false;                 // it has words: not a close icon
+      return pressable(el);
     });
-    if (marked) { humanClick(marked); return 'the close button'; }
+    if (marked) { heuristicClicks++; humanClick(marked); return 'the close button'; }
 
     // Last resort inside the box: the cross drawn as a picture, with no text, no
     // label and no helpful class — which is what Meesho's promotion box uses. It
@@ -330,18 +432,28 @@ function dismissOnce() {
     // is not anything else. Bounded entirely inside a box already judged to be a
     // pop-up, and it must have no words of its own — so a real button like
     // "Participate Now" can never be mistaken for it.
+    //
+    // ⚠️ "IT HAS NO WORDS" IS NOT ENOUGH ON ITS OWN. A picture never has words, so
+    // that test passes for every advert creative, every gear, every bell and every
+    // three-dot menu as well. It must ALSO not be inside a link to somewhere else
+    // (an advert), not be inside a button that does have words (its own picture),
+    // and not be one of the things a corner is normally used for.
     const b = box.getBoundingClientRect();
     const corner = [...box.querySelectorAll('button, [role="button"], a, span, i, svg, img, div')].find(el => {
-      if (!isVisible(el) || isDisabled(el)) return false;
+      if (!pressable(el)) return false;
       const t = txt(el);
       if (t && !CROSS.test(t)) return false;                 // it has words: not an icon
+      const bits = [el.id || '', el.getAttribute('data-testid') || '',
+                    el.getAttribute('aria-label') || '',
+                    (typeof el.className === 'string' ? el.className : '')].join(' ').toLowerCase();
+      if (/menu|more|kebab|overflow|setting|gear|help|info|bell|notif|share|star|pin|cart|search|back|arrow|next|prev/.test(bits)) return false;
       const r = el.getBoundingClientRect();
       if (r.width > 56 || r.height > 56) return false;       // too big to be an icon
       if (r.width < 8  || r.height < 8)  return false;       // too small to be a target
       return (b.right - r.right) <= b.width * 0.18           // tucked to the right
           && (r.top - b.top)    <= b.height * 0.18;          // and to the top
     });
-    if (corner) { humanClick(corner); return 'the close icon'; }
+    if (corner) { heuristicClicks++; humanClick(corner); return 'the close icon'; }
   }
   return null;
 }
@@ -350,6 +462,12 @@ function dismissOnce() {
 // none open it does nothing at all — which is what makes it safe to try. It is
 // last, after every way of actually finding the button.
 function pressEscape() {
+  // Not while the seller is typing. On a borrowed tab of theirs, Escape in a part
+  // filled box throws the typing away — on some pages it also backs out of the
+  // view. Nothing here is worth that.
+  const a = document.activeElement;
+  if (a && (a.isContentEditable
+        || /^(input|textarea|select)$/i.test(a.tagName || ''))) return;
   for (const type of ['keydown', 'keyup']) {
     document.dispatchEvent(new KeyboardEvent(type, {
       key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true,
@@ -456,9 +574,36 @@ function whereWeAre() {
 // a field, and never touches saved credentials. It presses the portal's own Log in
 // button and sees what happens. If the portal wants anything typed, that is the
 // seller's to do and the round stops and says so.
-const LOGIN_WORDS = ['log in', 'login', 'sign in', 'signin', 'continue'];
+//
+// ⚠️ TWO THINGS THIS GOT WRONG, BOTH FOUND IN REVIEW 2026-09-04:
+//
+//   1. "Continue" was in this list. It is the word this file's own pop-up rules
+//      exclude, for the right reason — it means go forward, not go in. On
+//      Meesho's shop window it is the button beside a phone number box, so
+//      pressing it starts sending somebody an access code. Gone.
+//
+//   2. Pressing a sign-in form's own button while the browser has already filled
+//      the boxes in SENDS those saved details, even though nothing here typed
+//      them. That is not what "never touches your saved passwords" says to a
+//      reader. So: if there is anywhere on the page to type a password, a phone
+//      number or a code, nothing is pressed at all — that page is the seller's,
+//      and the round stops and asks them.
+//
+// What is left is the one case this was for: a portal that has signed us out but
+// remembers who we are, showing nothing but a button to go back in.
+const LOGIN_WORDS = ['log in', 'login', 'sign in', 'signin'];
+
+const CREDENTIAL_FIELDS = 'input[type="password"], input[type="tel"], input[type="email"], '
+  + 'input[autocomplete*="password"], input[autocomplete*="username"], '
+  + 'input[autocomplete*="one-time-code"], input[name*="otp" i], input[id*="otp" i]';
+
+function wantsTyping() {
+  return [...document.querySelectorAll(CREDENTIAL_FIELDS)].some(isVisible);
+}
 
 async function tryTheLoginButton() {
+  if (wantsTyping()) return false;
+
   const btn = [...document.querySelectorAll('button, a, [role="button"], input[type="submit"]')]
     .filter(el => {
       const t = norm(txt(el) || el.value || '');

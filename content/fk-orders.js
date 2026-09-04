@@ -703,6 +703,8 @@ async function scanSkus(mode) {
 async function blobProbe(url, why) {
   const started = Date.now();
   try {
+    // NET-OK: nowhere. `url` is a blob: address — a file the Flipkart page has
+    // already built inside this browser. Nothing leaves the machine.
     const res = await fetch(url);
     if (!res.ok) {
       await log('BLOB TEST (' + why + '): FAILED — the page answered ' + res.status);

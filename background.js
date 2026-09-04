@@ -1,12 +1,14 @@
 // ─── Kartaan Click — background service worker ───────────────────────────────
 //
-// Two jobs, and nothing else:
+// Three jobs, and nothing else:
 //   1. Getting Flipkart shipping labels onto the disk when the Print labels tool
 //      clicks a row's "Print Labels" button. All of that is INERT unless the
 //      on-page panel armed it in the last minute — no download the user starts
 //      themselves is ever touched, renamed, or cancelled.
 //   2. Asking once a day whether a newer version exists, so people on a manual
 //      install find out instead of never hearing about it.
+//   3. The portal check-in rounds — the whole second half of this file. Off
+//      unless the seller switches it on.
 
 'use strict';
 
@@ -109,6 +111,8 @@ async function checkForUpdate(force) {
 
   let info;
   try {
+    // NET-OK: kartaan.com/kartaan-click/version.json — the version file, read
+    // only. Sends no body, no identifiers, no cookies of ours.
     const res = await fetch(VERSION_URL, { cache: 'no-store' });
     if (!res.ok) throw new Error('the server answered ' + res.status);
     const data = await res.json();
@@ -216,7 +220,8 @@ chrome.downloads.onCreated.addListener((item) => {
 // Flipkart, Meesho and Amazon all take "is this seller on the portal looking at
 // their orders" as a sign of how seriously the shop is being run. This does that
 // round on the seller's behalf: every so often it opens each portal behind
-// whatever they are doing, clicks through the order tabs, and closes again.
+// whatever they are doing, clicks through the order tabs, and LEAVES THE TAB OPEN
+// — one per portal, already signed in, so the next round has no login to get past.
 //
 // The clicking itself is content/checkin.js. Everything about WHEN lives here,
 // because a content script dies with its tab and a schedule cannot.
@@ -377,7 +382,13 @@ async function scheduleCheckin(reason) {
     return;
   }
 
-  const lo = Math.max(1, Math.min(s.minGapMin, s.maxGapMin));
+  // ⚠️ THE FLOOR IS NOT DECORATION. A gap of a minute is thirty rounds an hour
+  // across three portals — hundreds of automatic visits a day to his own seller
+  // account, which is precisely the pattern the settings page warns a platform
+  // could take a dim view of. The settings page will not save less than ten, and
+  // this holds the same line for anything saved before that rule existed.
+  const MIN_GAP = 10;
+  const lo = Math.max(MIN_GAP, Math.min(s.minGapMin, s.maxGapMin));
   const hi = Math.max(lo + 1, Math.max(s.minGapMin, s.maxGapMin));
   let when = Date.now() + checkinRand(lo, hi) * 60000;
   if (!insideHours(when, s)) when = nextWindowStart(when, s) + checkinRand(0, 9) * 60000;
@@ -419,11 +430,62 @@ function keepAwake() {
   return () => clearInterval(id);
 }
 
+// ⚠️ A TAB NUMBER IS NOT A NAME. Chrome hands them out from a low number again
+// every time it starts, so a number written down today is somebody else's tab
+// tomorrow — and this list is what decides whether a tab is allowed to be clicked
+// in. Left to itself it grew stale entries that were never removed, and a stale
+// entry meant a round could start clicking about in an ordinary Meesho tab the
+// seller had opened and was reading. Found in review 2026-09-04.
+//
+// Three things keep it honest now, and all three matter:
+//   - the whole list is thrown away when the browser starts, because no number in
+//     it survives that;
+//   - an entry goes the moment its tab is closed (chrome.tabs.onRemoved);
+//   - an entry says which portal it was for and when it was written, and both are
+//     checked before it is believed — a tab now showing a different site, or one
+//     written down more than half a day ago, is not it.
+const SIGNIN_TAB_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
 async function rememberSignInTab(key, tabId) {
   const all = (await chrome.storage.local.get(CHECKIN_SIGNIN_TABS))[CHECKIN_SIGNIN_TABS] || {};
-  if (tabId == null) delete all[key]; else all[key] = tabId;
+  if (tabId == null) delete all[key];
+  else all[key] = { id: tabId, host: CHECKIN_SITES[key].host, ts: Date.now() };
   await chrome.storage.local.set({ [CHECKIN_SIGNIN_TABS]: all });
 }
+
+// Which portal, if any, this tab is the waiting sign-in tab for. `url` is the
+// address the tab is actually showing right now, which is the half of the check a
+// stored number cannot do for itself.
+function signInTabPortal(all, tabId, url) {
+  if (tabId == null) return null;
+  let host = '';
+  try { host = new URL(url || '').hostname; } catch (e) { return null; }
+
+  for (const key of Object.keys(all || {})) {
+    const e = all[key];
+    // Written by an older version as a bare number, with no portal and no date.
+    // Not trusted — it is exactly the kind of entry this went wrong on.
+    if (!e || typeof e !== 'object') continue;
+    if (e.id !== tabId) continue;
+    if (e.host !== host) continue;                                  // a different site now
+    if (!e.ts || Date.now() - e.ts > SIGNIN_TAB_MAX_AGE_MS) continue;  // too old to mean anything
+    return key;
+  }
+  return null;
+}
+
+async function forgetSignInTab(tabId) {
+  const all = (await chrome.storage.local.get(CHECKIN_SIGNIN_TABS))[CHECKIN_SIGNIN_TABS] || {};
+  let changed = false;
+  for (const k of Object.keys(all)) {
+    const e = all[k];
+    const id = (e && typeof e === 'object') ? e.id : e;
+    if (id === tabId) { delete all[k]; changed = true; }
+  }
+  if (changed) await chrome.storage.local.set({ [CHECKIN_SIGNIN_TABS]: all });
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => { forgetSignInTab(tabId); });
 
 // Is this portal already open somewhere in the browser?
 //
@@ -546,9 +608,48 @@ function visitOnce(key, url, reuse) {
 // clicking the same orders, and then close it half a minute later — on live
 // orders. Flipkart is skipped for that round instead; there is no point checking
 // in on a portal you are demonstrably already working on.
+//
+// "Running" is written by that tool and cleared by it when it stops. If its tab is
+// closed part way, or the browser is shut down on it, nothing clears it and it
+// says running for ever — and Flipkart would then be skipped on every round from
+// then on, with a log line nobody has any reason to look into. So a run that
+// started long enough ago that it cannot still be going is not believed. Six
+// hours: his longest real runs are a hundred orders, well under an hour.
+const ORDER_RUN_MAX_MS = 6 * 60 * 60 * 1000;
+
 async function flipkartRunInProgress() {
   const st = (await chrome.storage.local.get('kcOrdersBot')).kcOrdersBot;
-  return !!(st && st.running);
+  if (!st || !st.running) return false;
+  if (st.startedAt && Date.now() - st.startedAt > ORDER_RUN_MAX_MS) return false;
+  return true;
+}
+
+// Only one round at a time. The alarm can go off while a "do one round now" is
+// still going, and the button can be pressed twice — and two rounds share the one
+// set of notes about which tab is which, so the first one's tab is orphaned and
+// sits there until it times out. That is where the duplicate tabs and the "the
+// page never answered" lines came from.
+//
+// The note is written down as well as held in memory, because the two rounds may
+// not be in the same worker. It carries the time it was taken so a worker that
+// dies mid-round cannot lock the feature out for good — after five minutes the
+// note is simply out of date and ignored.
+const CHECKIN_LOCK = 'kcCheckinRunning';
+const LOCK_MAX_MS  = 5 * 60 * 1000;
+let _roundInFlight = false;
+
+async function takeRoundLock() {
+  if (_roundInFlight) return false;
+  const held = (await chrome.storage.local.get(CHECKIN_LOCK))[CHECKIN_LOCK];
+  if (held && Date.now() - held < LOCK_MAX_MS) return false;
+  _roundInFlight = true;
+  await chrome.storage.local.set({ [CHECKIN_LOCK]: Date.now() });
+  return true;
+}
+
+async function releaseRoundLock() {
+  _roundInFlight = false;
+  await chrome.storage.local.remove(CHECKIN_LOCK);
 }
 
 // `force` is the settings page's "do one round now": the seller asked for it there
@@ -562,11 +663,14 @@ async function runCheckinRound(force) {
     return;
   }
 
-  // A tab left behind by a round this worker was shut down in the middle of.
-  await closeAbandonedRoundTab();
+  if (!await takeRoundLock()) return;   // one already going
 
   const stopKeepAwake = keepAwake();
   try {
+    // The note from a round this worker was shut down in the middle of. Only that
+    // note — NOT the lock, which this round is now holding.
+    await chrome.storage.local.remove(CHECKIN_TAB);
+
     for (const key of Object.keys(CHECKIN_SITES)) {
       if (!s.sites[key]) continue;
       if (key === 'flipkart' && await flipkartRunInProgress()) {
@@ -592,19 +696,91 @@ async function runCheckinRound(force) {
         continue;
       }
 
-      const r = await visitOnce(key, await checkinUrlFor(key, s), open ? open.tab : null);
+      const url = await checkinUrlFor(key, s);
+
+      // Asked again, right at the last moment. The first ask was several waits
+      // ago — looking up the open tabs and building the address are both trips
+      // out of this worker — and an order run started in that gap would have a
+      // second copy of itself opened on top of it, clicking real orders.
+      if (key === 'flipkart' && await flipkartRunInProgress()) {
+        await checkinLog({ site: 'Flipkart', done: [], stoppedAt: null, skipped: true });
+        continue;
+      }
+
+      const r = await visitOnce(key, url, open ? open.tab : null);
       await checkinLog(r);
       // A breath between portals, so three tabs are not opened in one burst.
       await new Promise(res => setTimeout(res, checkinRand(4000, 12000)));
     }
+  } catch (e) {
+    // ⚠️ THE NEXT ROUND IS ARMED AT THE END OF THIS ONE, so anything thrown in the
+    // middle used to end check-ins for good — silently, with the settings page
+    // still showing a time for a round that was never coming. Whatever went
+    // wrong, it is written to the log and the next round is still set.
+    console.log('[Kartaan Click] check-in round failed: ' + (e && e.message ? e.message : e));
+    try { await checkinLog({ site: '—', done: [], roundError: String((e && e.message) || e) }); } catch (e2) { /* nothing more to do */ }
   } finally {
     stopKeepAwake();
+    await releaseRoundLock();
+    await scheduleCheckin('round finished');
   }
-  await scheduleCheckin('round finished');
+}
+
+// ── the watchdog ────────────────────────────────────────────────────────────
+//
+// The round timer is a single alarm, set for one moment, and it is re-set at the
+// end of each round. So one round that never reaches its end — the worker shut
+// down mid-round, the browser closed with it — takes the whole feature with it,
+// and nothing ever notices. That is not a failure anybody would spot: the
+// settings page goes on showing the time of a round that is not coming.
+//
+// This is the second timer that watches the first. It repeats on its own, so it
+// cannot be lost the same way, and all it does is ask: are check-ins on, and is
+// the next round either missing or overdue? If so, set one.
+const CHECKIN_WATCHDOG = 'kcCheckinWatchdog';
+const WATCHDOG_EVERY_MIN = 15;
+
+async function checkinWatchdog() {
+  const s = await checkinSettings();
+  if (!s.enabled) return;
+  if (_roundInFlight) return;
+
+  const next = (await chrome.storage.local.get(CHECKIN_NEXT))[CHECKIN_NEXT];
+  const overdue = !next || Date.now() - next > 2 * 60 * 1000;
+  if (!overdue) return;
+
+  // A lock left behind by a round that was shut down part way. Clearing it is
+  // what lets rounds start again at all.
+  const held = (await chrome.storage.local.get(CHECKIN_LOCK))[CHECKIN_LOCK];
+  if (held && Date.now() - held >= LOCK_MAX_MS) await releaseRoundLock();
+
+  await scheduleCheckin('watchdog — no round was due');
+}
+
+// ⚠️ ONLY IF IT IS NOT ALREADY THERE. Creating an alarm again with the same name
+// replaces the old one and starts its wait over — and this worker is started up
+// again several times an hour, by every message and every alarm. Re-arming each
+// time would push the watchdog's own turn forever into the future, so the one
+// timer meant to catch a stopped feature would itself never run.
+function armWatchdog() {
+  chrome.alarms.get(CHECKIN_WATCHDOG, (existing) => {
+    void chrome.runtime.lastError;
+    if (existing) return;
+    chrome.alarms.create(CHECKIN_WATCHDOG, {
+      delayInMinutes: WATCHDOG_EVERY_MIN, periodInMinutes: WATCHDOG_EVERY_MIN,
+    });
+  });
 }
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === CHECKIN_ALARM) runCheckinRound();
+  // Nothing thrown in here may escape: an alarm listener that rejects takes its
+  // error nowhere useful and the round is lost with it.
+  if (alarm.name === CHECKIN_ALARM) {
+    Promise.resolve(runCheckinRound()).catch(e => console.log('[Kartaan Click] round: ' + e));
+  }
+  if (alarm.name === CHECKIN_WATCHDOG) {
+    Promise.resolve(checkinWatchdog()).catch(e => console.log('[Kartaan Click] watchdog: ' + e));
+  }
 });
 
 // A second listener rather than another branch inside the one above: that one is
@@ -628,13 +804,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // being dropped for the day — being stopped by a sign-in page is a pause, not
     // an ending. The content script decides: it only carries on if the page it is
     // looking at is no longer a sign-in page.
-    chrome.storage.local.get(CHECKIN_SIGNIN_TABS, (res) => {
-      void chrome.runtime.lastError;
-      const waiting = (res && res[CHECKIN_SIGNIN_TABS]) || {};
-      const isWaitingTab = tabId != null
-        && Object.keys(waiting).some(k => waiting[k] === tabId);
-      sendResponse(isWaitingTab ? { run: true, mode: 'resume' } : { run: false });
-    });
+    //
+    // The tab is checked properly before that permission is given: it must still
+    // be on the portal it was remembered for, the note must be recent, and — for
+    // Flipkart — the order panel must not be mid-run, the same rule the round
+    // itself follows. This branch had none of those and was the way a stale tab
+    // number could be handed permission to click.
+    (async () => {
+      try {
+        const waiting = (await chrome.storage.local.get(CHECKIN_SIGNIN_TABS))[CHECKIN_SIGNIN_TABS] || {};
+        const url = (sender && sender.tab && sender.tab.url) || '';
+        const key = signInTabPortal(waiting, tabId, url);
+        if (!key)                                          { sendResponse({ run: false }); return; }
+        if (key === 'flipkart' && await flipkartRunInProgress()) { sendResponse({ run: false }); return; }
+        const s = await checkinSettings();
+        if (!s.enabled || !s.sites[key])                   { sendResponse({ run: false }); return; }
+        sendResponse({ run: true, mode: 'resume' });
+      } catch (e) {
+        sendResponse({ run: false });
+      }
+    })();
     return true;
   }
 
@@ -646,9 +835,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const tabId = sender && sender.tab ? sender.tab.id : null;
     (async () => {
       if (!msg.signedOut) {
-        const all = (await chrome.storage.local.get(CHECKIN_SIGNIN_TABS))[CHECKIN_SIGNIN_TABS] || {};
-        for (const k of Object.keys(all)) if (all[k] === tabId) delete all[k];
-        await chrome.storage.local.set({ [CHECKIN_SIGNIN_TABS]: all });
+        await forgetSignInTab(tabId);
         await checkinLog({
           site: msg.site, done: msg.done || [], closed: msg.closed || [],
           stoppedAt: msg.stoppedAt || null, resumed: true,
@@ -692,13 +879,37 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-// A round tab that was left mid-round by the worker being shut down. It used to be
-// closed here; it no longer is, because a portal tab left open is the whole point
-// — the next round borrows it rather than starting from the front door again. All
-// that is cleared is the note saying a round was using it.
-async function closeAbandonedRoundTab() {
-  await chrome.storage.local.remove(CHECKIN_TAB);
+// Notes a round leaves behind. NOTHING IS CLOSED — a portal tab left open is the
+// whole point, and the next round borrows it rather than starting from the front
+// door again. This only throws away the paperwork: which tab a round was using,
+// and the note saying a round is going on.
+//
+// (This used to be called closeAbandonedRoundTab and its comment said the next
+// start-up would close the tab. It has not closed anything since 30 Aug. Renamed
+// so it says what it does.)
+async function clearRoundNotes() {
+  await chrome.storage.local.remove([CHECKIN_TAB, CHECKIN_LOCK]);
+  _roundInFlight = false;
 }
 
-chrome.runtime.onStartup.addListener(()   => { closeAbandonedRoundTab(); scheduleCheckin('browser started'); });
-chrome.runtime.onInstalled.addListener(() => { closeAbandonedRoundTab(); scheduleCheckin('installed or updated'); });
+// Everything a browser session leaves behind that must not be believed in the
+// next one. Tab numbers head that list: Chrome starts handing them out from the
+// bottom again, so yesterday's numbers are today's other tabs.
+async function clearStaleSession() {
+  await clearRoundNotes();
+  await chrome.storage.local.remove(CHECKIN_SIGNIN_TABS);
+}
+
+chrome.runtime.onStartup.addListener(() => {
+  clearStaleSession().then(() => scheduleCheckin('browser started'));
+  armWatchdog();
+});
+chrome.runtime.onInstalled.addListener(() => {
+  clearStaleSession().then(() => scheduleCheckin('installed or updated'));
+  armWatchdog();
+});
+
+// The worker is started again for all sorts of reasons after those two have been
+// and gone — a message, an alarm, a download. Making sure the watchdog exists is
+// cheap and it is the one timer that must never quietly not be there.
+armWatchdog();

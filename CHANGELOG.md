@@ -3,6 +3,100 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.4.12 — 4 September 2026
+
+Everything in this version came out of an independent review of the check-in
+feature by someone who had not written any of it. Twenty-six things were raised
+and all of them are fixed here. Nothing about what the feature does has changed —
+what changed is how carefully it does it, and how honestly it is described.
+
+**The clicking is much less willing to guess.**
+
+- **Pop-ups now have to be box-shaped.** "Lifted off the page and big enough to be
+  in the way" also describes the strip across the top of every one of these
+  portals and the menu down the side, and both were being treated as pop-ups to
+  close. A pop-up now has to be at least a fifth of the window wide *and* an eighth
+  of it tall. Page furniture is left alone.
+- **The corner rule is fenced in.** Pressing a small wordless thing in a pop-up's
+  top-right corner is the least certain thing in here. It must now also not sit
+  inside a button that has words, not be inside a link to another page — an advert
+  or a cross-sell tile is — and not be named in the page as a menu, a gear, a bell
+  or anything else that lives in a corner. Clicks it worked out for itself are
+  rationed to three for a whole visit, where the ceiling used to be nine.
+- **The list of words it refuses now guards every way it looks**, not just one of
+  them. A thing could be refused for its words and then pressed anyway a moment
+  later because of its class name or its position.
+- **"OK" is no longer pressed.** On a notice it means "go away"; on a question —
+  *Cancel this order? Cancel / OK* — it is the answer, and nothing here can tell
+  the two apart. Escape is tried instead.
+- **"cross" is no longer read as a close button in a class name.** It matched
+  cross-sell, cross-border and cross-listing, which on a marketplace are adverts.
+- **Escape is not pressed while you are typing.**
+- **Order tabs are no longer looked for inside the orders table.** "Pending" is a
+  tab and also the status of every second row, and the row was sometimes closer to
+  the top of the page.
+
+**Signing in got stricter, not looser.**
+
+- **It will not press a Log in button if there is anywhere on the page to type a
+  password, a phone number or a code.** It never typed anything — but pressing a
+  form's own button when the browser has already filled it in sends those saved
+  details, and that is not what a promise about your passwords should mean.
+- **"Continue" is no longer treated as a way in.** On Meesho's shop window it is
+  the button beside a phone number box, so pressing it starts sending somebody an
+  access code.
+
+**Two ways it could have acted somewhere it should not.**
+
+- **A tab number is not a name.** The list of tabs waiting to be signed in to kept
+  raw tab numbers for ever, and browsers hand those numbers out again from the
+  bottom each time they start — so a note left over from yesterday could have given
+  a round permission to click about in an ordinary tab of yours. The list is now
+  emptied when the browser starts, an entry goes the moment its tab is closed, and
+  every entry says which portal and when, both of which are checked before it is
+  believed.
+- **The Flipkart order panel is checked for a second time**, at the last moment
+  before a tab is opened, and on the sign-in resume path which had no such check at
+  all. Starting a second copy of an order run on live orders is the one thing in
+  here that would actually cost money.
+
+**It can no longer stop without saying so.**
+
+- **A round that fails no longer ends check-ins for good.** The next round was only
+  set at the end of the last one, so anything going wrong in the middle stopped the
+  feature silently — while the settings page went on showing a time for a round
+  that was never coming.
+- **A second timer now watches the first**, every fifteen minutes, and sets a round
+  if none is due.
+- **Only one round at a time.** The timer could go off while "Do one round now" was
+  still going, and the two rounds shared one set of notes — which is where the
+  duplicate tabs and the "the page never answered" lines came from.
+- **Rounds are never closer together than ten minutes.** One minute was accepted,
+  which is hundreds of automatic visits a day to your own account.
+- **An order run that was interrupted no longer blocks Flipkart check-ins for
+  ever.** A run whose tab was closed part way says "running" with nothing left to
+  clear it.
+
+**The manual and the store listing now say what the code actually does.** Three
+documents said the round is inert on any tab you opened yourself. It is not: it
+borrows a background tab you already have on that portal, which is the thing that
+finally got past Meesho's sign-in, and it acts in a tab left open for you to sign
+in to. What is true — and now what is written — is that it never acts in the tab
+you are looking at. Five places still said the round closes the tab afterwards,
+which stopped being true on 30 August. The privacy policy no longer says the Meesho
+account code is only read while check-ins are on, because it is read whenever you
+are on your own panel. And the settings page now says plainly that the random gaps
+and pauses are there to resemble a person.
+
+**The release rules were checked too, and one of them was for show.** The rule
+meant to catch code contacting a server nobody had disclosed only recognised two
+ways of writing a request, and would not have caught a single other one — including
+a call already in this extension. It now checks every web address written anywhere
+in the shipped code against a list, bans the ways of reaching a server this
+extension does not use, and requires any request whose destination is not written
+out on the spot to carry a note saying where it goes. The manifest description
+length the store enforces is now checked here as well.
+
 ## 1.4.11 — 4 September 2026
 
 - **Stopped mistaking "login" for your Meesho account code.** Meesho's own sign-in
