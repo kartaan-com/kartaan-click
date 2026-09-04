@@ -69,9 +69,12 @@ customer information and nothing about your account, and nothing from those page
 ever leaves your computer.** It cannot sign you in; if you are signed out, the round simply finds
 nothing and stops.
 
-The only thing it writes down is a short list of what the last few rounds clicked,
-kept in your own browser so you can see it working, which you can clear at any
-time.
+Two things are written down, both in your own browser and neither sent anywhere: a
+short list of what the last few rounds clicked, which you can clear at any time,
+and — on Meesho only — the account code that Meesho itself puts in the address of
+your orders page. That code is read from the address bar when you are on your own
+Meesho panel, and is used for one thing: building the address a round opens, so you
+are never asked to find and paste it yourself.
 
 ## Permissions
 

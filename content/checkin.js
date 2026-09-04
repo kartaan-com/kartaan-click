@@ -67,6 +67,45 @@ const SITES = {
 const site = SITES[location.hostname];
 if (!site) return;
 
+// ── learning the Meesho account code ────────────────────────────────────────
+//
+// Meesho's orders page address carries a code belonging to the seller's own
+// account — .../panel/v3/new/fulfillment/<code>/orders/pending — so there is no
+// one address that works for everybody, and asking each seller to find and paste
+// their own is a poor way to start using something.
+//
+// They do not have to. The code is sitting in the address bar every time they are
+// on their own Meesho panel, so it is simply read and remembered the first time
+// they are there. Nothing is asked for and nothing is sent anywhere: it is written
+// to this browser's own storage and used only to build the address a round opens.
+//
+// This runs on ANY Meesho panel tab, including one the seller opened themselves,
+// and BEFORE the round's own permission check — noticing the address of a page
+// they are already looking at is not acting on their page.
+const MEESHO_CODE_KEY = 'kcMeeshoCode';
+
+function learnMeeshoCode() {
+  if (location.hostname !== 'supplier.meesho.com') return;
+  const m = location.pathname.match(/\/fulfillment\/([A-Za-z0-9_-]{3,40})(?:\/|$)/);
+  if (!m) return;
+  chrome.storage.local.get(MEESHO_CODE_KEY, (res) => {
+    void chrome.runtime.lastError;
+    if (res && res[MEESHO_CODE_KEY] === m[1]) return;   // already known
+    chrome.storage.local.set({ [MEESHO_CODE_KEY]: m[1] }, () => void chrome.runtime.lastError);
+  });
+}
+
+if (location.hostname === 'supplier.meesho.com') {
+  learnMeeshoCode();
+  // Meesho's panel is a single-page application: signing in lands on the front
+  // door and then moves to the real panel address without loading a new page, so
+  // the code is often not there yet at this moment. These catch that move. Plain
+  // timers on purpose — requestAnimationFrame stops dead in a hidden tab.
+  window.addEventListener('popstate',   learnMeeshoCode);
+  window.addEventListener('hashchange', learnMeeshoCode);
+  for (const ms of [3000, 8000, 15000, 25000]) setTimeout(learnMeeshoCode, ms);
+}
+
 // How long to wait for the FIRST thing to appear. Much longer than the rest,
 // because on the first step the whole seller portal is still starting up — these
 // are big single-page applications and a cold start is not quick. Later steps are

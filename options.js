@@ -147,6 +147,18 @@ function describe(e) {
                         + whereLine(e) : '');
 }
 
+// Whether the Meesho account code has been picked up yet. Worth saying out loud:
+// until it has, a Meesho round lands on the front door instead of the orders page.
+async function showMeeshoCode() {
+  const code = (await chrome.storage.local.get('kcMeeshoCode')).kcMeeshoCode;
+  const el   = $('meeshoCode');
+  if (!el) return;
+  el.textContent = code
+    ? 'Meesho: your account was picked up automatically — rounds go straight to your orders page.'
+    : 'Meesho: not seen yet. Open your Meesho orders page once in this browser and it '
+      + 'sorts itself out; until then a Meesho round lands on the Meesho home page.';
+}
+
 async function showLog() {
   const all = (await chrome.storage.local.get(LOG))[LOG] || [];
   $('log').textContent = all.length ? all.map(describe).join('\n') : 'Nothing yet.';
@@ -196,4 +208,5 @@ chrome.storage.local.get(KEY).then(res => {
   });
   showNext();
   showLog();
+  showMeeshoCode();
 });

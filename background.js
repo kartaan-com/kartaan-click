@@ -265,8 +265,13 @@ const CHECKIN_SITES = {
     // .../panel/v3/new/fulfillment/<code>/orders/pending, and that <code> belongs
     // to one seller's account. Hard-coding one would send every other user of this
     // extension at somebody else's shop, and would put a real account code in a
-    // public repository. So the front door is the fallback, and each seller pastes
-    // their own address on the settings page.
+    // public repository.
+    //
+    // The seller is not asked for it either. content/checkin.js reads the code out
+    // of the address bar the first time they are on their own Meesho panel and
+    // remembers it, and meeshoOrdersUrl() below builds the address from that. This
+    // front door is only the fallback for before that has happened — and opening
+    // it is itself what usually teaches the code, so the round after it works.
     url: 'https://supplier.meesho.com/',
   },
   amazon: {
@@ -280,10 +285,22 @@ const CHECKIN_SITES = {
 // given one, otherwise the built-in. Checked against that portal's own hostname
 // before it is used, so a typo or a pasted wrong link can never send a round
 // somewhere else entirely.
-function checkinUrlFor(key, s) {
+// The Meesho orders address for THIS seller, built from the code learned off
+// their own panel. Returns nothing until that has happened.
+const MEESHO_CODE_KEY = 'kcMeeshoCode';
+async function meeshoOrdersUrl() {
+  const code = (await chrome.storage.local.get(MEESHO_CODE_KEY))[MEESHO_CODE_KEY];
+  if (!code || !/^[A-Za-z0-9_-]{3,40}$/.test(code)) return '';
+  return 'https://supplier.meesho.com/panel/v3/new/fulfillment/' + code + '/orders/pending';
+}
+
+async function checkinUrlFor(key, s) {
   const cfg    = CHECKIN_SITES[key];
   const custom = ((s.urls || {})[key] || '').trim();
-  if (!custom) return cfg.url;
+  if (!custom) {
+    if (key === 'meesho') return (await meeshoOrdersUrl()) || cfg.url;
+    return cfg.url;
+  }
   try {
     const u = new URL(custom);
     if (u.protocol === 'https:' && u.hostname === cfg.host) return u.href;
@@ -396,10 +413,9 @@ async function rememberSignInTab(key, tabId) {
   await chrome.storage.local.set({ [CHECKIN_SIGNIN_TABS]: all });
 }
 
-function visitOnce(key, settings) {
+function visitOnce(key, url) {
   return new Promise(resolve => {
     const cfg = CHECKIN_SITES[key];
-    const url = checkinUrlFor(key, settings);
     let settled = false;
 
     const finish = async (result) => {
@@ -487,7 +503,7 @@ async function runCheckinRound(force) {
       }
       await rememberSignInTab(key, null);
 
-      const r = await visitOnce(key, s);
+      const r = await visitOnce(key, await checkinUrlFor(key, s));
       await checkinLog(r);
       // A breath between portals, so three tabs are not opened in one burst.
       await new Promise(res => setTimeout(res, checkinRand(4000, 12000)));

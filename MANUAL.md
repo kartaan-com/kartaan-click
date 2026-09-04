@@ -269,25 +269,34 @@ get one page with everything on it:
 | Check in every … to … minutes | A different, random gap each time, somewhere between the two numbers. Never the same beat over and over | 20 to 60 minutes |
 | Only between … and … | Your working hours. Nothing runs outside them | 9 AM to 9 PM |
 | Which portals | Tick the ones you sell on | All three |
-| Your orders page on each portal | The address a round opens. See below | Empty |
+| Your orders page on each portal | An override, rarely needed. See below | Empty — worked out for you |
 
 Press **Save**. The page then tells you when the next round is due.
 
-#### The orders page address — and why Meesho needs yours
+#### The orders page address — you should not need to touch this
 
 A round opens your orders page directly rather than the portal's front door.
-Flipkart's and Amazon's addresses are the same for every seller, so those two boxes
-can be left empty and the built-in one is used.
+Flipkart's and Amazon's addresses are the same for every seller, so those are
+built in.
 
-**Meesho's cannot.** Its orders address looks something like
+Meesho's is not. Its orders address looks something like
 `supplier.meesho.com/panel/v3/new/fulfillment/xxxxx/orders/pending`, and that
-`xxxxx` belongs to your own account — there is no address that works for everybody.
-Open your orders page on Meesho, copy what is in the browser's address bar, and
-paste it into the Meesho box.
+`xxxxx` is a code belonging to your own account — there is no address that works
+for everybody.
 
-Anything that is not a secure address on that portal's own site is dropped rather
-than saved, so a mistyped or wrongly pasted link can never send a round off to
-another website.
+**You do not have to find it.** The code is in the address bar every time you are
+on your own Meesho panel, so it is read from there the first time you are and
+remembered. Nothing is asked for and nothing is sent anywhere — it stays in this
+browser and is used for nothing but building the address a round opens. The
+settings page tells you whether it has been picked up yet.
+
+Until it has, a Meesho round lands on the Meesho home page instead, and opening
+that is usually what teaches it — so the round after that goes to the right place.
+
+The three address boxes are an override for the rare case where a round is landing
+somewhere wrong. Anything that is not a secure address on that portal's own site is
+dropped rather than saved, so a mistyped or wrongly pasted link can never send a
+round off to another website.
 
 **Do one round now** runs a round immediately so you can watch it work rather than
 waiting to find out. Underneath, **What the last rounds did** lists what each round

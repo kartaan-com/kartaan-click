@@ -3,6 +3,19 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.4.3 — 4 September 2026
+
+- **Meesho now sorts itself out.** You no longer paste anything. The code Meesho
+  puts in your orders page address belongs to your own account, and it is simply
+  read from the address bar the first time you are on your Meesho panel and
+  remembered. Rounds then go straight to your orders page.
+- Until that has happened a Meesho round lands on the Meesho home page — and
+  opening that is usually what teaches it, so the next round is right. The settings
+  page says which of the two you are in.
+- The address boxes are still there as an override, but you should not need them.
+  Nothing about your account is sent anywhere; the code is kept in this browser
+  only, and is used for nothing but building the address a round opens.
+
 ## 1.4.2 — 4 September 2026
 
 - **A round now opens your orders page directly** instead of the portal's front
