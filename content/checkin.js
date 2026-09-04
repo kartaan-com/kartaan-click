@@ -59,6 +59,12 @@ const SITES = {
   'supplier.meesho.com': {
     name:  'Meesho',
     steps: ['On Hold', 'Pending', 'Ready to Ship'],   // lands on Orders → Pending
+    // supplier.meesho.com/ is Meesho's SHOP WINDOW — "Sell online at 0%
+    // commission" — not the seller's panel. A signed-in seller belongs under
+    // /panel/. Landing anywhere else means we are not in yet, whatever the page
+    // looks like: no password box, no "sign in" in the title, and still no way
+    // through. Two rounds were spent hunting for an order tab on an advert.
+    inside: () => /^\/panel\//.test(location.pathname),
   },
   'sellercentral.amazon.in': {
     name:  'Amazon',
@@ -170,6 +176,13 @@ function looksSignedOut() {
   return /\b(sign in|log in|login|amazon sign-in)\b/.test(title);
 }
 
+// Not in yet — either the portal is plainly showing a sign-in page, or this is a
+// site where being signed in means being somewhere particular and we are not there.
+function needsSignIn() {
+  if (looksSignedOut()) return true;
+  return !!(site.inside && !site.inside());
+}
+
 // Waits for `fn()` to return something, or gives up. Deliberately coarse (half a
 // second) because a hidden tab cannot tick faster than once a second anyway.
 // Stops early the moment the page turns into a sign-in page, so a portal that
@@ -179,7 +192,7 @@ async function waitFor(fn, timeoutMs) {
   for (;;) {
     const v = fn();
     if (v) return v;
-    if (looksSignedOut()) return null;
+    if (needsSignIn()) return null;
     if (Date.now() > deadline) return null;
     await sleep(500);
   }
@@ -345,7 +358,7 @@ async function tryTheLoginButton() {
   // Signing in is a round trip to their server, and this tab is hidden, so give it
   // room. If the page navigates, this script dies here and the next one picks the
   // story up — which is why a round tab is allowed more than one attempt.
-  const backIn = await waitFor(() => !looksSignedOut(), 15000);
+  const backIn = await waitFor(() => !needsSignIn(), 15000);
   return !!backIn;
 }
 
@@ -371,7 +384,7 @@ async function run() {
   // saying so quickly is better than waiting to be redirected out from under.
   await sleep(rand(2000, 3200));
 
-  if (looksSignedOut()) {
+  if (needsSignIn()) {
     const gotIn = await tryTheLoginButton();
     if (!gotIn) {
       showSignInPrompt();
@@ -408,7 +421,7 @@ async function run() {
     }
 
     // Signed out part-way through — the session ran out, or the portal bounced us.
-    if (!el && looksSignedOut()) {
+    if (!el && needsSignIn()) {
       showSignInPrompt();
       await ask({
         type: resuming ? 'CHECKIN_RESUMED_DONE' : 'CHECKIN_DONE',

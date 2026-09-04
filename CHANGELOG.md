@@ -3,6 +3,16 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.4.6 — 4 September 2026
+
+- **Meesho: being on the shop window is not being signed in.** `supplier.meesho.com`
+  on its own is Meesho's advert for sellers, not your panel — no password box, no
+  "sign in" anywhere, and no way through. Two rounds were spent hunting for an
+  order tab on it. A round now knows that being signed in to Meesho means being
+  somewhere under `/panel/`, and treats anything else as needing you: it presses
+  Meesho's own Log in button, and if that does not work it leaves the tab asking
+  you to sign in and picks up the moment you do.
+
 ## 1.4.5 — 4 September 2026
 
 - **A sign-in page pauses a portal now, it does not drop it.** Three changes, all
