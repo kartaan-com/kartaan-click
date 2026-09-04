@@ -3,6 +3,37 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.4.14 — 4 September 2026
+
+Found by opening the real Meesho panel and watching a real pop-up, rather than
+reading the code and reasoning about it. The pop-up that came up was a credit
+offer — *"Your Approved Limit is Expiring"*, with a **Withdraw Now!!** button in
+the middle of it. A better test than anything that could have been invented.
+
+- **The close cross was found and then missed by a hair.** Meesho draws that cross
+  as a picture inside a box, both exactly 25 pixels square, both sitting in the
+  same place, and neither with any words. Both matched, and the search took the
+  first one in the page, which is the outer box — while Meesho has put the actual
+  close handler on the picture inside it. A press on the box travels outwards, not
+  inwards, so the handler never ran: the round found precisely the right spot and
+  pressed a hair's breadth behind it, and the pop-up stayed open. Every way of
+  finding an icon now takes the innermost one, which is the thing a person's click
+  would land on — the same rule the order tabs have always used. Watched again
+  afterwards on the same pop-up: it closes.
+- **Words that commit you to something are now refused by name.** Nothing could
+  have pressed "Withdraw Now!!" — a close button has to be wordless, or a bare
+  cross, or an exact "go away" word, and it is none of those. But not one of the
+  four rules that kept us off it was a rule that knew the word was dangerous, and
+  that is a thin thing to rely on. Withdraw, Apply, Pay, Buy, Subscribe, Upgrade,
+  Renew, Recharge, Activate, Participate, Claim, Redeem and Agree now join Accept
+  on the list of words this will not press, matched anywhere in the label rather
+  than only at the start — the real button began with a pointing-finger picture,
+  which a test for what a label starts with would have sailed straight past.
+
+Also confirmed on the live portals, pressing nothing: Meesho's On Hold, Pending
+and Ready to Ship all resolve to the real tab buttons with a live order on screen,
+and none of them to anything in the orders table.
+
 ## 1.4.13 — 4 September 2026
 
 - **The check-in round no longer treats our own Flipkart panel as a pop-up.**

@@ -346,12 +346,42 @@ function candidateBoxes() {
 // would not be.
 const CROSS = /^[×✕✖⨯xX]$/;
 
+// ⚠️ TAKE THE INNERMOST ONE. Watched on Meesho's real promotion box, 4 Sep 2026.
+// Its close cross is an <img> inside a <div>, both 25 pixels square, both sitting
+// in exactly the same place, and both wordless — so both matched, and the search
+// took the first in the markup, which is the OUTER div. The page has put its
+// handler on the IMG. A press on the div goes up the page, not down into the img,
+// so the handler never ran: the round found precisely the right spot and pressed
+// a hair's breadth behind it, and the pop-up stayed open.
+//
+// A person clicking there hits the img, because it is the thing on top. This is
+// the same rule findByWords has always used for tabs, and it belongs here too.
+const innermost = list => list.filter(e => !list.some(o => o !== e && e.contains(o)));
+
 // Words that must never be pressed, wherever they are found. Until 2026-09-04
 // this list only guarded ONE of the four ways a close button is looked for, so a
 // thing could be excluded by its words and then clicked anyway a few lines later
 // because of its class name or its position. It now guards all four.
 const NEVER_PRESS = ['cancel', 'continue', 'done', 'ok', 'okay', 'yes', 'no',
                      'confirm', 'submit', 'save', 'delete', 'remove', 'proceed'];
+
+// Words that commit the seller to something, usually money. NONE of these could
+// be reached today — a close button has to be wordless or a bare cross or an exact
+// dismiss word, and every one of these fails all three. This list is here because
+// of what the real pop-up turned out to be on 4 Sep 2026: a credit offer whose
+// button read "👉 Withdraw now!". Four separate rules kept us off it and not one
+// of them was a rule that knew the word was dangerous. That is a thin kind of
+// safety to rely on, so the danger is now written down as well.
+//
+// ⚠️ MATCHED AS WHOLE WORDS ANYWHERE IN THE LABEL, not as the start of it. The
+// real button read "👉 Withdraw now!" — it began with a picture, so a test for
+// what the label starts with would have sailed straight past the very example
+// this list was written for.
+const NEVER_PRESS_WORDS = ['accept', 'withdraw', 'apply', 'pay', 'buy', 'subscribe',
+                           'upgrade', 'renew', 'recharge', 'activate', 'enable',
+                           'participate', 'claim', 'redeem', 'agree', 'authorise',
+                           'authorize'];
+const NEVER_PRESS_RE = new RegExp('(^|[^a-z])(' + NEVER_PRESS_WORDS.join('|') + ')([^a-z]|$)');
 
 function forbiddenWords(el) {
   // The words of the thing itself, and of the button it sits inside — a picture
@@ -362,7 +392,7 @@ function forbiddenWords(el) {
     const t = norm(txt(node));
     if (!t) continue;
     if (CROSS.test(txt(node))) continue;          // a bare cross is not a word
-    if (t.indexOf('accept') === 0) return true;   // "Accept" is what we press on real orders
+    if (NEVER_PRESS_RE.test(t)) return true;
     if (NEVER_PRESS.indexOf(t) !== -1) return true;
     if (t.length > 24) return true;               // a paragraph is not a close button
   }
@@ -408,8 +438,8 @@ function dismissOnce() {
       DISMISS_WORDS.indexOf(norm(txt(el))) !== -1 && isVisible(el) && !isDisabled(el));
     if (worded) { humanClick(worded); return txt(worded); }
 
-    const cross = [...box.querySelectorAll('button, [role="button"], a, span, i, svg')].find(el =>
-      CROSS.test(txt(el)) && pressable(el));
+    const cross = innermost([...box.querySelectorAll('button, [role="button"], a, span, i, svg')].filter(el =>
+      CROSS.test(txt(el)) && pressable(el)))[0];
     if (cross) { humanClick(cross); return 'the cross'; }
 
     // Everything below here is the round WORKING IT OUT rather than being told, so
@@ -424,14 +454,14 @@ function dismissOnce() {
     // of advert tiles. A real cross is caught by the line above, by being one.
     // The thing found here must also be wordless, so a button that happens to sit
     // in a container called "close-panel" is not pressed for its neighbour's name.
-    const marked = [...box.querySelectorAll('button, [role="button"], a, span, i, div')].find(el => {
+    const marked = innermost([...box.querySelectorAll('button, [role="button"], a, span, i, div')].filter(el => {
       const bits = [el.id || '', el.getAttribute('data-testid') || '',
                     (typeof el.className === 'string' ? el.className : '')].join(' ').toLowerCase();
       if (!/(^|[^a-z])(close|dismiss)([^a-z]|$)/.test(bits)) return false;
       const t = txt(el);
       if (t && !CROSS.test(t)) return false;                 // it has words: not a close icon
       return pressable(el);
-    });
+    }))[0];
     if (marked) { heuristicClicks++; humanClick(marked); return 'the close button'; }
 
     // Last resort inside the box: the cross drawn as a picture, with no text, no
@@ -448,7 +478,7 @@ function dismissOnce() {
     // (an advert), not be inside a button that does have words (its own picture),
     // and not be one of the things a corner is normally used for.
     const b = box.getBoundingClientRect();
-    const corner = [...box.querySelectorAll('button, [role="button"], a, span, i, svg, img, div')].find(el => {
+    const corner = innermost([...box.querySelectorAll('button, [role="button"], a, span, i, svg, img, div')].filter(el => {
       if (!pressable(el)) return false;
       const t = txt(el);
       if (t && !CROSS.test(t)) return false;                 // it has words: not an icon
@@ -461,7 +491,7 @@ function dismissOnce() {
       if (r.width < 8  || r.height < 8)  return false;       // too small to be a target
       return (b.right - r.right) <= b.width * 0.18           // tucked to the right
           && (r.top - b.top)    <= b.height * 0.18;          // and to the top
-    });
+    }))[0];
     if (corner) { heuristicClicks++; humanClick(corner); return 'the close icon'; }
   }
   return null;
