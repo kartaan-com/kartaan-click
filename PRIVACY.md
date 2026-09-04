@@ -6,9 +6,10 @@ Last updated: 4 September 2026
 
 - It does not collect, store, or transmit personal information.
 - A few things are remembered inside your own browser so the tools work at all —
-  your settings, a short list of what the last few rounds did, and the Meesho
-  account code Meesho itself puts in your address bar. Every one of them is listed
-  below. None of them leaves your computer, and you can clear them.
+  your settings, a short list of what the last few rounds did, the SKUs you ticked
+  and what was accepted for you, and the Meesho account code Meesho itself puts in
+  your address bar. Every one of them is listed below. None of them leaves your
+  computer, and you can clear them.
 - There is no backend, no analytics, no telemetry, and no tracking of any kind.
 - It has no accounts and no login.
 - It does not read your browsing history or your activity on any other site.
@@ -89,13 +90,42 @@ your orders page. That code is read from the address bar when you are on your ow
 Meesho panel, and is used for one thing: building the address a round opens, so you
 are never asked to find and paste it yourself.
 
+### 4. Accepting orders — `seller.flipkart.com` and `supplier.meesho.com`
+
+**Off unless you switch it on**, from the extension's own settings page — and even
+switched on it accepts nothing until you have separately ticked the SKUs you are
+willing to have accepted.
+
+When it is on, at the end of a check-in round the extension works down the list of
+orders waiting to be accepted on your Flipkart To Accept tab or your Meesho Pending
+tab and presses **Accept** on the ones that pass rules you set: the SKU is one you
+ticked, the order is due within the number of days you chose, and you have not
+already reached the daily number you set for that SKU.
+
+To do that it reads, from the order rows on those two pages only: **the SKU code
+and the dispatch-by date**. On Flipkart the date is read from the group heading
+above the list; on Meesho it is read from the Dispatch Date column. It does not
+read customer names, addresses, phone numbers, order values or payment details, and
+**nothing from those pages leaves your computer** — there is nowhere for it to go.
+
+It presses **Accept** and nothing else. It does not press Cancel, and it does not
+press a button inside any box that was already open on the page when it clicked.
+If a confirmation box appears because of its own click, it presses only a button
+whose whole label is one of a short fixed list; anything else and it presses
+nothing at all, writes down the exact words that were on the box, and stops.
+
+Four more things are written down, all in your own browser and none of them sent
+anywhere: which SKUs you ticked, the daily number you set against each, how many of
+each SKU have been accepted so far today, and a list of the orders it accepted.
+You can clear the list from the settings page at any time.
+
 ## Permissions
 
 Here is exactly what each of the things it asks for is used for.
 
 | Permission | What it is used for |
 |---|---|
-| `storage` | Remembering things between page loads on your own computer: whether a run is in progress and how far it has got, which SKUs you ticked, where you dragged the panel, and the panel's log. This is your browser's own storage. Nothing in it is sent anywhere. |
+| `storage` | Remembering things between page loads on your own computer: whether a run is in progress and how far it has got, which SKUs you ticked and the daily number you set against each, how many of each SKU have been accepted today, the list of orders that were accepted, where you dragged the panel, and the panel's log. This is your browser's own storage. Nothing in it is sent anywhere. |
 | `downloads` | Saving Flipkart shipping labels. When you print labels, the extension files each one into a **Kartaan Click Labels** folder inside your normal Downloads folder, and reports back whether it saved. |
 | `alarms` | Knowing when the next portal check-in is due. A browser alarm is the only timer that survives the extension being put to sleep, which browsers do within about half a minute of it doing nothing. It holds one time and nothing else. |
 | access to `seller.flipkart.com`, `supplier.meesho.com`, `sellercentral.amazon.in` | Two things, both about your own seller portals: running the tools described above on those pages, and — before a check-in opens a new tab — asking the browser whether you already have that portal open, so it can use your tab instead of adding another. Tabs on any other site are never looked at. |

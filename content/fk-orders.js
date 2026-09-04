@@ -51,6 +51,21 @@ const LOG_KEY    = 'kcOrdersLog';
 const UI_KEY     = 'kcOrdersUi';      // panel position, collapsed state, dismissed notice
 const FILTER_KEY = 'kcOrdersFilter';  // { mode: [sku, sku, ...] } — survives reloads mid-run
 
+// ── accepting on the timed round (added for auto-accept) ────────────────────
+//
+// EVERYTHING IN THIS FILE MARKED "AUTO" ONLY RUNS WHEN A ROUND STARTED THE RUN —
+// that is, when the stored state says `auto: true`, which only background.js ever
+// sets. Pressing Start on this panel by hand goes down exactly the same path it
+// always has, with none of it switched on. That was the point of adding it this
+// way rather than changing what was already working: the by-hand run somebody
+// relies on every day executes the same lines today as it did yesterday.
+//
+// The rules themselves — which dates count as soon enough, which SKUs are allowed,
+// how many of one SKU may be taken in a day — live in content/kc-accept-rules.js
+// and are shared with the Meesho side, so the answer is the same on both portals.
+const RULES = window.KC_ACCEPT;
+const AUTO_PORTAL = 'flipkart';
+
 // Chrome and Edge both default to asking where to save every file. While that is
 // on, printing labels cannot be hands-free: the browser puts a Save-As box on
 // screen and the run has to stop and wait for a human every single time. There is
@@ -397,6 +412,7 @@ function buildPanel(mode) {
     '#__kcPanel .go{background:#1a7f37}',
     '#__kcPanel .stop{background:#b62324}',
     '#__kcPanel .scan{background:#8250df}',
+    '#__kcPanel .save{background:#1a7f37}',
     '#__kcPanel input[type=number]{width:62px;background:#0d1117;color:#e8eaed;border:1px solid #30363d;',
     'border-radius:5px;padding:4px 6px}',
     '#__kcPanel .stat{font-size:12px;margin-bottom:8px;color:#9fb0c0}',
@@ -406,7 +422,11 @@ function buildPanel(mode) {
     '#__kcPanel .skus{max-height:150px;overflow:auto;background:#0d1117;border-radius:6px;',
     'padding:6px 8px;margin-bottom:8px;display:none}',
     '#__kcPanel .skus div{display:flex;gap:6px;align-items:center;padding:2px 0;color:#c9d1d9}',
-    '#__kcPanel .skus b{margin-left:auto;color:#7ee787;font-weight:600}',
+    '#__kcPanel .skus b{margin-left:auto;color:#7ee787;font-weight:600;white-space:nowrap}',
+    // AUTO. The daily cap box beside each SKU. Narrower than the "Stop after" box
+    // above it on purpose — they are different things and should not look alike.
+    '#__kcPanel input.cap{width:46px;background:#161b22;color:#e8eaed;border:1px solid #30363d;',
+    'border-radius:5px;padding:2px 4px;font-size:11px;flex:0 0 auto}',
     '#__kcPanel .hint{color:#6e7681;font-size:11px;margin-bottom:8px}',
     '#__kcPanel .upd{background:#2e2400;border:1px solid #5a4400;border-radius:6px;padding:7px 9px;',
     'margin-bottom:8px;color:#f0d68a;font-size:11px;line-height:1.5;display:none}',
@@ -435,9 +455,21 @@ function buildPanel(mode) {
         + '</div>'
       : ''),
     (mode.skuFilter
-      ? '  <div class="row"><button class="scan" id="__kcScan">Scan SKUs</button></div>'
+      ? '  <div class="row"><button class="scan" id="__kcScan">Scan SKUs</button>'
+        + '<button class="save" id="__kcSave">Save ticks</button></div>'
         + '  <div class="skus" id="__kcSkus"></div>'
-        + '  <div class="hint" id="__kcHint">Scan first, then tick the SKUs to work through. Nothing ticked = all of them.</div>'
+        // The same list of ticks means two different things depending on who is
+        // reading it, and saying so here is the only place it can be said at the
+        // moment somebody is ticking. Pressing Start by hand has always treated
+        // "nothing ticked" as "work through all of them". A round that accepts on
+        // its own treats it the other way round — nothing ticked, nothing touched
+        // — because a filter nobody has filled in must never be read as consent.
+        + '  <div class="hint" id="__kcHint">Scan first, then tick the SKUs.<br>'
+        + '<b>Start</b> (by hand): nothing ticked = all of them.<br>'
+        + '<b>Accepting on its own</b>: nothing ticked = nothing accepted. Put a number '
+        + 'beside a SKU to cap how many of it you will take in one day; blank means no cap. '
+        + 'Press <b>Save ticks</b> to keep them without starting a run.</div>'
+        + '  <div class="row"><button id="__kcAutoPreview">What a round would do now</button></div>'
       : ''),
     '  <div class="row"><label>Stop after <input type="number" id="__kcLimit" min="1" value="50"> orders</label></div>',
     // On every tab, not just the labels one: this probe makes its own file and
@@ -549,6 +581,12 @@ function buildPanel(mode) {
 
   if (mode.skuFilter) {
     panel.querySelector('#__kcScan').onclick = () => scanSkus(mode);
+    // AUTO. Start has always saved the ticks on its way past, which was enough
+    // while a run was the only thing that read them. A round that accepts on its
+    // own never presses Start, so there has to be a way to put ticks and daily
+    // caps away without starting anything.
+    panel.querySelector('#__kcSave').onclick = () => saveTicksAndCaps(mode);
+    panel.querySelector('#__kcAutoPreview').onclick = () => autoPreview(mode);
   }
 
   panel.querySelector('#__kcStart').onclick = async () => {
@@ -592,6 +630,48 @@ function tickedSkus() {
   if (!skuBox) return [];
   return [...skuBox.querySelectorAll('input[type=checkbox]')]
     .filter(c => c.checked).map(c => c.dataset.sku);
+}
+
+// AUTO. Puts the ticks and the daily caps away without starting anything.
+async function saveTicksAndCaps(mode) {
+  if (!skuBox) return;
+  await setFilter(mode, tickedSkus());
+  const caps = {};
+  for (const box of skuBox.querySelectorAll('input.cap')) {
+    const n = parseInt(box.value, 10);
+    if (Number.isFinite(n) && n > 0) caps[box.dataset.sku] = n;
+  }
+  if (RULES) await RULES.setCaps(AUTO_PORTAL, caps);
+  const ticked = tickedSkus();
+  await log('saved — ' + (ticked.length ? ticked.length + ' SKU(s) ticked' : 'nothing ticked')
+    + ', ' + Object.keys(caps).length + ' with a daily limit.');
+  await autoPreview(mode);
+}
+
+// AUTO. What a round would do with these settings if one started this second.
+// Not a switch and not a mode — this panel answering a question the seller would
+// otherwise have to find out by letting it loose on real orders.
+async function autoPreview(mode) {
+  if (!RULES) return;
+  const s      = await RULES.settings();
+  const pills  = sectionPills().map(p => txt(p));
+  if (!s.enabled || !s.sites.flipkart) {
+    await log('accepting on its own is switched OFF for Flipkart in settings.');
+  }
+  if (!pills.length) {
+    await log('no "Dispatch by …" headings on this tab, so a round could not tell when '
+      + 'these are due — it would leave every one of them alone.');
+    return;
+  }
+  for (const p of pills) {
+    const v = RULES.allowedByDate(p, s);
+    await log((v.ok ? 'would work through' : 'would skip') + ' "' + p + '" — ' + v.why);
+  }
+  const ticked = await RULES.tickedSkus(mode.id);
+  await log(s.onlyTickedSkus
+    ? (ticked.length ? '…and only these SKUs: ' + ticked.join(', ')
+                     : '…but NO SKUs are ticked, so nothing would be accepted.')
+    : '…any SKU is allowed.');
 }
 
 async function paint(mode, extra) {
@@ -641,6 +721,20 @@ async function gotoSection(mode, i) {
   return true;
 }
 
+// AUTO. A section's heading carries a running count — "Dispatch by 12 PM,
+// Tomorrow (48)" — and that count DROPS as orders are accepted. So a section is
+// remembered by the words in front of the count, never by the whole heading and
+// never by its position in the row of headings: a section that empties disappears
+// altogether and every heading after it shifts along one.
+const pillLabel = t => String(t || '').replace(/\s*\(\d+\)\s*$/, '').trim();
+
+async function gotoSectionByLabel(mode, label) {
+  const pills = sectionPills();
+  const i = pills.findIndex(p => pillLabel(txt(p)) === label);
+  if (i === -1) return false;
+  return await gotoSection(mode, i);
+}
+
 // ── SKU scan ────────────────────────────────────────────────────────────────
 // Walks every section and every page inside it, tallying SKUs, then returns to the
 // first section. Only the SKU text is kept, never element references — those die
@@ -678,6 +772,9 @@ async function scanSkus(mode) {
   const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
   const previously = await getFilter(mode);
 
+  // AUTO. The daily caps already saved, so re-scanning does not wipe them.
+  const capMap = RULES ? await RULES.caps(AUTO_PORTAL) : {};
+
   skuBox.innerHTML = '';
   for (const [sku, n] of sorted) {
     const line = document.createElement('div');
@@ -687,9 +784,19 @@ async function scanSkus(mode) {
     cb.checked = previously.indexOf(sku) !== -1;
     const name = document.createElement('span');
     name.textContent = sku;
+    // AUTO. Blank means no cap at all. Only a round that accepts on its own reads
+    // this — a run started by hand from this panel ignores it completely, because
+    // somebody is sitting there watching that one.
+    const cap = document.createElement('input');
+    cap.type = 'number'; cap.min = '0'; cap.className = 'cap';
+    cap.dataset.sku = sku;
+    cap.placeholder = '∞';
+    cap.title = 'Most of this SKU to accept in one day when rounds accept on their own. '
+              + 'Leave blank for no limit.';
+    if (Number.isFinite(capMap[sku]) && capMap[sku] > 0) cap.value = String(capMap[sku]);
     const cnt = document.createElement('b');
     cnt.textContent = n + (n === 1 ? ' order' : ' orders');
-    line.appendChild(cb); line.appendChild(name); line.appendChild(cnt);
+    line.appendChild(cb); line.appendChild(name); line.appendChild(cap); line.appendChild(cnt);
     skuBox.appendChild(line);
   }
   skuBox.style.display = sorted.length ? 'block' : 'none';
@@ -902,6 +1009,16 @@ async function reloadAndResume(mode, why) {
   location.reload();
 }
 
+// AUTO. Every accepted order also goes to the settings page's round list. The
+// panel's own log only exists while this tab does, and a round happens while the
+// seller is somewhere else entirely.
+function tellTheRoundLog(entry) {
+  try {
+    chrome.runtime.sendMessage({ type: 'ACCEPT_LOG', portal: 'Flipkart', ...entry },
+      () => void chrome.runtime.lastError);
+  } catch (e) { /* the worker is asleep — the panel log still has it */ }
+}
+
 // ── main loop ───────────────────────────────────────────────────────────────
 let looping = false;
 
@@ -917,9 +1034,48 @@ async function runLoop(mode) {
     const filter    = mode.skuFilter ? await getFilter(mode) : [];
     const wanted    = new Set(filter);
 
+    // ── AUTO ─────────────────────────────────────────────────────────────────
+    // All of this sits idle unless a round started the run. `autoRules` staying
+    // null is what keeps the by-hand path exactly as it was.
+    const s0 = await getState();
+    const isAuto = !!(s0 && s0.auto) && !!RULES;
+    let autoRules = null;      // the seller's settings for accepting on its own
+    let autoCaps  = null;      // the daily limit per SKU
+    let autoPlan  = null;      // the headings this run is allowed to work, in order
+    let autoAt    = 0;         // which of them we are on
+    const autoSaidNo = new Set();   // reasons already written down, so they are not repeated
+    if (isAuto) {
+      autoRules = await RULES.settings();
+      autoCaps  = await RULES.caps(AUTO_PORTAL);
+      await log('this run was started by a round — '
+        + (autoRules.onlyTickedSkus
+            ? (wanted.size ? wanted.size + ' SKU(s) ticked' : 'NO SKUs ticked, so nothing is allowed')
+            : 'any SKU')
+        + ', due within ' + autoRules.dueWithinDays + ' day(s)'
+        + (autoRules.includeBreached ? ', late ones included' : ', late ones left alone')
+        + ', at most ' + s0.limit + ' this time.');
+      // Nothing is ticked and the seller said only ticked SKUs may be taken. Stop
+      // before touching anything rather than working out one order at a time that
+      // the answer is no.
+      if (autoRules.onlyTickedSkus && !wanted.size) {
+        s0.running = false; await setState(s0);
+        await log('STOPPED — no SKUs are ticked, so a round is not allowed to accept anything. '
+          + 'Press Scan SKUs, tick the ones you are happy to take, then Save ticks.');
+        return;
+      }
+    }
+
     for (;;) {
       const s = await getState();
       if (!s || !s.running) { await log('stopped.'); break; }
+
+      // AUTO. A heartbeat, at most once a minute. The worker decides a run has died
+      // by looking at when this last moved, and a run that is merely SLOW must not
+      // be mistaken for a dead one — in a hidden tab the browser can cut timers to
+      // one tick a minute, so several minutes between two accepted orders is normal.
+      // Clearing a live run would let the next round open a second copy of it on the
+      // same live orders, which is the one thing all of this exists to prevent.
+      if (isAuto && (!s.ts || Date.now() - s.ts > 60000)) { s.ts = Date.now(); await setState(s); }
 
       if (s.done >= s.limit) {
         s.running = false; await setState(s);
@@ -950,10 +1106,65 @@ async function runLoop(mode) {
       // The page is healthy again — clear the reload counter.
       if (s.reloads) { s.reloads = 0; await setState(s); }
 
+      // AUTO. Which headings this run is allowed to work through, worked out once,
+      // here rather than earlier because the headings are only on screen once the
+      // list has rendered — which is the line above.
+      //
+      // ⚠️ FLIPKART SHOWS THE DISPATCH DATE ONLY ON THE HEADING, never on a row.
+      // So if there are no headings there is no date, and no date means no accept:
+      // the run stops and says so. Working through an undated list would be
+      // accepting orders without knowing what they commit anybody to.
+      if (isAuto && autoPlan === null) {
+        const pills = sectionPills().map(p => txt(p));
+        if (!pills.length) {
+          s.running = false; await setState(s);
+          await log('STOPPED — this tab has no "Dispatch by …" headings, so there is no way '
+            + 'to tell when these orders are due. Nothing was accepted.');
+          break;
+        }
+        autoPlan = [];
+        for (const p of pills) {
+          const v = RULES.allowedByDate(p, autoRules);
+          await log((v.ok ? 'will work through' : 'skipping') + ' "' + p + '" — ' + v.why);
+          if (v.ok) autoPlan.push(pillLabel(p));
+        }
+        if (!autoPlan.length) {
+          s.running = false; await setState(s);
+          await log('DONE — none of the groups on this tab are due soon enough to accept.');
+          break;
+        }
+        autoAt = 0;
+        // With only one heading there is nowhere else to be, and pressing the one
+        // that is already showing is a risk for no gain — these headings behave
+        // like filter chips and pressing the live one may well switch it off.
+        if (pills.length > 1) {
+          await gotoSectionByLabel(mode, autoPlan[0]);
+          continue;                     // read the list again for the group we moved to
+        }
+      }
+
       // Only the ticked SKUs, when a filter is set. The chosen SKUs may sit on a
       // later page, or in another section of the tab, so walk both before
       // concluding there is nothing left.
-      const candidates = wanted.size ? rows.filter(r => wanted.has(r.sku)) : rows;
+      let candidates = wanted.size ? rows.filter(r => wanted.has(r.sku)) : rows;
+
+      // AUTO. On top of the tick, the seller's daily number for that SKU. Read
+      // fresh every time round: the tally moves as this run accepts, and the caps
+      // themselves may have been changed in the panel while it was going.
+      if (isAuto) {
+        const tally = await RULES.tallyToday(AUTO_PORTAL, Date.now());
+        autoCaps = await RULES.caps(AUTO_PORTAL);
+        const kept = [];
+        for (const r of candidates) {
+          const v = RULES.allowedByCap(r.sku, autoCaps, tally);
+          if (v.ok) kept.push(r);
+          else if (!autoSaidNo.has(r.sku + '|' + v.why)) {
+            autoSaidNo.add(r.sku + '|' + v.why);
+            await log('leaving alone: ' + r.sku + ' — ' + v.why);
+          }
+        }
+        candidates = kept;
+      }
       if (!candidates.length) {
         const pages = pageButtons().length;
         pageHop += 1;
@@ -961,6 +1172,20 @@ async function runLoop(mode) {
           await log('no chosen SKUs on this page — page ' + (pageHop + 1) + ' of ' + pages);
           continue;
         }
+        // AUTO. Move on to the next heading THIS RUN IS ALLOWED, by its words —
+        // not to the next one along, which may be one the date filter refused.
+        if (isAuto) {
+          autoAt += 1;
+          if (autoAt < autoPlan.length && await gotoSectionByLabel(mode, autoPlan[autoAt])) {
+            pageHop = 0;
+            await log('nothing left here — moving to "' + autoPlan[autoAt] + '"');
+            continue;
+          }
+          s.running = false; await setState(s);
+          await log('DONE — nothing more on this tab that your rules allow.');
+          break;
+        }
+
         const pills = sectionPills();
         sectionHop += 1;
         if (sectionHop < pills.length && await gotoSection(mode, sectionHop)) {
@@ -1034,6 +1259,15 @@ async function runLoop(mode) {
         st.done += 1; consecFails = 0;
         await setState(st);
         await log('  ' + mode.verb + ' OK (' + st.done + ' done)');
+        // AUTO. Count it against that SKU's daily number, and tell the settings
+        // page — that log is where the seller looks to find out what happened
+        // while they were somewhere else, and an accepted order is the one thing
+        // they most need to be able to read back afterwards.
+        if (isAuto) {
+          const n = await RULES.noteAccepted(AUTO_PORTAL, pick.sku, Date.now());
+          await log('  ' + n + ' of this SKU taken today.');
+          tellTheRoundLog({ accepted: 1, sku: pick.sku, due: autoPlan ? autoPlan[autoAt] : '' });
+        }
       } else {
         st.failed += 1; consecFails += 1;
         await setState(st);
@@ -1069,6 +1303,15 @@ async function runLoop(mode) {
   } finally {
     looping = false;
     await paint(mode);
+    // AUTO. Say how it ended, whichever way it ended — including the ways that
+    // are a `break` out of the middle of the loop. A round that stopped for a
+    // reason nobody can read is the same as a round that did not happen.
+    try {
+      const fin = await getState();
+      if (fin && fin.auto && !fin.running) {
+        tellTheRoundLog({ finished: 'run ended', done: fin.done || 0, failed: fin.failed || 0 });
+      }
+    } catch (e) { /* nothing worth failing the run over */ }
   }
 }
 

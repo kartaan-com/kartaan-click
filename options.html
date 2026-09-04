@@ -59,7 +59,7 @@
 </style>
 
 <h1>Kartaan Click — settings</h1>
-<p class="tag">Portal check-ins. Everything here is off until you switch it on.</p>
+<p class="tag">Portal check-ins, and accepting orders. Everything here is off until you switch it on.</p>
 
 <div class="card warn">
   <h2>Read this before switching it on</h2>
@@ -148,6 +148,92 @@
   <div class="log" id="log">Nothing yet.</div>
   <div class="actions" style="margin-top:12px">
     <button id="clearLog" type="button">Clear this list</button>
+  </div>
+</div>
+
+<div class="card warn">
+  <h2>Accepting orders on its own — read this one twice</h2>
+  <p>Everything above only <b>looks</b> at your orders. This part <b>acts</b>: it presses
+     Accept. Accepting an order is a promise to dispatch it by a date, and that promise
+     is yours, not this extension's. A penalty for missing it lands on your account.</p>
+  <p>So it is built to do nothing unless you have said yes three separate times:
+     switch it on here, switch on the portal, and tick at least one SKU on that
+     portal's own orders page. Miss any one of them and it accepts nothing at all
+     and says so in the list at the bottom of this page.</p>
+  <p style="margin:0">If it cannot read when an order is due, it leaves that order
+     alone. Always. A date it does not understand is never treated as "probably fine".</p>
+</div>
+
+<div class="card">
+  <h2>Accepting orders on its own</h2>
+  <p>At the end of each round, work through the orders waiting to be accepted and
+     accept the ones that pass your rules below. Flipkart and Meesho only.</p>
+  <p class="muted" style="margin:0 0 14px"><b>This rides on the rounds above.</b>
+     Accepting happens at the end of a check-in round, so if check-ins are switched
+     off, no round happens and nothing is ever accepted.</p>
+
+  <div class="row">
+    <input type="checkbox" id="autoEnabled">
+    <label for="autoEnabled"><b>Let it accept orders for me</b></label>
+  </div>
+
+  <div class="row" style="margin-top:16px"><b>On which portals</b></div>
+  <div class="row"><input type="checkbox" id="autoFlipkart"><label for="autoFlipkart">Flipkart — the To Accept tab</label></div>
+  <div class="row"><input type="checkbox" id="autoMeesho"><label for="autoMeesho">Meesho — the Pending tab</label></div>
+  <p class="muted" style="margin:6px 0 14px">Amazon is not here. Its orders move on by
+     themselves once payment clears, so there is nothing to press — and that is being
+     looked at properly before anything is promised.</p>
+
+  <div class="row" style="margin-top:8px"><b>Which SKUs</b></div>
+  <div class="row">
+    <input type="checkbox" id="autoOnlyTicked">
+    <label for="autoOnlyTicked">Only the SKUs I have ticked <b>(strongly recommended)</b></label>
+  </div>
+  <p class="muted" style="margin:0 0 14px">You tick them on the portal's own orders page,
+     in the Kartaan Click panel: press <b>Scan SKUs</b>, tick the ones you are happy to take
+     on, put a number beside any you want a daily limit on, then press <b>Save ticks</b>.
+     With this box ticked and nothing ticked there, nothing is accepted — which is the
+     safe way round. Untick this box and it will accept <b>any</b> SKU.</p>
+
+  <div class="row" style="margin-top:8px"><b>How soon they must be due</b></div>
+  <div class="row">
+    <label>Accept orders due within</label>
+    <input type="number" id="autoDays" min="0" max="30">
+    <label>day(s)</label>
+  </div>
+  <p class="muted" style="margin:0 0 8px"><b>0</b> means only what is due today.
+     <b>1</b> means today and tomorrow. An order due further out than this is left for
+     later — there is no reason to take on next week's deadline today.</p>
+  <div class="row">
+    <input type="checkbox" id="autoBreached">
+    <label for="autoBreached">Also accept orders already past their date</label>
+  </div>
+  <p class="muted" style="margin:0 0 14px">These are usually the urgent ones. Leave this
+     on unless you would rather look at late orders yourself.</p>
+
+  <div class="row" style="margin-top:8px"><b>A backstop</b></div>
+  <div class="row">
+    <label>Never accept more than</label>
+    <input type="number" id="autoMax" min="1" max="500">
+    <label>orders in one go</label>
+  </div>
+  <p class="muted" style="margin:0 0 14px">The real limit is the daily number you set
+     against each SKU. This is just a ceiling on any one run, so a rule set wrong cannot
+     run away with you before you notice.</p>
+
+  <div class="actions" style="margin-top:16px">
+    <button class="primary" id="autoSave" type="button">Save</button>
+    <span class="saved" id="autoSaved"></span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>What it accepted for you</h2>
+  <p>Every order accepted on a round, newest first. This is the list to check if you
+     want to know what you have been committed to while you were away.</p>
+  <div class="log" id="acceptLog">Nothing yet.</div>
+  <div class="actions" style="margin-top:12px">
+    <button id="clearAcceptLog" type="button">Clear this list</button>
   </div>
 </div>
 

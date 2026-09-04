@@ -9,7 +9,7 @@ unless you want to reword it.
    your Microsoft account, and choose the **Microsoft Edge** program.
    There is no fee for Edge — unlike Chrome, which charges $5.
 2. Build the upload file: `node tools/make-zip.js`, which produces
-   `kartaan-click-1.4.14.zip` with `manifest.json` at the top level.
+   `kartaan-click-1.5.0.zip` with `manifest.json` at the top level.
 
 ## Listing fields
 
@@ -44,6 +44,12 @@ Flipkart, Meesho and Amazon all take note of how often a seller is actually on t
 
 You set the hours it may do this in, how far apart the rounds are, and which portals are included. It is off out of the box, it reads no order or customer details, and nothing from those pages ever leaves your computer.
 
+Accepting orders — off until you switch it on, and still off until you name the SKUs:
+
+Orders arrive all day and each one has to be accepted before it can be packed. Kartaan Click can do that for you on Flipkart and Meesho — but only within limits you set, because accepting an order is a promise to dispatch it by a date. You tick which of your own SKUs it may accept, you set how far ahead it may go (only what is due today, or today and tomorrow, or any number of days out), and you can put a daily number against any SKU so it never takes on more of something than you have. It presses Accept and nothing else, and if it cannot read when an order is due, it leaves that order alone.
+
+It is off out of the box, and switching it on is not enough on its own: until you have ticked at least one SKU, it accepts nothing at all.
+
 Privacy: it collects nothing about you. No accounts, no tracking, no analytics. Everything it remembers stays in your own browser. It makes one network request in its life: once a day it reads a small public file on kartaan.com to see whether a newer version is out, so it can tell you. Nothing about you is sent in it.
 
 More free tools are on the way. Learn more at kartaan.com
@@ -77,8 +83,10 @@ No. All code is in the package.
 
 *storage* — the Flipkart tool works through a long list of orders one at a time and
 has to survive the page reloading mid-run. `storage` holds how far the run has got,
-which SKUs the user ticked, where the panel was dragged to, and the panel's log.
-All of it is local to the user's browser and none of it is transmitted.
+which SKUs the user ticked and any daily number they set against each, how many of
+each SKU have been accepted today, the list of orders that were accepted, where the
+panel was dragged to, and the panel's log. All of it is local to the user's browser
+and none of it is transmitted.
 
 *downloads* — the Print Labels tool exists to get shipping label files onto the
 user's disk. `downloads` is used to file each label into a "Kartaan Click Labels"
@@ -100,8 +108,11 @@ site is queried, and tabs on any other site are never looked at.
 
 *Host permissions and content script matches* — `https://*.synlabs.io/*` and
 `https://seller.flipkart.com/*` are required for the content scripts to run on
-those pages. `https://supplier.meesho.com/*` and `https://sellercentral.amazon.in/*`
-are required for the portal check-in content script. That script does nothing at
+those pages. `https://supplier.meesho.com/*` is required for the portal check-in
+script and for the order-accepting script, which runs only on the user's own
+Pending orders tab and reads only the SKU code and the dispatch-by date from each
+row. `https://sellercentral.amazon.in/*` is required for the portal check-in
+content script alone — nothing on Amazon is ever clicked beyond its order tabs. That script does nothing at
 all unless the user has switched check-ins on AND the background worker confirms
 this tab is part of a round — which it does for a tab the extension opened, for a
 background tab the user already had open on that portal (borrowed for the round and

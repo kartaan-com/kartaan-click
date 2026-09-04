@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kartaan Click",
-  "version": "1.4.14",
+  "version": "1.5.0",
   "description": "Free fixes for seller tools: the VMS packing box clears itself, Flipkart orders go one click at a time, portals get checked on.",
   "homepage_url": "https://kartaan.com",
 
@@ -40,11 +40,16 @@
     },
     {
       "matches": ["https://seller.flipkart.com/*"],
-      "js": ["content/fk-orders.js", "content/checkin.js"],
+      "js": ["content/kc-accept-rules.js", "content/fk-orders.js", "content/checkin.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://supplier.meesho.com/*", "https://sellercentral.amazon.in/*"],
+      "matches": ["https://supplier.meesho.com/*"],
+      "js": ["content/kc-accept-rules.js", "content/meesho-orders.js", "content/checkin.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://sellercentral.amazon.in/*"],
       "js": ["content/checkin.js"],
       "run_at": "document_idle"
     }

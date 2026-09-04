@@ -21,12 +21,14 @@ without it.
 Kartaan Click is a free browser extension that removes repeated clicking from the
 websites seller and warehouse teams use all day.
 
-It has no account and it syncs nothing. Two of its three tools sit quietly and do
-nothing at all until you are on the page they work on. The third — portal
-check-ins — does run on a timer, and it is switched off until you turn it on
-yourself.
+It has no account and it syncs nothing. Two of its four tools sit quietly and do
+nothing at all until you are on the page they work on. The other two — portal
+check-ins, and accepting orders — run on a timer, and both are switched off until
+you turn them on yourself.
 
-It currently does three things. All three are described below.
+It currently does four things. All four are described below. The fourth one,
+accepting orders, is the only one that commits you to anything, so it is worth
+reading its section in full before switching it on.
 
 ---
 
@@ -445,6 +447,156 @@ second line names the page it was actually looking at, which is what tells you
 whether the word is wrong or whether the portal put a different page in front of
 it. The words it looks for are a short list in the extension, and correcting them
 is a small change. Report what it said and it gets fixed.
+
+---
+
+## Tool 4 — accepting orders on its own
+
+**Where it works:** `seller.flipkart.com` and `supplier.meesho.com`.
+**Out of the box:** off, and it stays doing nothing even once it is switched on
+until you have named the SKUs you are happy for it to take on.
+
+### Read this part first
+
+Every other tool in here presses buttons that only rearrange your own screen. This
+one is different. **Accepting an order is a promise to dispatch it by a date, and
+that promise is yours.** If it is missed, the penalty lands on your account, not on
+this extension.
+
+So this tool is built the opposite way round to everything else: it assumes the
+answer is no. It will not accept an order unless it has been told yes about that
+particular SKU, the order is due soon enough, and you have not already had your
+fill of that SKU for the day. And if there is anything it cannot read — most of
+all the date an order is due — it leaves that order alone and writes down why.
+It never guesses in the direction of accepting.
+
+### Why it exists
+
+Orders arrive all day. Each one sits waiting to be accepted, and the clock on the
+dispatch deadline is already running while it waits. Accepting them is a few
+hundred identical clicks that have to happen at some point anyway — but not all of
+them should be accepted the moment they land. An order due next week does not need
+taking on today, and a SKU that is nearly out of stock should not keep being
+accepted just because the orders keep coming.
+
+That is the whole idea: accept the ones you would have accepted anyway, and leave
+the rest for you to look at.
+
+### The three switches, and all three have to be on
+
+1. **Switch it on.** Settings page → *Accepting orders on its own* → tick
+   **Let it accept orders for me**, then Save.
+2. **Switch on the portal** — Flipkart, Meesho, or both, in the same place.
+3. **Tick your SKUs**, on each portal's own orders page. This one is not on the
+   settings page, because the list of SKUs is on the orders page.
+
+If any one of those three is missing, nothing is accepted. The list at the bottom
+of the settings page says which one it was.
+
+### Ticking your SKUs, and setting a daily limit
+
+Go to the orders page and find the Kartaan Click panel:
+
+- **Flipkart** — Orders → Active Orders → **To Accept**. The panel is bottom-left.
+- **Meesho** — Orders → **Pending**. The panel is bottom-left.
+
+Then:
+
+1. Press **Scan SKUs**. It lists every SKU waiting on that tab, with how many
+   orders each has.
+2. **Tick** the ones you are happy for it to accept without asking you.
+3. Beside any SKU, type a **number** — the most of that SKU you are willing to take
+   on in one day. Leave it blank and there is no limit on that SKU. The count
+   starts again each day.
+4. Press **Save ticks**.
+
+**One thing worth knowing about that list.** The same ticks are used two ways, and
+they mean opposite things when nothing is ticked:
+
+| | Nothing ticked means |
+|---|---|
+| **Start**, pressed by you on the Flipkart panel | work through **all** of them — you are sat there watching |
+| **Accepting on its own** | accept **nothing** — a list nobody has filled in is not permission |
+
+The panel says this on screen too. If you have ticked SKUs for a by-hand run in the
+past, those same ticks are what accepting-on-its-own will use, so it is worth
+looking at the list once before switching it on.
+
+### Choosing how far ahead it goes
+
+On the settings page:
+
+- **Accept orders due within \_\_ day(s).** `0` means only what is due today. `1`
+  means today and tomorrow. Anything due further out is left alone. If today is the
+  4th and an order is due on the 9th, a setting of 1 leaves it — there is no reason
+  to take on next week's deadline this afternoon.
+- **Also accept orders already past their date.** These are the urgent ones, so
+  this starts switched on. Turn it off if you would rather look at late orders
+  yourself.
+- **Never accept more than \_\_ orders in one go.** A ceiling on any single run, so
+  a rule set wrongly cannot run away with you before you notice. The real limit is
+  the per-SKU number you set above.
+
+### Where the date comes from, on each portal
+
+The two portals show it in completely different places, and this matters if a date
+ever gets read wrongly:
+
+- **Flipkart** groups the To Accept tab under headings — *"Dispatch by 12 PM,
+  Tomorrow (48)"*, *"Breached Orders (11)"*. The date is on the **heading**, not on
+  the rows, so a whole group is either worked through or skipped. **If a Flipkart
+  tab has no headings at all, nothing on it is accepted** — with no heading there is
+  no date, and without a date it will not press anything.
+- **Meesho** puts a **Dispatch Date/SLA** column on every row — *"05 Sept"*, often
+  with *"Breaching Soon"* beside it. So it is decided one order at a time. That
+  column is found by its heading name, never by counting across; if Meesho renames
+  it, the run stops and says so rather than reading the wrong column.
+
+### When it runs
+
+At the end of each portal check-in round — so it follows the same timer, the same
+working hours, and the same random gaps as Tool 3. There is no "accept now" button
+anywhere, on purpose: one way in is easier to keep safe than two.
+
+**Which means it needs check-ins switched on.** Accepting happens at the end of a
+round, so with check-ins off there is no round and nothing is ever accepted. The
+settings page tells you if you save with one on and the other off.
+
+It skips a portal when:
+
+- you are looking at that portal yourself — you are handling it, so it stays out of
+  the way;
+- a run on that portal is already going;
+- a by-hand run from the Flipkart panel is going.
+
+### What it will not do
+
+- **It will not accept a SKU you have not ticked** (unless you deliberately untick
+  *Only the SKUs I have ticked*, which the settings page warns you about).
+- **It will not accept an order whose date it cannot read.** No exceptions.
+- **It will not press anything on Amazon.** Amazon is not in this tool at all.
+- **It will not press Cancel, or anything else on the row.** Only Accept.
+- **It will not press a button in a box that was already open** when it clicked. If
+  a confirmation box appears because of its own click, it presses only a button
+  whose whole label is one of a short list — Confirm, Yes, Accept, Proceed. Anything
+  else and it presses nothing, writes the box's exact words into its log, and stops
+  so you can look.
+- **It will not keep going in a tab you are reading.** It works in its own
+  background tab.
+
+### Seeing what it did
+
+The settings page has a list, **What it accepted for you** — every order it
+accepted, newest first, with the SKU and when it was due. That is the list to check
+after a day out. The portal panels also keep their own running log of the same
+thing, in more detail, while their tab is open.
+
+### If you want to stop it
+
+Untick **Let it accept orders for me** on the settings page and press Save. A run
+already going stops at the end of the order it is on. You can also just press
+**Stop** on the Flipkart panel, or close the tab it is working in.
+
 
 ---
 

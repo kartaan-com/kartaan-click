@@ -229,3 +229,112 @@ chrome.storage.local.get(KEY).then(res => {
   showLog();
   showMeeshoCode();
 });
+
+// ─── Accepting orders on its own ─────────────────────────────────────────────
+//
+// Same job as the block above it: this page only reads and writes settings. The
+// deciding is in background.js and content/kc-accept-rules.js, and the clicking
+// is in content/fk-orders.js and content/meesho-orders.js.
+//
+// Its own Save button rather than sharing the one above, because these two are
+// different decisions with very different weight — one opens pages, the other
+// commits you to dispatch deadlines — and pressing Save on the top half must
+// never quietly switch on the bottom half.
+
+const AUTO_KEY   = 'kcAutoAccept';
+const ACCEPT_LOG = 'kcAcceptLog';
+
+// Kept in step with content/kc-accept-rules.js and background.js. All three carry
+// it because a settings page, a service worker and a content script cannot share
+// one file without a build step, and this extension has none on purpose.
+const AUTO_DEFAULTS = {
+  enabled:         false,
+  sites:           { flipkart: false, meesho: false },
+  onlyTickedSkus:  true,
+  dueWithinDays:   1,
+  includeBreached: true,
+  maxPerRound:     20,
+};
+
+function fillAuto(s) {
+  $('autoEnabled').checked    = !!s.enabled;
+  $('autoFlipkart').checked   = !!s.sites.flipkart;
+  $('autoMeesho').checked     = !!s.sites.meesho;
+  $('autoOnlyTicked').checked = !!s.onlyTickedSkus;
+  $('autoBreached').checked   = !!s.includeBreached;
+  $('autoDays').value         = String(s.dueWithinDays);
+  $('autoMax').value          = String(s.maxPerRound);
+}
+
+// A typed number can be blank, negative or nonsense, and every one of these ends
+// up deciding whether a real order gets accepted. So each is straightened out
+// here and the safe value is what a bad one falls back to — never the other way.
+function collectAuto() {
+  const days = parseInt($('autoDays').value, 10);
+  const max  = parseInt($('autoMax').value, 10);
+  return {
+    enabled:         $('autoEnabled').checked,
+    sites: {
+      flipkart: $('autoFlipkart').checked,
+      meesho:   $('autoMeesho').checked,
+    },
+    onlyTickedSkus:  $('autoOnlyTicked').checked,
+    includeBreached: $('autoBreached').checked,
+    // 0 is a real answer here — "only what is due today" — so it is checked for
+    // being a number rather than for being truthy.
+    dueWithinDays:   Number.isFinite(days) && days >= 0 ? Math.min(days, 30) : AUTO_DEFAULTS.dueWithinDays,
+    maxPerRound:     Number.isFinite(max)  && max  > 0  ? Math.min(max, 500) : AUTO_DEFAULTS.maxPerRound,
+  };
+}
+
+function describeAccept(e) {
+  const at = new Date(e.ts).toLocaleString();
+  if (e.finished) {
+    return at + '  ' + e.portal + ' — finished: ' + (e.done || 0) + ' accepted, '
+             + (e.failed || 0) + ' did not go through';
+  }
+  return at + '  ' + e.portal + ' — accepted ' + (e.sku || 'an order')
+           + (e.due ? '   (' + e.due + ')' : '');
+}
+
+async function showAcceptLog() {
+  const all = (await chrome.storage.local.get(ACCEPT_LOG))[ACCEPT_LOG] || [];
+  $('acceptLog').textContent = all.length ? all.map(describeAccept).join('\n') : 'Nothing yet.';
+}
+
+$('autoSave').addEventListener('click', async () => {
+  const s = collectAuto();
+  await chrome.storage.local.set({ [AUTO_KEY]: s });
+  fillAuto(s);                                   // show the tidied-up values back
+
+  // ⚠️ ACCEPTING RIDES ON THE CHECK-IN ROUND — it happens at the end of one, so
+  // with check-ins switched off no round ever happens and nothing is ever
+  // accepted. Somebody who switched this on and walked away would find that out
+  // at the end of the day, from an empty list. Say it here instead.
+  const checkins = (await chrome.storage.local.get(KEY))[KEY] || {};
+  $('autoSaved').textContent = !s.enabled
+    ? 'Saved — accepting is off.'
+    : !checkins.enabled
+      ? 'Saved, but nothing will happen yet: accepting runs at the end of a check-in '
+        + 'round, and check-ins are switched off higher up this page.'
+      : (s.onlyTickedSkus
+          ? 'Saved. Now tick your SKUs on each portal’s orders page — until you do, '
+            + 'nothing will be accepted.'
+          : 'Saved. Warning: it may accept ANY SKU.');
+  setTimeout(() => { $('autoSaved').textContent = ''; }, 9000);
+});
+
+$('clearAcceptLog').addEventListener('click', async () => {
+  await chrome.storage.local.remove(ACCEPT_LOG);
+  showAcceptLog();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes[ACCEPT_LOG]) showAcceptLog();
+});
+
+chrome.storage.local.get(AUTO_KEY).then(res => {
+  const saved = res[AUTO_KEY] || {};
+  fillAuto({ ...AUTO_DEFAULTS, ...saved, sites: { ...AUTO_DEFAULTS.sites, ...(saved.sites || {}) } });
+  showAcceptLog();
+});

@@ -3,6 +3,60 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.5.0 — 4 September 2026
+
+**A new tool, and the first one that commits you to anything.** Everything before
+this only ever rearranged your own screen. This one presses **Accept** on real
+orders, which is a promise to dispatch them by a date — so it is built the opposite
+way round to the rest: it assumes the answer is no, and it has to be told yes three
+separate times before it touches anything.
+
+- **Accepting orders on its own, on Flipkart and Meesho.** At the end of each
+  portal check-in round, it works down the orders waiting to be accepted and
+  presses Accept on the ones that pass rules you set. Off out of the box, and still
+  doing nothing once switched on until you have ticked the SKUs you are happy for
+  it to take on. Amazon is deliberately not in this — its orders move on by
+  themselves once payment clears, and that is being looked at properly before
+  anything is promised.
+- **Two filters, both yours.** By **SKU** — tick the ones it may accept on the
+  portal's own orders page, using the same list the Flipkart panel has always used.
+  And by **when they are due** — accept what is due today, or today and tomorrow, or
+  any number of days out, and choose separately whether orders already past their
+  date are included. If today is the 4th and an order is due the 9th, it is left
+  alone.
+- **A daily number per SKU.** Beside each SKU you can put the most of it you are
+  willing to take on in a day, because the real reason to cap anything is stock.
+  Blank means no limit. The count starts again each morning.
+- **If it cannot read a date, it does not accept the order.** Always, with no
+  exception. On Flipkart the dispatch date is only ever on the group heading
+  ("Dispatch by 12 PM, Tomorrow"), so a To Accept tab with no headings has nothing
+  accepted on it at all. On Meesho the date is on each row, in a column found by its
+  heading name rather than by counting across — if Meesho renames it, the run stops
+  and says which one went missing.
+- **It presses Accept and nothing else.** Not Cancel, and nothing inside a box that
+  was already open when it clicked. If a confirmation box comes up because of its
+  own click, it presses only a button whose whole label is one of a short fixed
+  list — otherwise it presses nothing, writes down the box's exact words, and stops.
+- **A new list on the settings page: what it accepted for you.** Every order,
+  newest first, with its SKU and when it was due. That is the list to read after a
+  day away.
+- **The Flipkart panel gains a Save ticks button** and a small box beside each SKU
+  for its daily number. Pressing **Start** by hand behaves exactly as it always has:
+  none of the new rules apply to a run you are sitting and watching, and "nothing
+  ticked" still means "work through all of them" there. For accepting on its own it
+  means the opposite — nothing ticked, nothing accepted — and the panel says so on
+  screen, because a list nobody has filled in is not permission.
+- **A Meesho panel, on the Pending tab**, for the same job: scan the SKUs, tick
+  them, set daily numbers, and ask what a round would do right now. It has no Start
+  button on purpose — accepting happens on the round and nowhere else, because one
+  way in is easier to keep safe than two.
+- **A run that stops moving no longer blocks its portal.** A run whose tab was
+  closed under it used to be able to say "running" for ever. Anything that has not
+  moved for twenty minutes is now cleared, and the portal is free again.
+- Check-in rounds now skip Meesho while a Meesho accept run is going, the same way
+  they have always skipped Flipkart during a Flipkart run — two copies clicking the
+  same live orders is exactly the thing that guard exists to stop.
+
 ## 1.4.14 — 4 September 2026
 
 Found by opening the real Meesho panel and watching a real pop-up, rather than

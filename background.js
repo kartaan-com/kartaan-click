@@ -677,6 +677,13 @@ async function runCheckinRound(force) {
         await checkinLog({ site: 'Flipkart', done: [], stoppedAt: null, skipped: true });
         continue;
       }
+      // The same rule for Meesho, now that it too can have a run of its own going.
+      // Clicking about in a tab that is working down a list of orders is how two
+      // copies end up on the same order.
+      if (key === 'meesho' && await meeshoRunInProgress()) {
+        await checkinLog({ site: 'Meesho', done: [], stoppedAt: null, skipped: true });
+        continue;
+      }
 
       // There used to be a "skip this portal while its sign-in tab is open" rule
       // here, to stop sign-in tabs stacking up one per round. Reusing an existing
@@ -706,6 +713,10 @@ async function runCheckinRound(force) {
         await checkinLog({ site: 'Flipkart', done: [], stoppedAt: null, skipped: true });
         continue;
       }
+      if (key === 'meesho' && await meeshoRunInProgress()) {
+        await checkinLog({ site: 'Meesho', done: [], stoppedAt: null, skipped: true });
+        continue;
+      }
 
       const r = await visitOnce(key, url, open ? open.tab : null);
       await checkinLog(r);
@@ -723,6 +734,13 @@ async function runCheckinRound(force) {
     stopKeepAwake();
     await releaseRoundLock();
     await scheduleCheckin('round finished');
+    // The round is over and its books are closed. If the seller has switched
+    // accepting on, this is where it starts — AFTER the lock is given back and
+    // the next round is set, so a run that takes ten minutes cannot hold either
+    // of those up, and cannot take the whole feature down with it if it throws.
+    try { await startAcceptPasses(); } catch (e) {
+      console.log('[Kartaan Click] accept pass failed to start: ' + ((e && e.message) || e));
+    }
   }
 }
 
@@ -913,3 +931,281 @@ chrome.runtime.onInstalled.addListener(() => {
 // and gone — a message, an alarm, a download. Making sure the watchdog exists is
 // cheap and it is the one timer that must never quietly not be there.
 armWatchdog();
+
+// ─── Accepting orders on the round ───────────────────────────────────────────
+//
+// WHAT THIS IS. The check-in round only ever looked at pages. This is the part
+// that acts: at the end of a round, on the portals the seller has switched it on
+// for, it starts a run that accepts orders — but only the SKUs they have ticked,
+// only orders due soon enough, and only up to the daily number they set per SKU.
+//
+// ⚠️ ACCEPTING AN ORDER IS A PROMISE TO DISPATCH IT BY A DEADLINE. That is the
+// whole reason everything here is built to do nothing by default and to stop at
+// the first thing it cannot read. Three separate things must all be true before a
+// single order is touched: the feature is on, that portal is on, and the seller
+// has ticked at least one SKU. Any one of them missing and this does nothing at
+// all — and doing nothing silently is not good enough either, so it says why in
+// the round log.
+//
+// WHY IT IS NOT PART OF THE ROUND ITSELF. A round has to finish inside about a
+// minute — it works in a hidden tab, and a hidden tab's timers are slowed right
+// down after five minutes. Accepting fifty orders at a human pace takes far
+// longer than that. So the round finishes and closes its books, and this starts a
+// run that carries on by itself in its own tab afterwards. The clicking is done by
+// content/fk-orders.js (which has been doing exactly this by hand for months) and
+// content/meesho-orders.js.
+//
+// ⚠️ A HIDDEN TAB IS SLOWED DOWN, NOT STOPPED. An accept run in a background tab
+// takes longer than the same run with the tab in front — Chrome gives a tab that
+// has been hidden five minutes about one timer tick a minute. That is not a fault:
+// nothing is racing, and the guards below stop a second run being started on top
+// of a slow one.
+
+const AUTO_KEY        = 'kcAutoAccept';       // the seller's answers, written by options.js
+const ACCEPT_LOG      = 'kcAcceptLog';        // one line per accepted order
+const ACCEPT_TABS     = 'kcAcceptTabs';       // the tab each portal's run is using
+const ACCEPT_STALL_MS = 20 * 60 * 1000;       // a run that has not moved in this long is dead
+const ACCEPT_TAB_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+// Kept in step with content/kc-accept-rules.js. Both carry the list rather than
+// one reading the other, because a service worker and a content script cannot
+// share a file without a build step and this extension deliberately has none.
+const AUTO_DEFAULTS = {
+  enabled:         false,
+  sites:           { flipkart: false, meesho: false },
+  onlyTickedSkus:  true,
+  dueWithinDays:   1,
+  includeBreached: true,
+  maxPerRound:     20,
+};
+
+async function autoSettings() {
+  const saved = (await chrome.storage.local.get(AUTO_KEY))[AUTO_KEY] || {};
+  return { ...AUTO_DEFAULTS, ...saved, sites: { ...AUTO_DEFAULTS.sites, ...(saved.sites || {}) } };
+}
+
+// The Meesho twin of flipkartRunInProgress(). Same reasoning, same thing to guard
+// against: a run left saying "running" because its tab was closed under it would
+// make every later round skip Meesho for ever, quietly.
+async function meeshoRunInProgress() {
+  const st = (await chrome.storage.local.get('kcMeeshoBot')).kcMeeshoBot;
+  if (!st || !st.running) return false;
+  if (st.startedAt && Date.now() - st.startedAt > ORDER_RUN_MAX_MS) return false;
+  return true;
+}
+
+const ACCEPT_STATE_KEY = { flipkart: 'kcOrdersBot', meesho: 'kcMeeshoBot' };
+
+async function acceptRunInProgress(key) {
+  return key === 'flipkart' ? await flipkartRunInProgress() : await meeshoRunInProgress();
+}
+
+// A run whose tab was closed, or whose page was navigated away from, stops moving
+// but never says so. Its own state is the only evidence: every accepted order and
+// every miss stamps the time on it. Nothing for twenty minutes means nobody is
+// working on it, and leaving it saying "running" would block that portal for the
+// rest of the day.
+async function clearStalledRun(key) {
+  const skey = ACCEPT_STATE_KEY[key];
+  const st   = (await chrome.storage.local.get(skey))[skey];
+  if (!st || !st.running) return false;
+  // ⚠️ ONLY A RUN THIS FEATURE STARTED. On Flipkart this is the same record the
+  // by-hand Start button writes, and a run somebody pressed Start on is theirs:
+  // they may well be sat watching a Save-As box, or have gone for a cup of tea.
+  // Clearing it would tell the next round Flipkart was free and start a check-in
+  // inside a tab that is halfway down a list of live orders.
+  if (!st.auto) return false;
+  const moved = st.ts || st.startedAt || 0;
+  if (Date.now() - moved < ACCEPT_STALL_MS) return false;
+  st.running = false;
+  await chrome.storage.local.set({ [skey]: st });
+  await checkinLog({ site: CHECKIN_SITES[key].name, done: [],
+    acceptNote: 'a run had stopped moving and was cleared, so this portal is free again' });
+  return true;
+}
+
+// ── the tab a run works in ──────────────────────────────────────────────────
+//
+// Its OWN tab, not the seller's. The check-in round borrows a tab because it is
+// finished with it half a minute later and puts it back; a run that accepts may be
+// going for ten minutes, and taking somebody's tab away for that long is not on.
+// So: the tab this used last time if it is still there and still on that portal,
+// otherwise a background tab already showing the very page we want (which is this
+// feature's own tab from an earlier round), otherwise a new background tab.
+//
+// ⚠️ A REMEMBERED TAB NUMBER IS NOT EVIDENCE. Chrome hands the numbers out from
+// the bottom again each session, so yesterday's number is today's other tab. The
+// portal and the age are checked as well, every time, before it is used.
+async function rememberAcceptTab(key, tabId) {
+  const all = (await chrome.storage.local.get(ACCEPT_TABS))[ACCEPT_TABS] || {};
+  if (tabId == null) delete all[key];
+  else all[key] = { id: tabId, host: CHECKIN_SITES[key].host, ts: Date.now() };
+  await chrome.storage.local.set({ [ACCEPT_TABS]: all });
+}
+
+async function knownAcceptTab(key) {
+  const all = (await chrome.storage.local.get(ACCEPT_TABS))[ACCEPT_TABS] || {};
+  const rec = all[key];
+  if (!rec || typeof rec !== 'object') return null;
+  if (rec.host !== CHECKIN_SITES[key].host) return null;
+  if (!rec.ts || Date.now() - rec.ts > ACCEPT_TAB_MAX_AGE_MS) return null;
+  try {
+    const tab = await chrome.tabs.get(rec.id);
+    if (!tab || !tab.url) return null;
+    if (new URL(tab.url).hostname !== CHECKIN_SITES[key].host) return null;
+    if (tab.active) return null;              // he is looking at it — leave it alone
+    return tab;
+  } catch (e) {
+    return null;                              // gone
+  }
+}
+
+// A background tab already sitting on the page we are about to open. In practice
+// that is this feature's own tab from an earlier round, or the check-in round's.
+// Matching on the address rather than just the portal is what keeps it off a tab
+// the seller has left open on their payments page.
+async function tabAlreadyOn(key, url) {
+  try {
+    const want = new URL(url);
+    const tabs = await chrome.tabs.query({ url: 'https://' + CHECKIN_SITES[key].host + '/*' });
+    return (tabs || []).find(t => {
+      if (t.active || !t.url) return false;
+      try {
+        return new URL(t.url).pathname === want.pathname;
+      } catch (e) { return false; }
+    }) || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Puts the right page in front of the content script and makes sure it actually
+// loads. Setting a tab's address to the address it already has does nothing at
+// all — no load, no content script, no run — and on Flipkart the order tab lives
+// after the "#", so changing only that moves the page without loading it. This is
+// the same trap the check-in round hit; the answer is the same one.
+function openAcceptTab(key, url) {
+  return new Promise(resolve => {
+    const done = tab => resolve(chrome.runtime.lastError || !tab ? null : tab);
+    knownAcceptTab(key).then(async known => {
+      const reuse = known || await tabAlreadyOn(key, url);
+      if (reuse) {
+        const was = reuse.url;
+        chrome.tabs.update(reuse.id, { url }, tab => {
+          if (chrome.runtime.lastError || !tab) { done(null); return; }
+          if (sameDocument(was, url)) chrome.tabs.reload(tab.id, () => void chrome.runtime.lastError);
+          done(tab);
+        });
+      } else {
+        chrome.tabs.create({ url, active: false }, done);
+      }
+    });
+  });
+}
+
+// ── starting one portal's run ───────────────────────────────────────────────
+async function startAcceptRun(key, s) {
+  const name = CHECKIN_SITES[key].name;
+
+  await clearStalledRun(key);
+  if (await acceptRunInProgress(key)) {
+    await checkinLog({ site: name, done: [], acceptNote: 'already accepting — left it to finish' });
+    return;
+  }
+
+  // Where to go. Flipkart's To Accept tab is the address its own tool has used in
+  // daily service for months. Meesho's is built from the account code read off the
+  // seller's own panel — without it there is no orders page to go to, and guessing
+  // one is exactly what must not happen.
+  let url;
+  if (key === 'flipkart') {
+    url = await checkinUrlFor('flipkart', await checkinSettings());
+  } else {
+    url = await meeshoOrdersUrl();
+    if (!url) {
+      await checkinLog({ site: name, done: [], acceptNote:
+        'skipped — your Meesho orders page has not been seen yet. Open it once in this '
+        + 'browser and it sorts itself out.' });
+      return;
+    }
+  }
+
+  // The state IS the instruction. The content script on that page picks it up the
+  // moment the page loads and does the rest; nothing here clicks anything.
+  const state = key === 'flipkart'
+    ? { mode: 'accept', running: true, dryRun: false, auto: true, limit: s.maxPerRound,
+        done: 0, failed: 0, reloads: 0, startedAt: Date.now(), ts: Date.now() }
+    : { running: true, dryRun: false, auto: true, limit: s.maxPerRound,
+        done: 0, failed: 0, startedAt: Date.now(), ts: Date.now() };
+  await chrome.storage.local.set({ [ACCEPT_STATE_KEY[key]]: state });
+
+  const tab = await openAcceptTab(key, url);
+  if (!tab) {
+    // Never leave "running" set with nothing running — that would block the portal
+    // until the stall check noticed, twenty minutes later.
+    state.running = false;
+    await chrome.storage.local.set({ [ACCEPT_STATE_KEY[key]]: state });
+    await checkinLog({ site: name, done: [], acceptNote: 'could not open a tab to accept in' });
+    return;
+  }
+  await rememberAcceptTab(key, tab.id);
+  await checkinLog({ site: name, done: [], acceptStart: s.maxPerRound });
+}
+
+// ── after every round ───────────────────────────────────────────────────────
+async function startAcceptPasses() {
+  const s = await autoSettings();
+  if (!s.enabled) return;
+
+  for (const key of ['flipkart', 'meesho']) {
+    if (!s.sites[key]) continue;
+    // The same rule the round itself follows: never work in the tab somebody is
+    // reading. Here it also means never starting a run on a portal the seller is
+    // sitting on — they are handling it themselves.
+    const open = await findPortalTab(key);
+    if (open && open.watching) {
+      await checkinLog({ site: CHECKIN_SITES[key].name, done: [],
+        acceptNote: 'not accepting — you were on that portal yourself' });
+      continue;
+    }
+    try {
+      await startAcceptRun(key, s);
+    } catch (e) {
+      await checkinLog({ site: CHECKIN_SITES[key].name, done: [],
+        acceptNote: 'could not start: ' + ((e && e.message) || e) });
+    }
+    await new Promise(res => setTimeout(res, checkinRand(3000, 8000)));
+  }
+}
+
+// ── what was accepted ───────────────────────────────────────────────────────
+//
+// Its own list, kept apart from the round log on purpose. Twenty accepted orders
+// in one round would push every check-in line out of a fifty-line list, and the
+// two answer different questions: one is "did it do its rounds", the other is
+// "what did it commit me to while I was out".
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || msg.type !== 'ACCEPT_LOG') return;
+  (async () => {
+    const all = (await chrome.storage.local.get(ACCEPT_LOG))[ACCEPT_LOG] || [];
+    all.unshift({ portal: msg.portal, accepted: msg.accepted, sku: msg.sku, due: msg.due,
+                  finished: msg.finished, done: msg.done, failed: msg.failed, ts: Date.now() });
+    await chrome.storage.local.set({ [ACCEPT_LOG]: all.slice(0, 300) });
+  })();
+  sendResponse({ ok: true });
+  return true;
+});
+
+// A tab that is gone cannot be the tab a run is using. Same reasoning as the
+// sign-in tabs: a number left lying about is a number that will one day belong to
+// something else.
+chrome.tabs.onRemoved.addListener(tabId => {
+  chrome.storage.local.get(ACCEPT_TABS).then(async res => {
+    const all = res[ACCEPT_TABS] || {};
+    let changed = false;
+    for (const key of Object.keys(all)) {
+      if (all[key] && all[key].id === tabId) { delete all[key]; changed = true; }
+    }
+    if (changed) await chrome.storage.local.set({ [ACCEPT_TABS]: all });
+  });
+});

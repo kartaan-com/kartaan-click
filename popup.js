@@ -133,3 +133,25 @@ chrome.storage.local.get(['kcCheckin', 'kcCheckinNext']).then(res => {
     : (next ? 'On — next round ' + new Date(next).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
             : 'On');
 });
+
+// ── accepting orders: on, off, or on but with nothing ticked ────────────────
+// The third state is the one worth showing. "On" with no SKUs ticked accepts
+// nothing at all, and somebody who has switched it on and walked away should not
+// have to find that out from an empty list at the end of the day.
+chrome.storage.local.get(['kcAutoAccept', 'kcOrdersFilter']).then(res => {
+  const badge = document.getElementById('acceptState');
+  if (!badge) return;
+  const s  = res.kcAutoAccept || {};
+  const on = !!s.enabled && !!(s.sites && (s.sites.flipkart || s.sites.meesho));
+  if (!on) { badge.className = 'off'; badge.textContent = 'Off'; return; }
+  const filter = res.kcOrdersFilter || {};
+  const ticked = (filter.accept || []).length + (filter.meeshoAccept || []).length;
+  const onlyTicked = s.onlyTickedSkus !== false;
+  if (onlyTicked && !ticked) {
+    badge.className   = 'off';
+    badge.textContent = 'On, but no SKUs ticked — nothing will be accepted';
+    return;
+  }
+  badge.className   = 'on';
+  badge.textContent = onlyTicked ? 'On — ' + ticked + ' SKU(s) ticked' : 'On — any SKU';
+});

@@ -79,6 +79,35 @@ because they are trying to measure *you*. Nothing here fakes anything — it is 
 login, your portal, your own tabs — but a platform could take the view that an
 automatic round is not the same as a seller checking in. The manual says so too.
 
+**4. Accepting orders — off until you switch it on, and off again until you name your SKUs.**
+Every order that arrives has to be accepted before it can be packed, and the clock
+on its dispatch deadline is already running while it waits. On Flipkart and Meesho,
+this does that for you — within limits you set, because accepting an order is a
+promise to dispatch it by a date and that promise is yours.
+
+| You choose | What it means |
+|---|---|
+| Which SKUs | Tick them on the portal's own orders page. Nothing ticked = nothing accepted. |
+| How far ahead | Only what is due today, or today and tomorrow, or any number of days out. |
+| Late orders | Whether ones already past their date are included. They are, to begin with. |
+| A daily number per SKU | The most of that SKU you will take on in a day. Blank means no limit. |
+
+It runs at the end of a check-in round, so it follows the same hours and the same
+random gaps. It presses **Accept** and nothing else — not Cancel, and nothing inside
+a box that was already open on the page. **If it cannot read when an order is due,
+it leaves that order alone.** Always.
+
+Switching it on is deliberately not enough on its own: until you have ticked at
+least one SKU, it accepts nothing. A list nobody has filled in is not permission.
+
+The settings page keeps a list of every order it accepted, so you can read back what
+you were committed to while you were somewhere else.
+
+Amazon is not in this tool. Its orders normally move on by themselves once payment
+clears, so there is nothing to press — and that is being checked properly before
+anything is promised.
+
+
 Full detail, including every button and what to do when something goes wrong, is
 in **[the manual](MANUAL.md)**.
 
