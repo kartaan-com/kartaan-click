@@ -3,6 +3,15 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.4.11 — 4 September 2026
+
+- **Stopped mistaking "login" for your Meesho account code.** Meesho's own sign-in
+  route sits in the very place the account code does, so `login` was learned as the
+  code and a whole round was sent to the sign-in page because of it. A real code is
+  a meaningless little string, so ordinary words are now refused — and refused
+  again when one is used, so a wrong one already stored is ignored and puts itself
+  right the next time you are on your panel.
+
 ## 1.4.10 — 4 September 2026
 
 - **Fixed "Do one round now" appearing to hang with every tab sitting idle.**

@@ -92,6 +92,17 @@ if (!site) return;
 // they are already looking at is not acting on their page.
 const MEESHO_CODE_KEY = 'kcMeeshoCode';
 
+// Words that sit in exactly the same place as the account code but are not one.
+// Meesho's own sign-in route is .../fulfillment/login/orders/pending, and "login"
+// was duly learned as the account code and used for a whole round. A real code is
+// a meaningless little string; anything that is an ordinary word is not one.
+const NOT_A_CODE = [
+  'login', 'signin', 'sign-in', 'logout', 'signup', 'register', 'auth',
+  'home', 'orders', 'order', 'dashboard', 'panel', 'new', 'index', 'main',
+  'error', 'notfound', 'undefined', 'null', 'growth', 'fulfillment',
+];
+const looksLikeCode = c => !!c && NOT_A_CODE.indexOf(c.toLowerCase()) === -1;
+
 function learnMeeshoCode() {
   if (location.hostname !== 'supplier.meesho.com') return;
   // The code sits after the section name in every panel address, not just the
@@ -101,7 +112,7 @@ function learnMeeshoCode() {
   // went to the front door again next time.
   const m = location.pathname.match(/\/panel\/v[0-9]+\/[a-z]+\/[a-z-]+\/([A-Za-z0-9_-]{3,40})(?:\/|$)/i)
          || location.pathname.match(/\/fulfillment\/([A-Za-z0-9_-]{3,40})(?:\/|$)/);
-  if (!m) return;
+  if (!m || !looksLikeCode(m[1])) return;
   chrome.storage.local.get(MEESHO_CODE_KEY, (res) => {
     void chrome.runtime.lastError;
     if (res && res[MEESHO_CODE_KEY] === m[1]) return;   // already known

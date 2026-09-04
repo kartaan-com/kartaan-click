@@ -288,9 +288,21 @@ const CHECKIN_SITES = {
 // The Meesho orders address for THIS seller, built from the code learned off
 // their own panel. Returns nothing until that has happened.
 const MEESHO_CODE_KEY = 'kcMeeshoCode';
+
+// Checked here as well as where it is learned, because a bad one may already be
+// stored from before this list existed — "login" was, and a whole round went to
+// Meesho's sign-in page because of it. Ignoring it here means the next time he is
+// on a real panel page the right code is read and everything rights itself.
+const MEESHO_NOT_A_CODE = [
+  'login', 'signin', 'sign-in', 'logout', 'signup', 'register', 'auth',
+  'home', 'orders', 'order', 'dashboard', 'panel', 'new', 'index', 'main',
+  'error', 'notfound', 'undefined', 'null', 'growth', 'fulfillment',
+];
+
 async function meeshoOrdersUrl() {
   const code = (await chrome.storage.local.get(MEESHO_CODE_KEY))[MEESHO_CODE_KEY];
   if (!code || !/^[A-Za-z0-9_-]{3,40}$/.test(code)) return '';
+  if (MEESHO_NOT_A_CODE.indexOf(String(code).toLowerCase()) !== -1) return '';
   return 'https://supplier.meesho.com/panel/v3/new/fulfillment/' + code + '/orders/pending';
 }
 

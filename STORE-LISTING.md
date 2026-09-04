@@ -9,7 +9,7 @@ unless you want to reword it.
    your Microsoft account, and choose the **Microsoft Edge** program.
    There is no fee for Edge — unlike Chrome, which charges $5.
 2. Build the upload file: `node tools/make-zip.js`, which produces
-   `kartaan-click-1.4.10.zip` with `manifest.json` at the top level.
+   `kartaan-click-1.4.11.zip` with `manifest.json` at the top level.
 
 ## Listing fields
 
