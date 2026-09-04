@@ -435,6 +435,17 @@ async function findPortalTab(key) {
   }
 }
 
+// Do these two addresses land on the same loaded page? Everything but the part
+// after the "#" being equal means the browser will not load anything.
+function sameDocument(a, b) {
+  try {
+    const x = new URL(a), y = new URL(b);
+    return x.origin === y.origin && x.pathname === y.pathname && x.search === y.search;
+  } catch (e) {
+    return false;
+  }
+}
+
 function visitOnce(key, url, reuse) {
   return new Promise(resolve => {
     const cfg = CHECKIN_SITES[key];
@@ -463,7 +474,7 @@ function visitOnce(key, url, reuse) {
       // which a tab of ours has no need of — leaving ours on the orders page is
       // exactly where the next round wants it.
       if (tabId != null) {
-        if (reuse && !result.signedOut && cameFrom) {
+        if (reuse && !result.signedOut && cameFrom && cameFrom !== url) {
           chrome.tabs.update(tabId, { url: cameFrom }, () => void chrome.runtime.lastError);
         }
         if (result.signedOut) await rememberSignInTab(key, tabId);
@@ -491,7 +502,24 @@ function visitOnce(key, url, reuse) {
     };
 
     if (reuse) {
-      chrome.tabs.update(reuse.id, { url, active: false }, started);
+      // ⚠️ SETTING A TAB'S ADDRESS IS NOT ALWAYS A PAGE LOAD. If it is already at
+      // that address, the browser does nothing at all; and on Flipkart, where the
+      // order tab lives after the "#", changing only that part moves the page
+      // without loading it. Either way no content script starts, nobody says
+      // hello, and the round sits there until it times out — which is exactly
+      // what "Running…" and three idle tabs looked like.
+      //
+      // So when the address leads to the same document, it is reloaded on purpose.
+      chrome.tabs.update(reuse.id, { url }, (tab) => {
+        if (chrome.runtime.lastError || !tab) {
+          finish({ site: cfg.name, done: [], stoppedAt: null, failed: true });
+          return;
+        }
+        started(tab);
+        if (sameDocument(reuse.url, url)) {
+          chrome.tabs.reload(tab.id, () => void chrome.runtime.lastError);
+        }
+      });
     } else {
       // Opened behind whatever the seller is doing — a round must never take the
       // screen away from them mid-task.
@@ -641,8 +669,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  // Answered straight away, NOT when the round finishes. A round can take a
+  // couple of minutes if a portal is slow, and waiting for it left the settings
+  // page saying "Running…" with no sign of life. The list updates itself as each
+  // portal reports in, which is a better thing to watch anyway.
   if (msg.type === 'CHECKIN_RUN_NOW') {
-    runCheckinRound(true).then(() => sendResponse({ ok: true }));
+    runCheckinRound(true);
+    sendResponse({ started: true });
     return true;
   }
 });

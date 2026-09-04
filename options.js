@@ -191,15 +191,20 @@ $('runNow').addEventListener('click', async () => {
   const s = collect();
   if (!s.enabled) { $('saved').textContent = 'Switch check-ins on and Save first.'; return; }
   await chrome.storage.local.set({ [KEY]: s });
-  $('runNow').disabled = true;
-  $('saved').textContent = 'Running…';
+  $('saved').textContent = 'Running — the list below fills in as each portal reports.';
   chrome.runtime.sendMessage({ type: 'CHECKIN_RUN_NOW' }, () => {
     void chrome.runtime.lastError;
-    $('runNow').disabled = false;
-    $('saved').textContent = 'Done — see the list below.';
-    showLog();
-    showNext();
   });
+});
+
+// The round answers straight away and then gets on with it, so this page watches
+// for each portal reporting in rather than waiting on one long answer. A slow
+// portal used to leave "Running…" sitting there with nothing to look at.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return;
+  if (changes[LOG])  showLog();
+  if (changes[NEXT]) showNext();
+  if (changes.kcMeeshoCode) showMeeshoCode();
 });
 
 $('clearLog').addEventListener('click', async () => {

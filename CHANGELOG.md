@@ -3,6 +3,20 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.4.10 — 4 September 2026
+
+- **Fixed "Do one round now" appearing to hang with every tab sitting idle.**
+  Since tabs are now left open, a round reuses one that is often already on the
+  very page it wants — and telling a tab to go where it already is does nothing at
+  all. On Flipkart it was worse: the order tab lives after the "#" in the address,
+  and changing only that part moves the page without loading it. Either way no
+  page load happened, so nothing ever reported back and the round waited out its
+  full time on each portal in turn. A reused tab is now reloaded when the address
+  leads to the same page.
+- **The settings page no longer waits for the whole round.** It gets an answer
+  straight away and the list fills in as each portal reports, so there is
+  something to watch instead of "Running…" and silence.
+
 ## 1.4.9 — 4 September 2026
 
 - **Closes a pop-up whose close button is only a picture.** Meesho's promotion box
