@@ -108,8 +108,11 @@ above the list; on Meesho it is read from the Dispatch Date column. It does not
 read customer names, addresses, phone numbers, order values or payment details, and
 **nothing from those pages leaves your computer** — there is nowhere for it to go.
 
-It presses **Accept** and nothing else. It does not press Cancel, and it does not
-press a button inside any box that was already open on the page when it clicked.
+The only thing it presses to accept an order is **Accept**. It does not press
+Cancel. It does also open a row, move to another page of the list, or open a
+collapsed group — it has to, in order to read what is there — but nothing it opens
+commits you to anything, and it does not press a button inside any box that was
+already open on the page when it clicked.
 If a confirmation box appears because of its own click, it presses only a button
 whose whole label is one of a short fixed list; anything else and it presses
 nothing at all, writes down the exact words that were on the box, and stops.

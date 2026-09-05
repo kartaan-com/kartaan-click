@@ -620,6 +620,13 @@ const ORDER_RUN_MAX_MS = 6 * 60 * 60 * 1000;
 async function flipkartRunInProgress() {
   const st = (await chrome.storage.local.get('kcOrdersBot')).kcOrdersBot;
   if (!st || !st.running) return false;
+  // ⚠️ A RUN NOBODY EVER PICKED UP IS NOT A RUN. This record is shared with the
+  // by-hand Start button, and a by-hand run has no `started` field at all — so this
+  // only ever touches a run a round announced and no content script took on. Left
+  // out, such a run made every round skip Flipkart's check-in, indefinitely, and a
+  // check-in is what notices the seller has been signed out.
+  if (st.auto && st.started === false
+      && Date.now() - (st.startedAt || 0) > NEVER_STARTED_MS) return false;
   if (st.startedAt && Date.now() - st.startedAt > ORDER_RUN_MAX_MS) return false;
   return true;
 }
@@ -1234,7 +1241,10 @@ async function startAcceptRun(key, s) {
   // permission on the strength of that stale answer and then be navigated out from
   // under itself mid-click, accepting an order that was never counted against
   // anything.
-  await rememberAcceptTab(key, null);
+  // The stale-permission window this was guarding against is closed by writing the
+  // run state AFTER the tab is known, below. Clearing the record here as well made
+  // knownAcceptTab always return nothing, so every round fell through to matching
+  // any background tab by its address instead of using the tab it opened last time.
   const tab = await openAcceptTab(key, url);
   if (!tab) {
     await checkinLog({ site: name, done: [], acceptNote: 'could not open a tab to accept in' });
@@ -1266,10 +1276,18 @@ async function startAcceptRun(key, s) {
 // every twenty minutes buries everything else in a fifty-line list.
 const ACCEPT_SAID = 'kcAcceptSaid';
 
+// ⚠️ "ONCE" MEANT ONCE EVER, WHICH IS WORSE THAN TOO OFTEN. Comparing only the
+// words meant each of these was written a single time in the life of the install:
+// switch a portal off six months later and no line appears at all, in the very list
+// the manual tells the seller to look at. It is now once every six hours, so a
+// state that persists is repeated occasionally and a state that returns is reported.
+const SAY_AGAIN_MS = 6 * 60 * 60 * 1000;
+
 async function sayOnce(name, note, site) {
   const said = (await chrome.storage.local.get(ACCEPT_SAID))[ACCEPT_SAID] || {};
-  if (said[name] === note) return;
-  said[name] = note;
+  const last = said[name];
+  if (last && last.note === note && Date.now() - (last.ts || 0) < SAY_AGAIN_MS) return;
+  said[name] = { note, ts: Date.now() };
   await chrome.storage.local.set({ [ACCEPT_SAID]: said });
   await checkinLog({ site: site || '—', done: [], acceptNote: note });
 }
@@ -1300,9 +1318,12 @@ async function startAcceptPasses() {
       continue;
     }
     if (s.onlyTickedSkus && !((ticked[TICK_KEY[key]] || []).length)) {
-      await checkinLog({ site: CHECKIN_SITES[key].name, done: [],
-        acceptNote: 'not accepting — no SKUs are ticked yet. Open this portal’s orders '
-          + 'page, press Scan SKUs, tick the ones you are happy to take, then Save ticks.' });
+      // Through sayOnce like the other two — this is the state right after switching
+      // the feature on, so it is the one that would actually flood the list.
+      await sayOnce(key + '-nosku',
+        'not accepting — no SKUs are ticked yet. Open this portal’s orders page, '
+        + 'press Scan SKUs, tick the ones you are happy to take, then Save ticks.',
+        CHECKIN_SITES[key].name);
       continue;
     }
     // The same rule the round itself follows: never work in the tab somebody is

@@ -9,7 +9,7 @@ unless you want to reword it.
    your Microsoft account, and choose the **Microsoft Edge** program.
    There is no fee for Edge — unlike Chrome, which charges $5.
 2. Build the upload file: `node tools/make-zip.js`, which produces
-   `kartaan-click-1.5.2.zip` with `manifest.json` at the top level.
+   `kartaan-click-1.5.3.zip` with `manifest.json` at the top level.
 
 ## Listing fields
 
@@ -46,7 +46,7 @@ You set the hours it may do this in, how far apart the rounds are, and which por
 
 Accepting orders — off until you switch it on, and still off until you name the SKUs:
 
-Orders arrive all day and each one has to be accepted before it can be packed. Kartaan Click can do that for you on Flipkart and Meesho — but only within limits you set, because accepting an order is a promise to dispatch it by a date. You tick which of your own SKUs it may accept, you set how far ahead it may go (only what is due today, or today and tomorrow, or any number of days out), and you can put a daily number against any SKU so it never takes on more of something than you have. There is a daily ceiling for the whole portal as well. On Flipkart a single row can cover several orders at once, and every limit is counted in orders rather than presses, so those limits mean what they say. The only thing it presses to accept an order is Accept — it also opens rows, groups and pages in order to read them — and if it cannot read when an order is due, it leaves that order alone.
+Orders arrive all day and each one has to be accepted before it can be packed. Kartaan Click can do that for you on Flipkart and Meesho — but only within limits you set, because accepting an order is a promise to dispatch it by a date. You tick which of your own SKUs it may accept, you set how far ahead it may go (only what is due today, or today and tomorrow, or up to 30 days out), and you can put a daily number against any SKU so it never takes on more of something than you have — 0 for none of it today, blank for no limit. There is a daily ceiling for the whole portal as well. On Flipkart a single row can cover several orders at once, and every limit is counted in orders rather than presses, so those limits mean what they say. The only thing it presses to accept an order is Accept — it also opens rows, groups and pages in order to read them — and if it cannot read when an order is due, it leaves that order alone.
 
 It is off out of the box, and switching it on is not enough on its own: until you have ticked at least one SKU, it accepts nothing at all.
 

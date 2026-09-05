@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kartaan Click",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "Free fixes for seller tools: the VMS packing box clears itself, Flipkart orders go one click at a time, orders get accepted.",
   "homepage_url": "https://kartaan.com",
 

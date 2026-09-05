@@ -225,6 +225,19 @@ const MODES = {
       if (!btn) {
         await log(strict ? '  could not find this row\'s own Accept button — leaving it alone'
                          : '  row panel did not open');
+        // ⚠️ TIDY UP BEFORE GIVING UP. Strict mode refuses when more than one row
+        // panel is open, which is the right rule — but nothing used to close the one
+        // this attempt opened, so the next attempt would see two, then three, and
+        // five refusals in a row ended the whole run over one transient miss. One
+        // press back on the header we opened puts it away; Escape catches the rest.
+        if (strict) {
+          try {
+            if (document.contains(pick.el)) pick.el.click();
+            document.body.dispatchEvent(new KeyboardEvent('keydown',
+              { key: 'Escape', keyCode: 27, bubbles: true }));
+          } catch (e) { /* nothing here is worth failing the run over */ }
+          await sleep(rand(500, 1200));
+        }
         return false;
       }
 
@@ -891,9 +904,12 @@ function whyNoGroups(secs) {
          + 'these orders are due.';
   }
   if (secs.unseen) {
-    return 'the group headings add up to ' + secs.unseen.seen + ' orders but the tab says '
-         + secs.unseen.total + ', so there is a group here that cannot be read — and with it '
-         + 'a set of dates nothing has checked.';
+    return secs.unseen.total == null
+      ? 'the "To Accept" count could not be read off this page, so there is no way to check '
+        + 'that the group headings account for every order waiting here.'
+      : 'the group headings add up to ' + secs.unseen.seen + ' orders but the tab says '
+        + secs.unseen.total + '. Either the page was still redrawing, or there is a group '
+        + 'here that cannot be read — and with it a set of dates nothing has checked.';
   }
   const b = secs.blocked;
   // `due: null` means the wording defeated the date reader, which is a different
@@ -924,12 +940,16 @@ function sectionsAllTrusted(mode, rules) {
   // whole, there is a group we are not seeing and the run stops. One line of
   // arithmetic against a number already on screen, and it fails closed on any
   // heading Flipkart invents next.
+  // ⚠️ NO TILE, NO RUN. Gating this on "if we could read the total" switched the
+  // whole check off in exactly the case it is for: a page we cannot read properly.
+  // Verified on the real tab, 2026-09-05 — "Dispatch by 12 PM, Today (6)" against
+  // a "6 To Accept" tile — so the two do count the same thing.
   const total = readPendingCount(mode);
   const seen  = pills.reduce((n, p) => {
     const m = p.match(/\((\d+)\)\s*$/);
     return n + (m ? parseInt(m[1], 10) : 0);
   }, 0);
-  if (total != null && seen !== total) {
+  if (total == null || seen !== total) {
     return { ok: false, pills, unseen: { seen, total } };
   }
 
@@ -1001,7 +1021,11 @@ async function scanSkus(mode) {
       cap.placeholder = '∞';
       cap.title = 'Most of this SKU to accept in one day when rounds accept on their own. '
                 + '0 means none today. Leave blank for no limit.';
-      if (Number.isFinite(capMap[sku]) && capMap[sku] > 0) cap.value = String(capMap[sku]);
+      // ⚠️ `>= 0`, NOT `> 0`. A cap of 0 means "none of this today". Rendering it as
+      // an empty box meant the next Save read it as blank and deleted it — so the
+      // one number that stops a SKU quietly set it free the next time the seller
+      // pressed Scan SKUs.
+      if (Number.isFinite(capMap[sku]) && capMap[sku] >= 0) cap.value = String(capMap[sku]);
     }
     const cnt = document.createElement('b');
     cnt.textContent = n + (n === 1 ? ' order' : ' orders');
@@ -1349,21 +1373,6 @@ async function runLoop(mode) {
       // manual says unticking it stops the run after the order it is on; this is
       // the line that makes that true. It also catches a run resumed from stored
       // state hours later, after the seller switched the feature off.
-      // ⚠️ THE MANUAL SAYS IT WILL NOT KEEP GOING IN A TAB YOU ARE READING, and
-      // refusing to START in one is not the same promise: the seller can switch to
-      // this tab five seconds after a round begins and watch buttons being pressed
-      // under their cursor. So a run holds still while its tab is on screen, and
-      // picks up again when it is not.
-      if (isAuto && document.visibilityState === 'visible') {
-        await log('you are looking at this tab — holding still until you are done.');
-        while (document.visibilityState === 'visible') {
-          const st = await getState();
-          if (!st || !st.running) break;
-          await sleep(4000);
-        }
-        continue;
-      }
-
       if (isAuto) {
         autoRules = await RULES.settings();
         if (!autoRules.enabled || !autoRules.sites[AUTO_PORTAL]) {
@@ -1371,6 +1380,24 @@ async function runLoop(mode) {
           await log('STOPPED — accepting has been switched off in settings.');
           break;
         }
+      }
+
+      // ⚠️ THE MANUAL SAYS IT WILL NOT KEEP GOING IN A TAB YOU ARE READING, and
+      // refusing to START in one is a weaker promise: the seller can switch to this
+      // tab five seconds after a round begins.
+      //
+      // It STOPS rather than waiting. An earlier version held still until the tab
+      // was hidden again, which was wrong three ways: it had no time limit, its
+      // heartbeat kept beating so the run never looked stalled — which made every
+      // later round skip this portal's check-in, for as long as the tab stayed on
+      // screen — and it sat above the off switch, so unticking the setting during a
+      // hold did nothing. Stopping frees the portal at once and the next round picks
+      // the work up when he has moved on. `hasFocus` as well as `visible`, so a tab
+      // left showing in a window behind the editor does not count as being read.
+      if (isAuto && document.visibilityState === 'visible' && document.hasFocus()) {
+        s.running = false; await setState(s);
+        await log('STOPPED — you came to this tab. It will pick this up at the next round.');
+        break;
       }
 
       if (s.done >= s.limit) {
@@ -1409,7 +1436,16 @@ async function runLoop(mode) {
       // ⚠️ FLIPKART SHOWS THE DISPATCH DATE ONLY ON THE HEADING, never on a row.
       // No heading means no date, and no date means no accept.
       if (isAuto) {
-        const secs = sectionsAllTrusted(mode, autoRules);
+        let secs = sectionsAllTrusted(mode, autoRules);
+        // Both the heading counts and the tab's own total drop as orders are
+        // accepted, and Flipkart updates them separately — so a single glance can
+        // catch the page mid-repaint and see a mismatch that is not real. Looked at
+        // twice before it is treated as fatal; a group that genuinely cannot be read
+        // is still there four seconds later.
+        if (!secs.ok && secs.unseen) {
+          await sleep(4000);
+          secs = sectionsAllTrusted(mode, autoRules);
+        }
         if (!secs.ok) {
           s.running = false; await setState(s);
           await log('STOPPED — ' + whyNoGroups(secs) + ' Nothing was accepted.');
@@ -1642,6 +1678,21 @@ async function runLoop(mode) {
     }
   };
   await mount();
+
+  // AUTO. A round writes the run AFTER opening the tab, so on a tab that was already
+  // loaded — one this feature used last time — the page never reloads and `mount`
+  // never runs again. Without this the run would sit there announced and untouched
+  // until something else happened to reload the page. `runLoop` asks the worker
+  // whether this tab is the one it opened, so every other Flipkart tab that hears
+  // the same change stops immediately.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes[STATE_KEY]) return;
+    const now = changes[STATE_KEY].newValue;
+    if (!now || !now.running || !now.auto || looping) return;
+    const m = currentMode();
+    if (m && m.id === now.mode) setTimeout(() => runLoop(m), rand(2000, 4000));
+  });
+
   window.addEventListener('hashchange', () => setTimeout(mount, 1200));
   // Pending Label and Pending RTD share a url, so switching between them fires no
   // hashchange — notice the swap by watching what is on screen, but never while a

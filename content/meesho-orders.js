@@ -484,18 +484,14 @@ async function runLoop() {
 
       if (!s.ts || Date.now() - s.ts > 60000) { s.ts = Date.now(); await setState(s); }
 
-      // ⚠️ THE MANUAL SAYS IT WILL NOT KEEP GOING IN A TAB YOU ARE READING, and
-      // refusing to START in one is a weaker promise: the seller can switch to this
-      // tab five seconds after a round begins. So a run holds still while its tab
-      // is on screen, and picks up again once it is not.
-      if (document.visibilityState === 'visible') {
-        await log('you are looking at this tab — holding still until you are done.');
-        while (document.visibilityState === 'visible') {
-          const st = await getState();
-          if (!st || !st.running) break;
-          await sleep(4000);
-        }
-        continue;
+      // ⚠️ IT STOPS RATHER THAN WAITING — see the same block in fk-orders.js. An
+      // earlier version held still until the tab was hidden again, with no time
+      // limit, while its heartbeat kept the run looking alive: that made every later
+      // round skip this portal's check-in for as long as the tab stayed on screen.
+      // Stopping frees the portal at once and the next round picks the work up.
+      if (document.visibilityState === 'visible' && document.hasFocus()) {
+        await stop(s, 'STOPPED — you came to this tab. It will pick this up at the next round.');
+        break;
       }
 
       // The off switch has to work on a run that is ALREADY GOING. Asked again
@@ -672,7 +668,9 @@ async function scanSkus() {
     cap.title = 'Most to accept of this SKU in one day. 0 means none today. '
               + 'Leave blank for no limit.';
     cap.placeholder = '∞';
-    if (Number.isFinite(capMap[sku]) && capMap[sku] > 0) cap.value = String(capMap[sku]);
+    // ⚠️ `>= 0`, NOT `> 0` — see the same line in fk-orders.js. A cap of 0 shown as
+    // an empty box is deleted by the next Save.
+    if (Number.isFinite(capMap[sku]) && capMap[sku] >= 0) cap.value = String(capMap[sku]);
     const cnt = document.createElement('b');
     cnt.textContent = n + (n === 1 ? ' order' : ' orders');
     line.appendChild(cb); line.appendChild(name); line.appendChild(cap); line.appendChild(cnt);

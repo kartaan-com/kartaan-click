@@ -3,6 +3,50 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.5.3 — 5 September 2026
+
+A third independent review. It confirmed the by-hand Flipkart tool — the Start
+button, Mark RTD, Print Labels, Accept — is untouched by all of this, checked hunk
+by hunk against the last released version. The rest was fifteen findings, none of
+them a crash and none on the by-hand path. Nothing was ever pushed or released.
+
+**The pattern this time**, and it is worth naming: three fixes were made in the
+engine and not in the switch beside it.
+
+- **A cap of 0 was honoured by the rules and thrown away by the panel.** Setting a
+  SKU to "none today" worked — until you pressed Scan SKUs again, when the box came
+  back blank, and blank means "no limit". So the number that stops a SKU quietly set
+  it free the next day. The panel now shows a 0 as a 0.
+- **The new heading cross-check switched itself off** whenever the "To Accept" count
+  could not be read — which is exactly the case it exists for. No count, no run.
+- **The "a run nobody picked up is not a run" rule reached Meesho and not Flipkart**,
+  so a Flipkart run that never got going still stopped that portal being checked in
+  on, round after round.
+
+**And the rest**
+
+- **It now stops rather than waits when you come to the tab it is working in.** The
+  previous version held still until you left — with no time limit, while telling the
+  worker it was still alive, which stopped that portal being checked in on for as
+  long as the tab stayed on screen. And unticking the setting during one of those
+  holds did nothing. Stopping frees everything at once, and the next round picks the
+  work up when you have moved on.
+- A group heading count that disagrees with the tab's own total is now looked at
+  twice before the run is stopped — both numbers drop as orders are accepted and
+  Flipkart updates them separately, so a single glance can catch the page
+  mid-redraw and stop a perfectly healthy run.
+- If opening a row fails, what it opened is now closed again. Otherwise the next
+  attempt saw two open rows, refused, and five refusals in a row ended the run over
+  one transient miss.
+- The round list says why nothing happened again after six hours, rather than once
+  in the life of the install — switch a portal off months later and you would have
+  had no line at all, in the very list you are told to look at.
+- A run announced on a tab that was already open is now picked up straight away
+  instead of waiting for something to reload the page.
+- The store listing and the privacy policy now match the manual on what it presses
+  and how far ahead it will go, and the 1.5.0 entry below has been marked where it
+  described what that version was meant to do rather than what it did.
+
 ## 1.5.2 — 5 September 2026
 
 A second independent review of 1.5.1. It confirmed the four serious faults from the
@@ -166,6 +210,10 @@ separate times before it touches anything.
   was already open when it clicked. If a confirmation box comes up because of its
   own click, it presses only a button whose whole label is one of a short fixed
   list — otherwise it presses nothing, writes down the box's exact words, and stops.
+  *(Two of the claims in this 1.5.0 entry were not actually true of 1.5.0: the
+  "already open" check did not exist on Flipkart, and "Accept" was on the
+  confirmation list, where it could not be told apart from an order's own button.
+  Both were fixed in 1.5.1 and 1.5.2. 1.5.0 was never pushed or released.)*
 - **A new list on the settings page: what it accepted for you.** Every order,
   newest first, with its SKU and when it was due. That is the list to read after a
   day away.
