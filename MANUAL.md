@@ -506,8 +506,12 @@ Then:
    orders each has.
 2. **Tick** the ones you are happy for it to accept without asking you.
 3. Beside any SKU, type a **number** — the most of that SKU you are willing to take
-   on in one day. Leave it blank and there is no limit on that SKU. The count
-   starts again each day.
+   on in one day. **0 means none of it today.** Leave it blank and there is no limit
+   on that SKU beyond the daily ceiling for the whole portal. The count starts again
+   each day.
+
+   Orders you accept yourself, by hand, are not counted here. These numbers bound
+   what happens while you are not watching.
 4. Press **Save ticks**.
 
 **One thing worth knowing about that list.** The same ticks are used two ways, and
@@ -597,7 +601,10 @@ It skips a portal when:
   *Only the SKUs I have ticked*, which the settings page warns you about).
 - **It will not accept an order whose date it cannot read.** No exceptions.
 - **It will not press anything on Amazon.** Amazon is not in this tool at all.
-- **It will not press Cancel, or anything else on the row.** Only Accept.
+- **It will not press Cancel, or anything else on the row.** The only thing it
+  presses to accept an order is Accept. It does also open a row, switch to another
+  page of the list, or open a collapsed group — it has to, to see what is there —
+  but nothing it opens commits you to anything.
 - **It will not press a button in a box that was already open** when it clicked. On
   both portals it notes which boxes were on screen before it pressed anything, and
   will only answer one that appeared afterwards.
@@ -608,7 +615,8 @@ It skips a portal when:
   anything else it does not recognise means it presses nothing, writes the box's
   exact words into its log, and stops so you can look.
 - **It will not keep going in a tab you are reading.** It works in its own
-  background tab.
+  background tab, it will not start while you have that portal in front of you, and
+  if you switch to the tab it is working in it holds still until you leave again.
 
 ### Seeing what it did
 

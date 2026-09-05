@@ -3,6 +3,65 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.5.2 — 5 September 2026
+
+A second independent review of 1.5.1. It confirmed the four serious faults from the
+first review were properly fixed, and then found **twenty more** — including one
+that would have broken every run on Flipkart, by-hand ones included. Neither 1.5.0
+nor 1.5.1 was ever pushed or released.
+
+**The one that broke everything**
+
+- A stray word — a timer declared inside the wrong pair of brackets — meant the
+  tidy-up at the end of every Flipkart run threw an error instead of running. The
+  panel would have stopped on its last line, no "finished" would ever have been
+  written, and a timer would have been left ticking. Found by reading, reproduced,
+  fixed. **The by-hand Start button was affected too**, which is the part that has
+  been in daily use for months.
+
+**Three more that could have accepted the wrong orders**
+
+- **It could take a row it had not decided on.** When only one row's panel was open
+  it was used without checking whose row it was — and a panel left open by a failed
+  attempt a moment earlier is still on screen. Most rows read "1 Order", so the
+  count check could not tell them apart. A round now proves the row is the one it
+  decided on, and takes nothing if two panels are open.
+- **A group heading it did not recognise was invisible to it.** The date check only
+  understood two wordings; anything else — "Non-Breached Orders (30)", for one —
+  was not checked at all, and the tab was declared safe on the strength of the
+  headings it could see. The headings' counts now have to add up to the number on
+  the tab itself, so a group it cannot read stops the run.
+- **Typing 0 against a SKU meant "no limit" instead of "none".** The one number
+  somebody would type to stop a SKU for the day was the number that set it free.
+  0 now means none; only a blank box removes a limit.
+
+**And the rest**
+
+- Closing a stray tab used to disable the by-hand Start button for good, and the
+  message it showed told you to do the one thing that guaranteed it stayed stuck.
+  Start now clears a run that has stopped moving, and says to press Stop.
+- **It now holds still if you switch to the tab it is working in**, which is what
+  the manual has been promising. It was only refusing to *start* in a tab you were
+  reading.
+- The per-run ceiling is checked before a press rather than after, so "never more
+  than 20 in one go" is true even when a row covers twelve orders.
+- A run that is announced but never actually picked up no longer counts as running
+  — that had been quietly stopping the check-in round for that portal, over and
+  over, and the check-in is the thing that notices you have been signed out.
+- The reason nothing happened is written to the settings page **once**, not every
+  twenty minutes, so it no longer pushes the check-in history out of the list.
+- A hang while starting a run can no longer take the check-in timer down with it.
+- The order count is read from the front of the row, where Flipkart puts it —
+  a SKU named something like "MY-100 Orders-Pack" used to stop the run every time.
+- Flipkart's confirmation step now notes what was on screen *before* it presses,
+  not after, so a box that appears quickly is still answered.
+- A missing or nonsensical order count is refused outright instead of being read as
+  "one". "No longer breached" no longer reads as breached. A portal tab left open
+  in a minimised window no longer blocks accepting for ever.
+- README, the manual and the store listing corrected again: what one Flipkart press
+  actually takes, the two ceilings, that orders you accept by hand are not counted
+  against your limits, and that it opens rows and pages as well as pressing Accept.
+
 ## 1.5.1 — 5 September 2026
 
 Everything an independent review found in 1.5.0, fixed. That review was asked to

@@ -484,6 +484,20 @@ async function runLoop() {
 
       if (!s.ts || Date.now() - s.ts > 60000) { s.ts = Date.now(); await setState(s); }
 
+      // ⚠️ THE MANUAL SAYS IT WILL NOT KEEP GOING IN A TAB YOU ARE READING, and
+      // refusing to START in one is a weaker promise: the seller can switch to this
+      // tab five seconds after a round begins. So a run holds still while its tab
+      // is on screen, and picks up again once it is not.
+      if (document.visibilityState === 'visible') {
+        await log('you are looking at this tab — holding still until you are done.');
+        while (document.visibilityState === 'visible') {
+          const st = await getState();
+          if (!st || !st.running) break;
+          await sleep(4000);
+        }
+        continue;
+      }
+
       // The off switch has to work on a run that is ALREADY GOING. Asked again
       // every time round, which is what makes the manual's promise true — and it
       // also catches a run resumed from stored state after the seller switched
@@ -655,7 +669,8 @@ async function scanSkus() {
     const cap = document.createElement('input');
     cap.type = 'number'; cap.min = '0'; cap.className = 'cap';
     cap.dataset.sku = sku;
-    cap.title = 'Most to accept of this SKU in one day. Leave blank for no limit.';
+    cap.title = 'Most to accept of this SKU in one day. 0 means none today. '
+              + 'Leave blank for no limit.';
     cap.placeholder = '∞';
     if (Number.isFinite(capMap[sku]) && capMap[sku] > 0) cap.value = String(capMap[sku]);
     const cnt = document.createElement('b');

@@ -741,7 +741,17 @@ async function runCheckinRound(force) {
     //
     // This only OPENS the tabs; it does not wait for the runs, which carry on by
     // themselves for as long as they take.
-    try { await startAcceptPasses(); } catch (e) {
+    // ⚠️ AND IT IS RACED AGAINST A CLOCK. try/catch stops a rejection; it does
+    // nothing about a promise that never settles — and putting this in front of the
+    // cleanup means one hang here would leave the lock held, the worker pinned
+    // awake, and no next round ever scheduled: check-ins over for good, silently.
+    // Nothing below may depend on this having finished.
+    try {
+      await Promise.race([
+        startAcceptPasses(),
+        new Promise(res => setTimeout(res, 60000)),
+      ]);
+    } catch (e) {
       console.log('[Kartaan Click] accept pass failed to start: ' + ((e && e.message) || e));
     }
     stopKeepAwake();
@@ -999,8 +1009,19 @@ async function autoSettings() {
 // slow run in a throttled tab can reach six hours, and disbelieving THAT one means
 // starting a second copy on top of it. So the heartbeat is asked first: if the run
 // stamped itself within the stall window, it is running, whatever the clock says.
+// A run this feature announced but which no content script ever picked up. Ninety
+// seconds is far longer than a page needs to load and say hello, so past that it is
+// not slow — it never began. Believing it does not merely waste a round: a round
+// skips a portal whose run is "in progress", so that portal stops being checked in
+// on at all, round after round, and a check-in is the thing that notices a seller
+// has been signed out.
+const NEVER_STARTED_MS = 90 * 1000;
+
 function runLooksAlive(st) {
   if (!st || !st.running) return false;
+  if (st.auto && st.started === false && Date.now() - (st.startedAt || 0) > NEVER_STARTED_MS) {
+    return false;
+  }
   if (st.ts && Date.now() - st.ts < ACCEPT_STALL_MS) return true;
   if (st.startedAt && Date.now() - st.startedAt > ORDER_RUN_MAX_MS) return false;
   return true;
@@ -1025,7 +1046,12 @@ async function acceptRunInProgress(key) {
 // answered no whenever a second background tab happened to exist.
 async function portalIsInFront(key) {
   try {
-    const tabs = await chrome.tabs.query({ url: 'https://' + CHECKIN_SITES[key].host + '/*', active: true });
+    // `active: true` alone answers for EVERY window, so a portal tab left showing
+    // in a window minimised since this morning would block accepting for ever. It
+    // has to be the window they are actually in.
+    const tabs = await chrome.tabs.query({
+      url: 'https://' + CHECKIN_SITES[key].host + '/*', active: true, lastFocusedWindow: true,
+    });
     return !!(tabs && tabs.length);
   } catch (e) {
     return true;    // cannot tell — assume they are there and leave it alone
@@ -1051,6 +1077,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const ok = !!rec && rec.id === tabId
       && rec.host === CHECKIN_SITES[key].host
       && !!rec.ts && Date.now() - rec.ts < ACCEPT_TAB_MAX_AGE_MS;
+
+    // Saying yes is also the moment the run stops being merely announced and starts
+    // being under way. Until this, `started` is false and the run does not count as
+    // alive — which is what stops a run nobody ever picked up from blocking that
+    // portal's check-ins for the rest of the day.
+    if (ok) {
+      const skey = ACCEPT_STATE_KEY[key];
+      const st   = (await chrome.storage.local.get(skey))[skey];
+      if (st && st.running && st.started === false) {
+        st.started = true; st.ts = Date.now();
+        await chrome.storage.local.set({ [skey]: st });
+      }
+    }
     sendResponse({ run: ok });
   })();
   return true;
@@ -1143,6 +1182,9 @@ async function tabAlreadyOn(key, url) {
 function openAcceptTab(key, url) {
   return new Promise(resolve => {
     const done = tab => resolve(chrome.runtime.lastError || !tab ? null : tab);
+    // ⚠️ THE .catch AT THE END IS LOAD-BEARING. Without it, anything thrown inside
+    // the async callback below left this promise unsettled for ever — and whatever
+    // was awaiting it waited for ever too.
     knownAcceptTab(key).then(async known => {
       const reuse = known || await tabAlreadyOn(key, url);
       if (reuse) {
@@ -1155,7 +1197,7 @@ function openAcceptTab(key, url) {
       } else {
         chrome.tabs.create({ url, active: false }, done);
       }
-    });
+    }).catch(() => resolve(null));
   });
 }
 
@@ -1186,38 +1228,65 @@ async function startAcceptRun(key, s) {
     }
   }
 
-  // The state IS the instruction. The content script on that page picks it up the
-  // moment the page loads and does the rest; nothing here clicks anything.
-  const state = key === 'flipkart'
-    ? { mode: 'accept', running: true, dryRun: false, auto: true, limit: s.maxPerRound,
-        done: 0, failed: 0, reloads: 0, startedAt: Date.now(), ts: Date.now() }
-    : { running: true, dryRun: false, auto: true, limit: s.maxPerRound,
-        done: 0, failed: 0, startedAt: Date.now(), ts: Date.now() };
-  await chrome.storage.local.set({ [ACCEPT_STATE_KEY[key]]: state });
-
+  // ⚠️ THE TAB IS SETTLED BEFORE THE RUN IS ANNOUNCED. Writing the run first told
+  // every open tab on that portal that a run was going, while the only record of
+  // WHICH tab was still last round's — up to twelve hours old. A tab could be given
+  // permission on the strength of that stale answer and then be navigated out from
+  // under itself mid-click, accepting an order that was never counted against
+  // anything.
+  await rememberAcceptTab(key, null);
   const tab = await openAcceptTab(key, url);
   if (!tab) {
-    // Never leave "running" set with nothing running — that would block the portal
-    // until the stall check noticed, twenty minutes later.
-    state.running = false;
-    await chrome.storage.local.set({ [ACCEPT_STATE_KEY[key]]: state });
     await checkinLog({ site: name, done: [], acceptNote: 'could not open a tab to accept in' });
     return;
   }
   await rememberAcceptTab(key, tab.id);
+
+  // The state IS the instruction. The content script on that page picks it up the
+  // moment the page loads and does the rest; nothing here clicks anything.
+  //
+  // `started` stays false until that script says it has taken the run on. A run
+  // that never gets going — the page turned out to be a sign-in, the script never
+  // mounted, the tab was refused — otherwise sat there saying "running", and a
+  // round skips a portal whose run is in progress. That is how a portal's check-in
+  // goes quiet for good: skip, restart, fail, skip, round after round.
+  const state = key === 'flipkart'
+    ? { mode: 'accept', running: true, started: false, dryRun: false, auto: true,
+        limit: s.maxPerRound, done: 0, failed: 0, reloads: 0,
+        startedAt: Date.now(), ts: Date.now() }
+    : { running: true, started: false, dryRun: false, auto: true, limit: s.maxPerRound,
+        done: 0, failed: 0, startedAt: Date.now(), ts: Date.now() };
+  await chrome.storage.local.set({ [ACCEPT_STATE_KEY[key]]: state });
   await checkinLog({ site: name, done: [], acceptStart: s.maxPerRound });
 }
 
 // ── after every round ───────────────────────────────────────────────────────
+// Writes a note to the round list only when it differs from the last note under
+// the same name. The reasons nothing happened need saying — but saying the same one
+// every twenty minutes buries everything else in a fifty-line list.
+const ACCEPT_SAID = 'kcAcceptSaid';
+
+async function sayOnce(name, note, site) {
+  const said = (await chrome.storage.local.get(ACCEPT_SAID))[ACCEPT_SAID] || {};
+  if (said[name] === note) return;
+  said[name] = note;
+  await chrome.storage.local.set({ [ACCEPT_SAID]: said });
+  await checkinLog({ site: site || '—', done: [], acceptNote: note });
+}
+
 async function startAcceptPasses() {
   const s = await autoSettings();
   // ⚠️ SAY SO. The three ways this does nothing — the feature off, the portal off,
   // no SKUs ticked — used to produce no line anywhere the seller could see, so a
   // day of nothing happening looked identical to a day of it working. Each one now
   // writes into the round list on the settings page.
+  // ⚠️ SAID ONCE, NOT EVERY ROUND. The round list holds fifty entries and a round
+  // writes up to three of its own; adding a line every twenty minutes to report a
+  // switch that has never been on would halve how far back the seller can read
+  // their check-in history, to fix a problem about lines that never appeared. So
+  // each of these is written only when the answer has CHANGED since last time.
   if (!s.enabled) {
-    await checkinLog({ site: '—', done: [],
-      acceptNote: 'not accepting — "Let it accept orders for me" is switched off' });
+    await sayOnce('feature-off', 'not accepting — "Let it accept orders for me" is switched off', '—');
     return;
   }
 
@@ -1226,8 +1295,8 @@ async function startAcceptPasses() {
 
   for (const key of ['flipkart', 'meesho']) {
     if (!s.sites[key]) {
-      await checkinLog({ site: CHECKIN_SITES[key].name, done: [],
-        acceptNote: 'not accepting — this portal is not ticked in settings' });
+      await sayOnce(key + '-off', 'not accepting — this portal is not ticked in settings',
+        CHECKIN_SITES[key].name);
       continue;
     }
     if (s.onlyTickedSkus && !((ticked[TICK_KEY[key]] || []).length)) {
@@ -1244,8 +1313,8 @@ async function startAcceptPasses() {
     // so with the portal open in front of the seller AND a second tab behind it,
     // this read as "not watching" and the run started anyway.
     if (await portalIsInFront(key)) {
-      await checkinLog({ site: CHECKIN_SITES[key].name, done: [],
-        acceptNote: 'not accepting — you were on that portal yourself' });
+      await sayOnce(key + '-infront', 'not accepting — you were on that portal yourself',
+        CHECKIN_SITES[key].name);
       continue;
     }
     try {

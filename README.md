@@ -88,14 +88,26 @@ promise to dispatch it by a date and that promise is yours.
 | You choose | What it means |
 |---|---|
 | Which SKUs | Tick them on the portal's own orders page. Nothing ticked = nothing accepted. |
-| How far ahead | Only what is due today, or today and tomorrow, or any number of days out. |
+| How far ahead | Only what is due today, or today and tomorrow, or up to 30 days out. |
 | Late orders | Whether ones already past their date are included. They are, to begin with. |
-| A daily number per SKU | The most of that SKU you will take on in a day. Blank means no limit. |
+| A daily number per SKU | The most of that SKU you will take on in a day. **0** means none today; blank means no limit. |
+| A ceiling per run | Never more than this many orders in one go. |
+| A ceiling per day | And never more than this many on that portal in a day. This is the one that matters — rounds happen every 20 to 60 minutes. |
+
+**On Flipkart, one press can be many orders.** A row on the To Accept tab is a
+*group* — its button reads "Accept All 12 Order(s)" and one press takes all twelve.
+Every limit above is counted in orders, not presses, so a row bigger than what you
+have left is skipped whole. Meesho is the simple case: one row, one order.
 
 It runs at the end of a check-in round, so it follows the same hours and the same
-random gaps. It presses **Accept** and nothing else — not Cancel, and nothing inside
-a box that was already open on the page. **If it cannot read when an order is due,
-it leaves that order alone.** Always.
+random gaps, and it needs check-ins switched on. The only thing it presses to accept
+an order is **Accept** — it also opens rows, groups and pages to see what is on
+them, but it will not press Cancel and will not press anything inside a box that was
+already open. **If it cannot read when an order is due, it leaves that order alone.**
+Always.
+
+Orders you accept yourself, by hand from the panel, are not counted against these
+limits — the limits are there to bound what happens while you are not watching.
 
 Switching it on is deliberately not enough on its own: until you have ticked at
 least one SKU, it accepts nothing. A list nobody has filled in is not permission.

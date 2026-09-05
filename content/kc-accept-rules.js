@@ -151,7 +151,7 @@ function readBareDate(text, now) {
 // answer came back "already late", which means accept. So the negation is looked
 // for first and, when found, this says nothing at all rather than the opposite of
 // the truth.
-const NEGATED_BREACH = /\b(?:non|not|un)[\s-]?breached\b/;
+const NEGATED_BREACH = /\b(?:non|not|un|no longer|never|yet to be)[\s-]?breached\b/;
 const BREACHED       = /\bbreached\b/;
 
 // Returns { days, breached, how } or null when the wording cannot be read.
@@ -258,9 +258,12 @@ async function caps(portal) {
 async function saveCaps(portal, visibleSkus, values) {
   const all  = (await chrome.storage.local.get(CAPS_KEY))[CAPS_KEY] || {};
   const kept = { ...(all[portal] || {}) };
+  // ZERO IS A REAL ANSWER AND IT MEANS "NONE TODAY". It used to delete the cap,
+  // which reads as "no limit on this one" — so the one number a seller would type
+  // to stop a SKU was the number that set it free. Only a BLANK box removes a cap.
   for (const sku of visibleSkus) {
     const n = values[sku];
-    if (Number.isFinite(n) && n > 0) kept[sku] = n;
+    if (Number.isFinite(n) && n >= 0) kept[sku] = Math.floor(n);
     else delete kept[sku];                    // the seller blanked this one
   }
   all[portal] = kept;
@@ -307,11 +310,21 @@ function noteAccepted(portal, sku, nowTs, howMany) {
 }
 
 // `want` is how many orders this one click would commit to.
+// EVERY "how many" HERE FAILS CLOSED. `want` is the number of orders one press
+// would commit to, and a module whose whole rule is that an unknown means no must
+// not quietly read a missing, zero or fractional count as "one".
+function countOrRefuse(want) {
+  return (typeof want === 'number' && Number.isInteger(want) && want > 0) ? want : null;
+}
+
 function allowedByCap(sku, capMap, tally, want) {
-  const n    = Number.isFinite(want) && want > 0 ? Math.floor(want) : 1;
+  const n = countOrRefuse(want);
+  if (n === null) return { ok: false, why: 'could not tell how many orders this would take' };
   const used = (tally.skus || {})[sku] || 0;
   const cap  = capMap[sku];
-  if (Number.isFinite(cap) && cap > 0) {
+  // A stored 0 is a cap of none, not the absence of a cap.
+  if (Number.isFinite(cap) && cap >= 0) {
+    if (cap === 0) return { ok: false, why: 'you set this SKU to none for today' };
     if (used + n > cap) {
       return { ok: false, why: used >= cap
         ? 'its daily limit of ' + cap + ' is already used up'
@@ -325,7 +338,8 @@ function allowedByCap(sku, capMap, tally, want) {
 // The whole portal's allowance for the day, which applies to every SKU including
 // the ones with no cap of their own.
 function allowedByDayTotal(s, tally, want) {
-  const n     = Number.isFinite(want) && want > 0 ? Math.floor(want) : 1;
+  const n = countOrRefuse(want);
+  if (n === null) return { ok: false, why: 'could not tell how many orders this would take' };
   const limit = Number.isFinite(s.maxPerDay) && s.maxPerDay > 0 ? s.maxPerDay : DEFAULTS.maxPerDay;
   const used  = tally.total || 0;
   if (used + n > limit) {
@@ -345,7 +359,7 @@ function allowedByDayTotal(s, tally, want) {
 // `order.count` is how many orders this one press would accept — 1 on Meesho,
 // and whatever the Flipkart row's "Accept All N Order(s)" button says.
 function decide(order, ctx) {
-  const want   = Number.isFinite(order.count) && order.count > 0 ? Math.floor(order.count) : 1;
+  const want   = countOrRefuse(order.count);
   const bySku  = allowedBySku(order.sku, ctx.ticked, ctx.settings);
   const byDate = allowedByDate(order.due, ctx.settings, ctx.now);
   const byCap  = allowedByCap(order.sku, ctx.caps, ctx.tally, want);
