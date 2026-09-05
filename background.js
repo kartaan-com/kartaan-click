@@ -617,6 +617,19 @@ function visitOnce(key, url, reuse) {
 // hours: his longest real runs are a hundred orders, well under an hour.
 const ORDER_RUN_MAX_MS = 6 * 60 * 60 * 1000;
 
+// A run this feature announced but which no content script ever picked up. Ninety
+// seconds is far longer than a page needs to load and say hello, so past that it is
+// not slow — it never began. Believing it does not merely waste a round: a round
+// skips a portal whose run is "in progress", so that portal stops being checked in
+// on at all, round after round, and a check-in is the thing that notices a seller
+// has been signed out.
+//
+// ⚠️ DECLARED HERE, BESIDE THE FIRST FUNCTION THAT READS IT. It used to sit four
+// hundred lines further down, which works only because nothing calls that function
+// during start-up — a `const` cannot be read before its own line runs. Too fine a
+// thread to leave hanging.
+const NEVER_STARTED_MS = 90 * 1000;
+
 async function flipkartRunInProgress() {
   const st = (await chrome.storage.local.get('kcOrdersBot')).kcOrdersBot;
   if (!st || !st.running) return false;
@@ -1016,14 +1029,6 @@ async function autoSettings() {
 // slow run in a throttled tab can reach six hours, and disbelieving THAT one means
 // starting a second copy on top of it. So the heartbeat is asked first: if the run
 // stamped itself within the stall window, it is running, whatever the clock says.
-// A run this feature announced but which no content script ever picked up. Ninety
-// seconds is far longer than a page needs to load and say hello, so past that it is
-// not slow — it never began. Believing it does not merely waste a round: a round
-// skips a portal whose run is "in progress", so that portal stops being checked in
-// on at all, round after round, and a check-in is the thing that notices a seller
-// has been signed out.
-const NEVER_STARTED_MS = 90 * 1000;
-
 function runLooksAlive(st) {
   if (!st || !st.running) return false;
   if (st.auto && st.started === false && Date.now() - (st.startedAt || 0) > NEVER_STARTED_MS) {
@@ -1081,9 +1086,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (tabId == null) return sendResponse({ run: false });
     const all = (await chrome.storage.local.get(ACCEPT_TABS))[ACCEPT_TABS] || {};
     const rec = all[key];
+    // ⚠️ AND THERE HAS TO BE A RUN. The tab record outlives the run it was written
+    // for — it is kept so the next round can reuse the tab — so answering on the tab
+    // alone said yes to a page that reloaded hours later with no run going at all.
+    const skey0 = ACCEPT_STATE_KEY[key];
+    const cur   = (await chrome.storage.local.get(skey0))[skey0];
     const ok = !!rec && rec.id === tabId
       && rec.host === CHECKIN_SITES[key].host
-      && !!rec.ts && Date.now() - rec.ts < ACCEPT_TAB_MAX_AGE_MS;
+      && !!rec.ts && Date.now() - rec.ts < ACCEPT_TAB_MAX_AGE_MS
+      && !!cur && cur.running === true && cur.auto === true;
 
     // Saying yes is also the moment the run stops being merely announced and starts
     // being under way. Until this, `started` is false and the run does not count as

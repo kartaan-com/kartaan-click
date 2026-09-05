@@ -616,7 +616,8 @@ It skips a portal when:
   exact words into its log, and stops so you can look.
 - **It will not keep going in a tab you are reading.** It works in its own
   background tab, it will not start while you have that portal in front of you, and
-  if you switch to the tab it is working in it holds still until you leave again.
+  if you switch to the tab it is working in it stops there and then. It picks the
+  work up at the next round, once you have moved on.
 
 ### Seeing what it did
 

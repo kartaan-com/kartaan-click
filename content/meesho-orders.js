@@ -835,6 +835,8 @@ function buildPanel() {
 
 // ── start-up ────────────────────────────────────────────────────────────────
 (async () => {
+  // ⚠️ NO RULES, NO PANEL AND NO RUN. Every filter, cap and date check lives in
+  // kc-accept-rules.js; without it there is nothing to enforce, so nothing may act.
   if (!RULES) { console.log('[Kartaan Click] accept rules missing — Meesho panel not started'); return; }
 
   const mount = async () => {

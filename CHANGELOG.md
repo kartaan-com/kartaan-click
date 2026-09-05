@@ -3,6 +3,46 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.5.4 — 5 September 2026
+
+The fourth independent review, and the first to come back with **nothing that could
+accept an order you had not agreed to** on any path the code actually takes. It also
+re-checked, from scratch rather than trusting the round before it, that the by-hand
+Flipkart tool is untouched by all of this. Seven small things, all fixed here.
+Nothing in the 1.5.x series has ever been pushed or released.
+
+- **The whole safety system was conditional on a second file loading.** Every filter,
+  date check and limit lives in one file. If that file had not loaded, a run started
+  by a round would have carried on as though somebody had pressed Start by hand — no
+  limits, no dates, and a copy running in every open Flipkart tab. It now stops and
+  says so. The absence of the rules must stop it, never relax it.
+- **A group could be counted twice.** The same group can appear on the page both as
+  the filter button above the list and as a header inside it. Adding both up made the
+  total disagree with the tab's own count, which since the last version stops the run
+  — so the Flipkart side would have done nothing at all, on any day with a group like
+  that. Each group is now counted once.
+- **Permission to run was granted on the tab alone.** The note of which tab a run
+  belongs to outlives the run, so a page reloading hours later could be told to go
+  ahead when there was no run at all. It now has to find a live run as well.
+- **The tidy-up after a failed row did not tidy anything.** It pressed the row again
+  — but opening a row replaces it, so that press went nowhere, and in the other case
+  it opened a row rather than closing one. It now presses Escape, and if two rows
+  miss in a row the list is reloaded, which clears everything properly. One awkward
+  miss can no longer end the whole run.
+- Every open Flipkart tab used to wake up and re-check itself every forty-five
+  seconds, whenever a run stamped itself as alive. Only the moment a run begins
+  counts now.
+- A guard that reads a timing value now sits beside it rather than four hundred lines
+  away, and an error message no longer assumes it has something to name.
+- The manual said it "holds still until you leave again" if you switch to the tab it
+  is working in. It stops, and picks the work up at the next round.
+
+**Still to be checked on the real pages before switching this on**, and both are
+buttons that only read: press **Probe** on the To Accept tab to confirm each row's
+text begins with its order count, and **What a round would do now** on a busy tab
+with more than one "Dispatch by…" group. Everything verified so far was on a tab
+with a single group of six orders, which is the arrangement that proves the least.
+
 ## 1.5.3 — 5 September 2026
 
 A third independent review. It confirmed the by-hand Flipkart tool — the Start

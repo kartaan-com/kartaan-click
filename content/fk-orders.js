@@ -231,8 +231,12 @@ const MODES = {
         // five refusals in a row ended the whole run over one transient miss. One
         // press back on the header we opened puts it away; Escape catches the rest.
         if (strict) {
+          // ⚠️ NOT BY CLICKING `pick.el` AGAIN. Opening a row re-renders it, so that
+          // element is detached and the click does nothing — and in the other case,
+          // where the panel never opened at all, clicking it OPENS a row instead of
+          // closing one. Escape only, and then the loop's own recovery below deals
+          // with anything Escape did not shift.
           try {
-            if (document.contains(pick.el)) pick.el.click();
             document.body.dispatchEvent(new KeyboardEvent('keydown',
               { key: 'Escape', keyCode: 27, bubbles: true }));
           } catch (e) { /* nothing here is worth failing the run over */ }
@@ -912,9 +916,10 @@ function whyNoGroups(secs) {
         + 'here that cannot be read — and with it a set of dates nothing has checked.';
   }
   const b = secs.blocked;
+  if (!b || !b.pill) return 'the groups on this tab could not be checked.';
   // `due: null` means the wording defeated the date reader, which is a different
   // problem from a date that was understood and found to be too far ahead.
-  if (b && !b.due) {
+  if (!b.due) {
     return '"' + b.pill + '" is on this tab and its date could not be read. Send me those '
          + 'exact words and I will teach it that wording.';
   }
@@ -944,11 +949,19 @@ function sectionsAllTrusted(mode, rules) {
   // whole check off in exactly the case it is for: a page we cannot read properly.
   // Verified on the real tab, 2026-09-05 — "Dispatch by 12 PM, Today (6)" against
   // a "6 To Accept" tile — so the two do count the same thing.
+  // ⚠️ COUNTED ONCE PER GROUP, NOT ONCE PER ELEMENT THAT LOOKS LIKE ONE. The same
+  // group can appear twice on the page — as the filter pill above the list AND as a
+  // header inside it; waitForRows already knows about the second kind and opens it.
+  // Summing both doubled the total, which after A2 stopped the run every single
+  // turn. Grouped by the words in front of the count, which is what names a group.
   const total = readPendingCount(mode);
-  const seen  = pills.reduce((n, p) => {
+  const byLabel = new Map();
+  for (const p of pills) {
     const m = p.match(/\((\d+)\)\s*$/);
-    return n + (m ? parseInt(m[1], 10) : 0);
-  }, 0);
+    if (m) byLabel.set(pillLabel(p), parseInt(m[1], 10));
+  }
+  let seen = 0;
+  for (const n of byLabel.values()) seen += n;
   if (total == null || seen !== total) {
     return { ok: false, pills, unseen: { seen, total } };
   }
@@ -1303,7 +1316,22 @@ async function runLoop(mode) {
     // All of this sits idle unless a round started the run. `autoRules` staying
     // null is what keeps the by-hand path exactly as it was.
     const s0 = await getState();
-    const isAuto = !!(s0 && s0.auto) && !!RULES;
+    // ⚠️ THE RECORD DECIDES, NOT WHETHER THE RULES HAPPENED TO LOAD. Reading this
+    // as `s0.auto && RULES` meant that if kc-accept-rules.js failed to evaluate for
+    // any reason, a run a ROUND had started would quietly run as though somebody
+    // had pressed Start: no tab ownership, so every open Flipkart tab would run its
+    // own copy; no date check; no caps; no per-run room check; and loose button
+    // matching. The entire safety system is in that file, so its absence must stop
+    // the run, never relax it.
+    const wasAutoStarted = !!(s0 && s0.auto);
+    if (wasAutoStarted && !RULES) {
+      if (s0) { s0.running = false; await setState(s0); }
+      await log('STOPPED — the rules this needs did not load, so nothing was accepted. '
+        + 'Reload the extension at chrome://extensions and press F5 here.');
+      looping = false;
+      return;
+    }
+    const isAuto = wasAutoStarted;
     // Only the tab the round opened. Every other Flipkart tab that loads mid-run
     // stops here, before anything is read or clicked.
     if (isAuto && !await mayIRun()) { looping = false; return; }
@@ -1556,6 +1584,15 @@ async function runLoop(mode) {
           consecFails += 1;
           const sf = await getState();
           if (sf) { sf.failed += 1; await setState(sf); }
+          // A round refuses a row whenever more than one panel is open, and nothing
+          // on the page reliably closes one. Two misses in a row is enough to say
+          // the list is not in a state worth guessing at — reload it, which clears
+          // every open panel, rather than spending the remaining three attempts
+          // failing the same way and ending the run.
+          if (isAuto && consecFails >= 2) {
+            await reloadAndResume(mode, 'the list needs a clean look');
+            return;
+          }
           if (consecFails >= PACE.maxFails) {
             if (sf) { sf.running = false; await setState(sf); }
             await log('STOPPED — could not open ' + PACE.maxFails + ' rows in a row.');
@@ -1688,7 +1725,12 @@ async function runLoop(mode) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !changes[STATE_KEY]) return;
     const now = changes[STATE_KEY].newValue;
+    const was = changes[STATE_KEY].oldValue;
     if (!now || !now.running || !now.auto || looping) return;
+    // Only the MOMENT a run begins. The heartbeat writes this record every forty-five
+    // seconds, and without this every Flipkart tab open in the browser would wake up
+    // and re-check itself each time one beat.
+    if (was && was.running && was.auto && was.startedAt === now.startedAt) return;
     const m = currentMode();
     if (m && m.id === now.mode) setTimeout(() => runLoop(m), rand(2000, 4000));
   });
