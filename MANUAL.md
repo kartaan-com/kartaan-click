@@ -522,6 +522,20 @@ The panel says this on screen too. If you have ticked SKUs for a by-hand run in 
 past, those same ticks are what accepting-on-its-own will use, so it is worth
 looking at the list once before switching it on.
 
+### One press on Flipkart can be many orders
+
+This is the most surprising thing about the Flipkart side, so it is worth saying
+plainly. A row on the To Accept tab is a **group of orders**, not one order — its
+button reads **"Accept All 12 Order(s)"**, and one press takes all twelve.
+
+All the counting here is in **orders**, never presses. If a SKU has a daily limit of
+5 and the next row would take 12, that row is left alone entirely — it does not take
+5 of them, because Flipkart's row is all-or-nothing. Before pressing, it checks the
+number on the button still matches the number it counted; if they differ, it presses
+nothing and says so.
+
+Meesho is the simple case: one row is one order.
+
 ### Choosing how far ahead it goes
 
 On the settings page:
@@ -533,9 +547,11 @@ On the settings page:
 - **Also accept orders already past their date.** These are the urgent ones, so
   this starts switched on. Turn it off if you would rather look at late orders
   yourself.
-- **Never accept more than \_\_ orders in one go.** A ceiling on any single run, so
-  a rule set wrongly cannot run away with you before you notice. The real limit is
-  the per-SKU number you set above.
+- **Never accept more than \_\_ orders in one go**, and **no more than \_\_ per portal
+  per day.** The daily one is the one that matters: a round happens every 20 to 60
+  minutes, so a per-run ceiling on its own would still allow several hundred a day.
+  The daily number counts every order accepted on that portal since the morning,
+  including SKUs you left without a limit of their own, and it starts again each day.
 
 ### Where the date comes from, on each portal
 
@@ -544,9 +560,15 @@ ever gets read wrongly:
 
 - **Flipkart** groups the To Accept tab under headings — *"Dispatch by 12 PM,
   Tomorrow (48)"*, *"Breached Orders (11)"*. The date is on the **heading**, not on
-  the rows, so a whole group is either worked through or skipped. **If a Flipkart
-  tab has no headings at all, nothing on it is accepted** — with no heading there is
-  no date, and without a date it will not press anything.
+  the rows.
+  **So on Flipkart it is all or nothing for the whole tab.** If every heading on the
+  tab is due soon enough for you, it works through them. If even one heading is too
+  far out, it accepts **nothing at all** and tells you which heading stopped it —
+  because the page gives no reliable way to be sure which group is on screen at the
+  moment of a click, and guessing would mean taking on next week's deadline. When
+  that happens, either widen "due within" or clear that group by hand.
+  **If a Flipkart tab has no headings at all, nothing on it is accepted** — with no
+  heading there is no date, and without a date it will not press anything.
 - **Meesho** puts a **Dispatch Date/SLA** column on every row — *"05 Sept"*, often
   with *"Breaching Soon"* beside it. So it is decided one order at a time. That
   column is found by its heading name, never by counting across; if Meesho renames
@@ -576,11 +598,15 @@ It skips a portal when:
 - **It will not accept an order whose date it cannot read.** No exceptions.
 - **It will not press anything on Amazon.** Amazon is not in this tool at all.
 - **It will not press Cancel, or anything else on the row.** Only Accept.
-- **It will not press a button in a box that was already open** when it clicked. If
-  a confirmation box appears because of its own click, it presses only a button
-  whose whole label is one of a short list — Confirm, Yes, Accept, Proceed. Anything
-  else and it presses nothing, writes the box's exact words into its log, and stops
-  so you can look.
+- **It will not press a button in a box that was already open** when it clicked. On
+  both portals it notes which boxes were on screen before it pressed anything, and
+  will only answer one that appeared afterwards.
+- **It will not press a button that reads the same as the one it just pressed.** A
+  confirmation has to say Confirm, Yes, Yes-accept or Proceed. "Accept" is
+  deliberately not on that list: every order row's button says Accept too, so a rule
+  that accepted it could not tell a confirmation from the next order. On Meesho,
+  anything else it does not recognise means it presses nothing, writes the box's
+  exact words into its log, and stops so you can look.
 - **It will not keep going in a tab you are reading.** It works in its own
   background tab.
 
@@ -594,8 +620,9 @@ thing, in more detail, while their tab is open.
 ### If you want to stop it
 
 Untick **Let it accept orders for me** on the settings page and press Save. A run
-already going stops at the end of the order it is on. You can also just press
-**Stop** on the Flipkart panel, or close the tab it is working in.
+already going checks that setting before every order, so it stops after the one it
+is on. You can also press **Stop** on either panel — the Flipkart one and the Meesho
+one both have it — or close the tab it is working in.
 
 
 ---

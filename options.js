@@ -129,6 +129,19 @@ function whereLine(e) {
 function describe(e) {
   const at = new Date(e.ts).toLocaleString();
 
+  // ⚠️ THE ACCEPT LINES NEED THEIR OWN BRANCHES OR THEY FALL THROUGH TO THE
+  // DEFAULT AND RENDER AS "— nothing", which reads as "the round did nothing"
+  // when the truth is "no SKUs are ticked yet" or "a run had stalled and was
+  // cleared". Anything added to the accept side must be given a branch here.
+  if (e.acceptStart != null)
+    return at + '  ' + e.site + ' — started accepting, up to ' + e.acceptStart + ' order(s)';
+
+  if (e.acceptNote)
+    return at + '  ' + e.site + ' — ' + e.acceptNote;
+
+  if (e.roundError)
+    return at + '  ' + e.site + ' — the round hit a problem: ' + e.roundError;
+
   if (e.skipped)
     return at + '  ' + e.site + ' — skipped, the order panel was mid-run on this portal';
 
@@ -254,6 +267,7 @@ const AUTO_DEFAULTS = {
   dueWithinDays:   1,
   includeBreached: true,
   maxPerRound:     20,
+  maxPerDay:       60,
 };
 
 function fillAuto(s) {
@@ -264,6 +278,7 @@ function fillAuto(s) {
   $('autoBreached').checked   = !!s.includeBreached;
   $('autoDays').value         = String(s.dueWithinDays);
   $('autoMax').value          = String(s.maxPerRound);
+  $('autoMaxDay').value       = String(s.maxPerDay);
 }
 
 // A typed number can be blank, negative or nonsense, and every one of these ends
@@ -272,6 +287,7 @@ function fillAuto(s) {
 function collectAuto() {
   const days = parseInt($('autoDays').value, 10);
   const max  = parseInt($('autoMax').value, 10);
+  const perDay = parseInt($('autoMaxDay').value, 10);
   return {
     enabled:         $('autoEnabled').checked,
     sites: {
@@ -284,6 +300,7 @@ function collectAuto() {
     // being a number rather than for being truthy.
     dueWithinDays:   Number.isFinite(days) && days >= 0 ? Math.min(days, 30) : AUTO_DEFAULTS.dueWithinDays,
     maxPerRound:     Number.isFinite(max)  && max  > 0  ? Math.min(max, 500) : AUTO_DEFAULTS.maxPerRound,
+    maxPerDay:       Number.isFinite(perDay) && perDay > 0 ? Math.min(perDay, 2000) : AUTO_DEFAULTS.maxPerDay,
   };
 }
 

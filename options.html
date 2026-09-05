@@ -217,9 +217,16 @@
     <input type="number" id="autoMax" min="1" max="500">
     <label>orders in one go</label>
   </div>
-  <p class="muted" style="margin:0 0 14px">The real limit is the daily number you set
-     against each SKU. This is just a ceiling on any one run, so a rule set wrong cannot
-     run away with you before you notice.</p>
+  <div class="row">
+    <label>and no more than</label>
+    <input type="number" id="autoMaxDay" min="1" max="2000">
+    <label>orders per portal per day</label>
+  </div>
+  <p class="muted" style="margin:0 0 14px"><b>The daily one is the important one.</b>
+     A round happens every 20 to 60 minutes, so "no more than 20 in one go" on its own
+     would still be several hundred a day. The daily number counts every order accepted
+     on that portal since this morning, including SKUs you left without a limit of their
+     own, and it starts again each day.</p>
 
   <div class="actions" style="margin-top:16px">
     <button class="primary" id="autoSave" type="button">Save</button>

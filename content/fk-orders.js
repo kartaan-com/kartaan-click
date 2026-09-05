@@ -66,6 +66,23 @@ const FILTER_KEY = 'kcOrdersFilter';  // { mode: [sku, sku, ...] } — survives 
 const RULES = window.KC_ACCEPT;
 const AUTO_PORTAL = 'flipkart';
 
+// AUTO. ⚠️ IS THIS TAB THE ONE THE ROUND OPENED THE RUN IN?
+//
+// This file has always picked a run back up in ANY Flipkart tab that loads while
+// the stored state says one is going — which is right for a by-hand run, because
+// the person who pressed Start is sitting in front of exactly one tab. It is wrong
+// for a run a round started: several Flipkart tabs can be open, they would all
+// resume, and two loops working the same list share one set of totals and lose
+// each other's counting. Only the worker knows which tab it opened, so it is asked.
+async function mayIRun() {
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'ACCEPT_MAY_I_RUN', portal: AUTO_PORTAL });
+    return !!(res && res.run);
+  } catch (e) {
+    return false;      // the worker did not answer: not our place to guess yes
+  }
+}
+
 // Chrome and Edge both default to asking where to save every file. While that is
 // on, printing labels cannot be hands-free: the browser puts a Save-As box on
 // screen and the run has to stop and wait for a human every single time. There is
@@ -162,11 +179,12 @@ const MODES = {
         .filter(h => /^accept orders?/i.test(txt(h)) && isVisible(h) && !isDisabled(h))
         .map(h => {
           const ctx = rowContextFor(h);
-          return ctx ? { el: h, ctx, sku: skuOf(ctx.text) } : null;
+          return ctx ? { el: h, ctx, sku: skuOf(ctx.text), count: countOf(ctx.text) } : null;
         })
         .filter(Boolean);
     },
-    async act(pick) {
+    async act(pick, opts) {
+      const strict = !!(opts && opts.strict);
       // Opening a row re-renders it, which detaches the very element that was
       // clicked — so anything scoped to it (its parent, its ancestors) is stale
       // and finds nothing, even though the panel is plainly open on screen. Only
@@ -179,7 +197,11 @@ const MODES = {
           const c = rowContextFor(b);
           return c && skuOf(c.text) === pick.sku;
         });
-        return mine || all[0];
+        // ⚠️ NO FALLING BACK TO "the first one" WHEN A ROUND IS DRIVING. The whole
+        // point of the decision was WHICH row; taking a different one accepts
+        // orders nothing checked, and records the tally against the wrong SKU.
+        // With somebody watching the panel, the old behaviour stands.
+        return mine || (strict ? null : all[0]);
       };
 
       // One native click opens the row; the arrival of the "Accept All ..."
@@ -187,7 +209,25 @@ const MODES = {
       // "false" on a panel that had visibly opened).
       await humanClick(pick.el, { native: true });
       const btn = await waitFor(findAcceptAll, 8000);
-      if (!btn) { await log('  row panel did not open'); return false; }
+      if (!btn) {
+        await log(strict ? '  could not find this row\'s own Accept button — leaving it alone'
+                         : '  row panel did not open');
+        return false;
+      }
+
+      // ⚠️ THE BUTTON SAYS HOW MANY ORDERS THIS PRESS TAKES. A round decided it
+      // was allowed to take `pick.count` of them, counted against the seller's cap
+      // — so if the button now says a different number, the decision no longer
+      // covers what is about to happen. Do not press it.
+      if (strict) {
+        const said = (txt(btn).match(/^accept all (\d+) orders?$/i) || [])[1];
+        const n = said ? parseInt(said, 10) : null;
+        if (n === null || n !== pick.count) {
+          await log('  NOT pressing: the row said ' + pick.count + ' order(s) but the button says "'
+            + txt(btn) + '". Nothing was accepted.');
+          return false;
+        }
+      }
       await log('  panel open → "' + txt(btn) + '"');
       await humanClick(btn, { native: true });
       return true;
@@ -300,6 +340,18 @@ function skuOf(rowText) {
   return m ? m[1].trim() : '(no SKU)';
 }
 
+// ⚠️ A FLIPKART ROW IS A GROUP OF ORDERS, NOT ONE ORDER. Its text begins "1 Order"
+// or "12 Orders", and the button inside it reads "Accept All 12 Order(s)" — one
+// press takes all twelve. Counting a press as ONE made a daily cap of five let
+// twenty-one orders through, which is the exact opposite of what a cap is for.
+//
+// Returns null when the row does not say. Null is not "probably one": a round
+// refuses a row it cannot count, because that number is the whole basis of the cap.
+function countOf(rowText) {
+  const m = String(rowText || '').match(/(?:^|[^\d])(\d{1,3})\s+Orders?\b/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
 function actionRowButtons(mode) {
   if (mode.findRows) return mode.findRows();
   const nodes = [...document.querySelectorAll('button, a, [role="button"]')];
@@ -310,7 +362,7 @@ function actionRowButtons(mode) {
     if (!isVisible(el) || isDisabled(el)) continue;
     const ctx = rowContextFor(el);
     if (!ctx) continue;                       // toolbar / bulk button — skip
-    out.push({ el, ctx, sku: skuOf(ctx.text) });
+    out.push({ el, ctx, sku: skuOf(ctx.text), count: countOf(ctx.text) });
   }
   return out;
 }
@@ -454,7 +506,11 @@ function buildPanel(mode) {
         + '<button id="__kcNoticeOk">Got it, don\'t show again</button>'
         + '</div>'
       : ''),
-    (mode.skuFilter
+    // ⚠️ THE CAP UI IS FOR THE ACCEPT TAB ONLY. Print Labels also has a SKU list,
+    // and the caps are stored per PORTAL, not per tab — so saving ticks from the
+    // labels tab wrote the labels tab's SKUs over the whole Flipkart cap map and
+    // deleted every accept cap that was not currently waiting for a label.
+    (mode.skuFilter && mode.id === 'accept'
       ? '  <div class="row"><button class="scan" id="__kcScan">Scan SKUs</button>'
         + '<button class="save" id="__kcSave">Save ticks</button></div>'
         + '  <div class="skus" id="__kcSkus"></div>'
@@ -470,6 +526,11 @@ function buildPanel(mode) {
         + 'beside a SKU to cap how many of it you will take in one day; blank means no cap. '
         + 'Press <b>Save ticks</b> to keep them without starting a run.</div>'
         + '  <div class="row"><button id="__kcAutoPreview">What a round would do now</button></div>'
+      : mode.skuFilter
+      ? '  <div class="row"><button class="scan" id="__kcScan">Scan SKUs</button></div>'
+        + '  <div class="skus" id="__kcSkus"></div>'
+        + '  <div class="hint" id="__kcHint">Scan first, then tick the SKUs to work through. '
+        + 'Nothing ticked = all of them.</div>'
       : ''),
     '  <div class="row"><label>Stop after <input type="number" id="__kcLimit" min="1" value="50"> orders</label></div>',
     // On every tab, not just the labels one: this probe makes its own file and
@@ -584,12 +645,26 @@ function buildPanel(mode) {
     // AUTO. Start has always saved the ticks on its way past, which was enough
     // while a run was the only thing that read them. A round that accepts on its
     // own never presses Start, so there has to be a way to put ticks and daily
-    // caps away without starting anything.
-    panel.querySelector('#__kcSave').onclick = () => saveTicksAndCaps(mode);
-    panel.querySelector('#__kcAutoPreview').onclick = () => autoPreview(mode);
+    // caps away without starting anything. Accept tab only — see buildPanel.
+    const save = panel.querySelector('#__kcSave');
+    if (save) save.onclick = () => saveTicksAndCaps(mode);
+    const prev = panel.querySelector('#__kcAutoPreview');
+    if (prev) prev.onclick = () => autoPreview(mode);
   }
 
   panel.querySelector('#__kcStart').onclick = async () => {
+    // ⚠️ A ROUND MAY ALREADY BE WORKING THIS LIST IN ANOTHER TAB. The worker
+    // refuses to start a round's run while a by-hand one is going; this is the
+    // same guard in the other direction. Without it, Start overwrites the shared
+    // record and two loops work the same live orders, both counting into the same
+    // totals — which is how a daily cap gets passed without anybody pressing
+    // anything twice.
+    const live = await getState();
+    if (live && live.running && live.auto) {
+      await log('NOT STARTING — a check-in round is already accepting orders in another tab. '
+        + 'Wait for it to finish, or switch accepting off in settings, then press Start again.');
+      return;
+    }
     const dryRun = DRY_RUN;
     const limit  = parseInt(panel.querySelector('#__kcLimit').value, 10) || 1;
     if (mode.skuFilter) await setFilter(mode, tickedSkus());
@@ -636,12 +711,20 @@ function tickedSkus() {
 async function saveTicksAndCaps(mode) {
   if (!skuBox) return;
   await setFilter(mode, tickedSkus());
-  const caps = {};
+  // ⚠️ ONLY THE SKUs ON SCREEN ARE CHANGED. The panel can only show what is
+  // waiting on the tab right now, so writing that list over the whole map deleted
+  // the cap on every SKU that had already sold out for the day — and a deleted cap
+  // does not read as "nothing left", it reads as "no limit on this one". Merging
+  // is done inside saveCaps; this only says which SKUs the seller could see.
+  const visible = [], values = {};
   for (const box of skuBox.querySelectorAll('input.cap')) {
-    const n = parseInt(box.value, 10);
-    if (Number.isFinite(n) && n > 0) caps[box.dataset.sku] = n;
+    visible.push(box.dataset.sku);
+    // A blank box means no cap. `type=number` will not hold "5abc", but reading it
+    // strictly costs nothing and means the value can only ever be a whole number.
+    const raw = String(box.value || '').trim();
+    values[box.dataset.sku] = /^\d+$/.test(raw) ? parseInt(raw, 10) : NaN;
   }
-  if (RULES) await RULES.setCaps(AUTO_PORTAL, caps);
+  const caps = RULES ? await RULES.saveCaps(AUTO_PORTAL, visible, values) : {};
   const ticked = tickedSkus();
   await log('saved — ' + (ticked.length ? ticked.length + ' SKU(s) ticked' : 'nothing ticked')
     + ', ' + Object.keys(caps).length + ' with a daily limit.');
@@ -653,25 +736,41 @@ async function saveTicksAndCaps(mode) {
 // otherwise have to find out by letting it loose on real orders.
 async function autoPreview(mode) {
   if (!RULES) return;
-  const s      = await RULES.settings();
-  const pills  = sectionPills().map(p => txt(p));
+  const s = await RULES.settings();
   if (!s.enabled || !s.sites.flipkart) {
     await log('accepting on its own is switched OFF for Flipkart in settings.');
   }
-  if (!pills.length) {
+  const secs = sectionsAllTrusted(s);
+  if (secs.none) {
     await log('no "Dispatch by …" headings on this tab, so a round could not tell when '
       + 'these are due — it would leave every one of them alone.');
     return;
   }
-  for (const p of pills) {
-    const v = RULES.allowedByDate(p, s);
-    await log((v.ok ? 'would work through' : 'would skip') + ' "' + p + '" — ' + v.why);
+  if (!secs.ok) {
+    await log('a round would accept NOTHING here: "' + secs.blocked.pill + '" is on this tab and '
+      + secs.blocked.why + '. Flipkart only shows the date on the heading, so there is no safe '
+      + 'way to work one group and not another.');
+    return;
   }
+  await log('every group here is due soon enough: ' + secs.pills.join(', '));
+
   const ticked = await RULES.tickedSkus(mode.id);
-  await log(s.onlyTickedSkus
-    ? (ticked.length ? '…and only these SKUs: ' + ticked.join(', ')
-                     : '…but NO SKUs are ticked, so nothing would be accepted.')
-    : '…any SKU is allowed.');
+  const caps   = await RULES.caps(AUTO_PORTAL);
+  const tally  = await RULES.tallyToday(AUTO_PORTAL, Date.now());
+  const ctx    = { ticked, settings: s, caps, tally, now: Date.now() };
+  let orders = 0, presses = 0;
+  const no = new Map();
+  for (const r of actionRowButtons(mode)) {
+    if (!Number.isFinite(r.count) || r.count < 1) {
+      no.set('could not tell how many orders the row would take', (no.get('could not tell how many orders the row would take') || 0) + 1);
+      continue;
+    }
+    const d = RULES.decide({ sku: r.sku, due: secs.pills[0], count: r.count }, ctx);
+    if (d.ok) { presses += 1; orders += r.count; }
+    else no.set(d.why, (no.get(d.why) || 0) + 1);
+  }
+  await log('right now a round would accept ' + orders + ' order(s) in ' + presses + ' press(es).');
+  for (const [why, n] of no) await log('   ' + n + ' row(s) left alone: ' + why);
 }
 
 async function paint(mode, extra) {
@@ -722,17 +821,45 @@ async function gotoSection(mode, i) {
 }
 
 // AUTO. A section's heading carries a running count — "Dispatch by 12 PM,
-// Tomorrow (48)" — and that count DROPS as orders are accepted. So a section is
-// remembered by the words in front of the count, never by the whole heading and
-// never by its position in the row of headings: a section that empties disappears
-// altogether and every heading after it shifts along one.
+// Tomorrow (48)" — and that count DROPS as orders are accepted, so a heading is
+// only ever compared by the words in front of the count.
 const pillLabel = t => String(t || '').replace(/\s*\(\d+\)\s*$/, '').trim();
 
-async function gotoSectionByLabel(mode, label) {
-  const pills = sectionPills();
-  const i = pills.findIndex(p => pillLabel(txt(p)) === label);
-  if (i === -1) return false;
-  return await gotoSection(mode, i);
+// AUTO. ⚠️ A ROUND NEVER SWITCHES SECTIONS, AND THE REASON MATTERS.
+//
+// Flipkart shows the dispatch date ONLY on the group heading, never on a row. So
+// to know when an order is due, you have to know which group is on screen. An
+// earlier version pressed the heading it wanted and carried on — but `gotoSection`
+// reports success whether or not the click landed, nothing on the page reliably
+// says which heading is live, and the file's own note admits that pressing the
+// heading that is ALREADY live may switch the filter off and show everything. Put
+// together, that meant a run could work through a group the date filter had
+// explicitly refused: orders due next week, accepted today.
+//
+// There is no way to fix that by checking harder, because the thing being checked
+// is not on the page. So the question is not asked. Instead: if EVERY heading on
+// the tab is one the seller allows, the whole tab is fair game and no switching is
+// needed at all. If ANY heading is refused, the run stops and says which one.
+// That is more cautious than the seller asked for — some allowed orders go
+// untouched — but the alternative was a promise about dates that the page cannot
+// keep. The log tells them exactly what stopped it and what to change.
+// AUTO. What the "What it accepted for you" list should say an order was due.
+// Every heading on the tab has already been checked and allowed by the time a
+// click happens, so naming them all is honest — naming ONE of them, as an earlier
+// version did, was a guess about which group the order came from.
+function liveGroupLabel() {
+  const pills = sectionPills().map(p => pillLabel(txt(p))).filter(Boolean);
+  return pills.length === 1 ? pills[0] : pills.join(' / ');
+}
+
+function sectionsAllTrusted(rules) {
+  const pills = sectionPills().map(p => txt(p));
+  if (!pills.length) return { ok: false, pills, blocked: null, none: true };
+  for (const p of pills) {
+    const v = RULES.allowedByDate(p, rules);
+    if (!v.ok) return { ok: false, pills, blocked: { pill: p, why: v.why } };
+  }
+  return { ok: true, pills, blocked: null };
 }
 
 // ── SKU scan ────────────────────────────────────────────────────────────────
@@ -773,7 +900,8 @@ async function scanSkus(mode) {
   const previously = await getFilter(mode);
 
   // AUTO. The daily caps already saved, so re-scanning does not wipe them.
-  const capMap = RULES ? await RULES.caps(AUTO_PORTAL) : {};
+  const showCaps = RULES && mode.id === 'accept';
+  const capMap = showCaps ? await RULES.caps(AUTO_PORTAL) : {};
 
   skuBox.innerHTML = '';
   for (const [sku, n] of sorted) {
@@ -787,16 +915,21 @@ async function scanSkus(mode) {
     // AUTO. Blank means no cap at all. Only a round that accepts on its own reads
     // this — a run started by hand from this panel ignores it completely, because
     // somebody is sitting there watching that one.
-    const cap = document.createElement('input');
-    cap.type = 'number'; cap.min = '0'; cap.className = 'cap';
-    cap.dataset.sku = sku;
-    cap.placeholder = '∞';
-    cap.title = 'Most of this SKU to accept in one day when rounds accept on their own. '
-              + 'Leave blank for no limit.';
-    if (Number.isFinite(capMap[sku]) && capMap[sku] > 0) cap.value = String(capMap[sku]);
+    let cap = null;
+    if (showCaps) {
+      cap = document.createElement('input');
+      cap.type = 'number'; cap.min = '0'; cap.className = 'cap';
+      cap.dataset.sku = sku;
+      cap.placeholder = '∞';
+      cap.title = 'Most of this SKU to accept in one day when rounds accept on their own. '
+                + 'Leave blank for no limit.';
+      if (Number.isFinite(capMap[sku]) && capMap[sku] > 0) cap.value = String(capMap[sku]);
+    }
     const cnt = document.createElement('b');
     cnt.textContent = n + (n === 1 ? ' order' : ' orders');
-    line.appendChild(cb); line.appendChild(name); line.appendChild(cap); line.appendChild(cnt);
+    line.appendChild(cb); line.appendChild(name);
+    if (cap) line.appendChild(cap);
+    line.appendChild(cnt);
     skuBox.appendChild(line);
   }
   skuBox.style.display = sorted.length ? 'block' : 'none';
@@ -955,12 +1088,32 @@ async function idleFidget() {
 }
 
 // ── confirmation dialog (Flipkart may or may not show one) ──────────────────
-async function confirmModalIfAny() {
+//
+// The overlays already on screen. A round takes this before it clicks, so it can
+// tell a box IT caused from one that was simply sitting there — a policy notice, a
+// "what's new" tour, a rate-card change. This is the check the documents have been
+// promising all along; it existed on the Meesho side only.
+const MODAL_SELECTOR = '[class*="modal" i],[class*="dialog" i],[class*="popup" i],[role="dialog"]';
+const openModals = () => [...document.querySelectorAll(MODAL_SELECTOR)].filter(isVisible);
+
+// `opts.strict` — a round is driving. Then a box must be one that appeared AFTER
+// our own click, and the words "ok" and "continue" are not accepted as evidence of
+// an accept confirmation: they are the answer to far too many other questions.
+// With somebody watching the panel, none of this changes.
+async function confirmModalIfAny(opts) {
+  const strict = !!(opts && opts.strict);
+  const before = strict ? new Set(openModals()) : null;
   await sleep(rand(500, 1200));
-  const wanted = ['yes', 'confirm', 'proceed', 'ok', 'continue',
-                  'mark rtd', 'yes, mark rtd', 'accept', 'accept order', 'yes, accept'];
+  const wanted = strict
+    ? ['yes', 'confirm', 'proceed', 'mark rtd', 'yes, mark rtd', 'yes, accept']
+    : ['yes', 'confirm', 'proceed', 'ok', 'continue',
+       'mark rtd', 'yes, mark rtd', 'accept', 'accept order', 'yes, accept'];
   const candidates = [...document.querySelectorAll('button, [role="button"]')].filter(el =>
-    isVisible(el) && !isDisabled(el) && wanted.indexOf(txt(el).toLowerCase()) !== -1);
+    isVisible(el) && !isDisabled(el) && wanted.indexOf(txt(el).toLowerCase()) !== -1
+    && (!strict || (() => {
+      const box = el.closest(MODAL_SELECTOR);
+      return box && !before.has(box);              // only a box we caused
+    })()));
   // Only a button inside an overlay counts, and never one that belongs to a row —
   // otherwise "Accept" in the next row would be mistaken for a dialog button.
   const modalBtn = candidates.find(el =>
@@ -1039,11 +1192,34 @@ async function runLoop(mode) {
     // null is what keeps the by-hand path exactly as it was.
     const s0 = await getState();
     const isAuto = !!(s0 && s0.auto) && !!RULES;
+    // Only the tab the round opened. Every other Flipkart tab that loads mid-run
+    // stops here, before anything is read or clicked.
+    if (isAuto && !await mayIRun()) { looping = false; return; }
     let autoRules = null;      // the seller's settings for accepting on its own
     let autoCaps  = null;      // the daily limit per SKU
-    let autoPlan  = null;      // the headings this run is allowed to work, in order
-    let autoAt    = 0;         // which of them we are on
     const autoSaidNo = new Set();   // reasons already written down, so they are not repeated
+
+    // AUTO. Says "this run is still alive", at most every 45 seconds.
+    //
+    // ⚠️ IT RUNS ON ITS OWN TIMER, not only at the top of the loop. One order on
+    // this tab means two full click sequences, a wait for the panel, a wait for
+    // the confirmation and a wait for the row to clear — which in a tab the
+    // browser has throttled to one tick a minute adds up to something like a
+    // quarter of an hour between two turns of the loop. The worker treats twenty
+    // minutes of silence as a dead run and clears it, and a cleared run that is
+    // actually alive means the next round starts a SECOND copy on the same live
+    // orders. A timer keeps beating through the waits; the top of the loop does not.
+    const beat = async () => {
+      try {
+        const st = await getState();
+        if (!st || !st.running || !st.auto) return;
+        if (st.ts && Date.now() - st.ts < 45000) return;
+        st.ts = Date.now();
+        await setState(st);
+      } catch (e) { /* a missed beat is not worth ending a run over */ }
+    };
+    const beatTimer = isAuto ? setInterval(beat, 30000) : null;
+
     if (isAuto) {
       autoRules = await RULES.settings();
       autoCaps  = await RULES.caps(AUTO_PORTAL);
@@ -1075,7 +1251,24 @@ async function runLoop(mode) {
       // one tick a minute, so several minutes between two accepted orders is normal.
       // Clearing a live run would let the next round open a second copy of it on the
       // same live orders, which is the one thing all of this exists to prevent.
-      if (isAuto && (!s.ts || Date.now() - s.ts > 60000)) { s.ts = Date.now(); await setState(s); }
+      // ⚠️ The top of the loop is NOT often enough on its own — one order can take
+      // sixteen minutes in a throttled tab. `beat()` is also called from inside the
+      // long waits; see its definition.
+      if (isAuto) await beat();
+
+      // AUTO. The off switch has to work on a run that is ALREADY GOING, which
+      // means asking again every time round rather than once at the start. The
+      // manual says unticking it stops the run after the order it is on; this is
+      // the line that makes that true. It also catches a run resumed from stored
+      // state hours later, after the seller switched the feature off.
+      if (isAuto) {
+        autoRules = await RULES.settings();
+        if (!autoRules.enabled || !autoRules.sites[AUTO_PORTAL]) {
+          s.running = false; await setState(s);
+          await log('STOPPED — accepting has been switched off in settings.');
+          break;
+        }
+      }
 
       if (s.done >= s.limit) {
         s.running = false; await setState(s);
@@ -1106,40 +1299,28 @@ async function runLoop(mode) {
       // The page is healthy again — clear the reload counter.
       if (s.reloads) { s.reloads = 0; await setState(s); }
 
-      // AUTO. Which headings this run is allowed to work through, worked out once,
-      // here rather than earlier because the headings are only on screen once the
-      // list has rendered — which is the line above.
+      // AUTO. Are we allowed to touch ANYTHING on this tab? Re-asked every time
+      // round, because the headings change as groups empty and a new one can
+      // appear mid-run.
       //
       // ⚠️ FLIPKART SHOWS THE DISPATCH DATE ONLY ON THE HEADING, never on a row.
-      // So if there are no headings there is no date, and no date means no accept:
-      // the run stops and says so. Working through an undated list would be
-      // accepting orders without knowing what they commit anybody to.
-      if (isAuto && autoPlan === null) {
-        const pills = sectionPills().map(p => txt(p));
-        if (!pills.length) {
+      // No heading means no date, and no date means no accept.
+      if (isAuto) {
+        const secs = sectionsAllTrusted(autoRules);
+        if (!secs.ok) {
           s.running = false; await setState(s);
-          await log('STOPPED — this tab has no "Dispatch by …" headings, so there is no way '
-            + 'to tell when these orders are due. Nothing was accepted.');
+          await log(secs.none
+            ? 'STOPPED — this tab has no "Dispatch by …" headings, so there is no way to '
+              + 'tell when these orders are due. Nothing was accepted.'
+            : 'STOPPED — "' + secs.blocked.pill + '" is on this tab and ' + secs.blocked.why
+              + '. Because Flipkart only shows the date on the heading, there is no safe way '
+              + 'to work one group and not another, so nothing was accepted. Either widen '
+              + '"due within" in settings, or clear that group by hand.');
           break;
         }
-        autoPlan = [];
-        for (const p of pills) {
-          const v = RULES.allowedByDate(p, autoRules);
-          await log((v.ok ? 'will work through' : 'skipping') + ' "' + p + '" — ' + v.why);
-          if (v.ok) autoPlan.push(pillLabel(p));
-        }
-        if (!autoPlan.length) {
-          s.running = false; await setState(s);
-          await log('DONE — none of the groups on this tab are due soon enough to accept.');
-          break;
-        }
-        autoAt = 0;
-        // With only one heading there is nowhere else to be, and pressing the one
-        // that is already showing is a risk for no gain — these headings behave
-        // like filter chips and pressing the live one may well switch it off.
-        if (pills.length > 1) {
-          await gotoSectionByLabel(mode, autoPlan[0]);
-          continue;                     // read the list again for the group we moved to
+        if (!autoSaidNo.has('groups|' + secs.pills.join('|'))) {
+          autoSaidNo.add('groups|' + secs.pills.join('|'));
+          await log('every group on this tab is due soon enough: ' + secs.pills.join(', '));
         }
       }
 
@@ -1156,11 +1337,23 @@ async function runLoop(mode) {
         autoCaps = await RULES.caps(AUTO_PORTAL);
         const kept = [];
         for (const r of candidates) {
-          const v = RULES.allowedByCap(r.sku, autoCaps, tally);
-          if (v.ok) kept.push(r);
-          else if (!autoSaidNo.has(r.sku + '|' + v.why)) {
-            autoSaidNo.add(r.sku + '|' + v.why);
-            await log('leaving alone: ' + r.sku + ' — ' + v.why);
+          // A row whose order count could not be read is refused outright. The
+          // count is what the cap is measured in, so without it there is no cap.
+          if (!Number.isFinite(r.count) || r.count < 1) {
+            if (!autoSaidNo.has(r.sku + '|uncounted')) {
+              autoSaidNo.add(r.sku + '|uncounted');
+              await log('leaving alone: ' + r.sku + ' — could not tell how many orders '
+                + 'this row would accept in one press');
+            }
+            continue;
+          }
+          const v = RULES.allowedByCap(r.sku, autoCaps, tally, r.count);
+          const d = RULES.allowedByDayTotal(autoRules, tally, r.count);
+          if (v.ok && d.ok) { kept.push(r); continue; }
+          const why = (v.ok ? d.why : v.why);
+          if (!autoSaidNo.has(r.sku + '|' + why)) {
+            autoSaidNo.add(r.sku + '|' + why);
+            await log('leaving alone: ' + r.sku + ' (' + r.count + ' order(s) in one press) — ' + why);
           }
         }
         candidates = kept;
@@ -1172,20 +1365,10 @@ async function runLoop(mode) {
           await log('no chosen SKUs on this page — page ' + (pageHop + 1) + ' of ' + pages);
           continue;
         }
-        // AUTO. Move on to the next heading THIS RUN IS ALLOWED, by its words —
-        // not to the next one along, which may be one the date filter refused.
-        if (isAuto) {
-          autoAt += 1;
-          if (autoAt < autoPlan.length && await gotoSectionByLabel(mode, autoPlan[autoAt])) {
-            pageHop = 0;
-            await log('nothing left here — moving to "' + autoPlan[autoAt] + '"');
-            continue;
-          }
-          s.running = false; await setState(s);
-          await log('DONE — nothing more on this tab that your rules allow.');
-          break;
-        }
-
+        // AUTO uses the ordinary hop below, unchanged. It is safe here only
+        // because every heading on this tab has already been checked and allowed
+        // — moving between them cannot reach a group the date filter refused,
+        // since there are none. That check is re-run at the top of every turn.
         const pills = sectionPills();
         sectionHop += 1;
         if (sectionHop < pills.length && await gotoSection(mode, sectionHop)) {
@@ -1202,7 +1385,13 @@ async function runLoop(mode) {
 
       // Work mostly top-down, but not always the very first row.
       const pick  = candidates[Math.random() < 0.75 ? 0 : rand(0, Math.min(3, candidates.length))];
-      const label = pick.sku + ' — ' + pick.ctx.text.slice(0, 60);
+      // ⚠️ A ROUND LOGS THE SKU AND THE COUNT, NOT THE ROW. The row's text carries
+      // the Order ID and FSN, and PRIVACY.md says only the SKU and the date are
+      // read from these pages. A by-hand run keeps the fuller line: somebody is
+      // sitting there and it is the line that tells them which order stalled.
+      const label = isAuto
+        ? pick.sku + ' — ' + pick.count + ' order(s) in one press'
+        : pick.sku + ' — ' + pick.ctx.text.slice(0, 60);
       await paint(mode);
       await idleFidget();
 
@@ -1217,7 +1406,7 @@ async function runLoop(mode) {
       const before = readPendingCount(mode);
       let preVerified = false;
       if (mode.act) {
-        const acted = await mode.act(pick);
+        const acted = await mode.act(pick, { strict: isAuto });
         if (acted && mode.successOnAct) preVerified = true;
         if (!acted) {
           // Count it as a failure rather than retrying forever — an earlier
@@ -1236,7 +1425,7 @@ async function runLoop(mode) {
       } else {
         await humanClick(pick.el);
       }
-      await confirmModalIfAny();
+      await confirmModalIfAny({ strict: isAuto });
 
       // Success = that row's button left the screen, or the tab counter dropped.
       const deadline = Date.now() + (mode.confirmWaitMs || PACE.confirmWaitMs);
@@ -1256,7 +1445,11 @@ async function runLoop(mode) {
       if (!st) break;
 
       if (ok) {
-        st.done += 1; consecFails = 0;
+        // ⚠️ ORDERS, NOT CLICKS. One press of "Accept All 12 Order(s)" is twelve
+        // orders against the seller's limit, and counting it as one is how a cap
+        // of five let twenty-one through.
+        const took = isAuto ? pick.count : 1;
+        st.done += took; consecFails = 0;
         await setState(st);
         await log('  ' + mode.verb + ' OK (' + st.done + ' done)');
         // AUTO. Count it against that SKU's daily number, and tell the settings
@@ -1264,9 +1457,10 @@ async function runLoop(mode) {
         // while they were somewhere else, and an accepted order is the one thing
         // they most need to be able to read back afterwards.
         if (isAuto) {
-          const n = await RULES.noteAccepted(AUTO_PORTAL, pick.sku, Date.now());
-          await log('  ' + n + ' of this SKU taken today.');
-          tellTheRoundLog({ accepted: 1, sku: pick.sku, due: autoPlan ? autoPlan[autoAt] : '' });
+          const t = await RULES.noteAccepted(AUTO_PORTAL, pick.sku, Date.now(), took);
+          await log('  took ' + took + ' order(s). ' + t.forSku + ' of this SKU today, '
+            + t.total + ' on Flipkart today.');
+          tellTheRoundLog({ accepted: took, sku: pick.sku, due: liveGroupLabel() });
         }
       } else {
         st.failed += 1; consecFails += 1;
@@ -1302,10 +1496,16 @@ async function runLoop(mode) {
     if (s) { s.running = false; await setState(s); }
   } finally {
     looping = false;
+    if (beatTimer) clearInterval(beatTimer);
     await paint(mode);
-    // AUTO. Say how it ended, whichever way it ended — including the ways that
-    // are a `break` out of the middle of the loop. A round that stopped for a
-    // reason nobody can read is the same as a round that did not happen.
+    // AUTO. Say how it ended. Every way of ENDING is a `break` or a throw, and
+    // both land here with `running` already false.
+    //
+    // The one path that leaves here still running is a deliberate page reload
+    // (`reloadAndResume` returns rather than breaking) — the run is not over, it
+    // is about to carry on in the reloaded page, so it is not reported as ended.
+    // If that reload never completes, the worker's stall check clears it and says
+    // so; that is what the heartbeat is for.
     try {
       const fin = await getState();
       if (fin && fin.auto && !fin.running) {

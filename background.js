@@ -731,16 +731,22 @@ async function runCheckinRound(force) {
     console.log('[Kartaan Click] check-in round failed: ' + (e && e.message ? e.message : e));
     try { await checkinLog({ site: '—', done: [], roundError: String((e && e.message) || e) }); } catch (e2) { /* nothing more to do */ }
   } finally {
-    stopKeepAwake();
-    await releaseRoundLock();
-    await scheduleCheckin('round finished');
-    // The round is over and its books are closed. If the seller has switched
-    // accepting on, this is where it starts — AFTER the lock is given back and
-    // the next round is set, so a run that takes ten minutes cannot hold either
-    // of those up, and cannot take the whole feature down with it if it throws.
+    // ⚠️ THE LOCK AND THE KEEP-AWAKE ARE HELD ACROSS THE ACCEPT START, and both
+    // for the same reason. Starting the runs takes ten or twenty seconds — two tab
+    // opens and a pause between portals — and without the lock a second round (the
+    // settings page's "do one round now" is one press away) can enter here at the
+    // same time, both see no run in progress, and both start one on the same
+    // portal. Without the keep-awake the worker can be shut down halfway, leaving
+    // the state saying a run is going when no tab was ever opened.
+    //
+    // This only OPENS the tabs; it does not wait for the runs, which carry on by
+    // themselves for as long as they take.
     try { await startAcceptPasses(); } catch (e) {
       console.log('[Kartaan Click] accept pass failed to start: ' + ((e && e.message) || e));
     }
+    stopKeepAwake();
+    await releaseRoundLock();
+    await scheduleCheckin('round finished');
   }
 }
 
@@ -977,6 +983,7 @@ const AUTO_DEFAULTS = {
   dueWithinDays:   1,
   includeBreached: true,
   maxPerRound:     20,
+  maxPerDay:       60,
 };
 
 async function autoSettings() {
@@ -987,18 +994,67 @@ async function autoSettings() {
 // The Meesho twin of flipkartRunInProgress(). Same reasoning, same thing to guard
 // against: a run left saying "running" because its tab was closed under it would
 // make every later round skip Meesho for ever, quietly.
-async function meeshoRunInProgress() {
-  const st = (await chrome.storage.local.get('kcMeeshoBot')).kcMeeshoBot;
+// ⚠️ A FRESH HEARTBEAT BEATS AN OLD START TIME. The six-hour rule exists to stop a
+// run believing itself alive for ever after its tab was closed — but a genuinely
+// slow run in a throttled tab can reach six hours, and disbelieving THAT one means
+// starting a second copy on top of it. So the heartbeat is asked first: if the run
+// stamped itself within the stall window, it is running, whatever the clock says.
+function runLooksAlive(st) {
   if (!st || !st.running) return false;
+  if (st.ts && Date.now() - st.ts < ACCEPT_STALL_MS) return true;
   if (st.startedAt && Date.now() - st.startedAt > ORDER_RUN_MAX_MS) return false;
   return true;
 }
 
+async function meeshoRunInProgress() {
+  return runLooksAlive((await chrome.storage.local.get('kcMeeshoBot')).kcMeeshoBot);
+}
+
 const ACCEPT_STATE_KEY = { flipkart: 'kcOrdersBot', meesho: 'kcMeeshoBot' };
 
+// Deliberately NOT flipkartRunInProgress() for Flipkart. That one is the check-in
+// round's own guard, in daily use and left alone; this one has to be the stricter
+// of the two, because being wrong here means starting a SECOND run on live orders
+// rather than merely skipping a check-in.
 async function acceptRunInProgress(key) {
-  return key === 'flipkart' ? await flipkartRunInProgress() : await meeshoRunInProgress();
+  return runLooksAlive((await chrome.storage.local.get(ACCEPT_STATE_KEY[key]))[ACCEPT_STATE_KEY[key]]);
 }
+
+// Is the seller looking at that portal right now, in any window? Asked instead of
+// findPortalTab's `watching`, which only says "there is no idle tab" and therefore
+// answered no whenever a second background tab happened to exist.
+async function portalIsInFront(key) {
+  try {
+    const tabs = await chrome.tabs.query({ url: 'https://' + CHECKIN_SITES[key].host + '/*', active: true });
+    return !!(tabs && tabs.length);
+  } catch (e) {
+    return true;    // cannot tell — assume they are there and leave it alone
+  }
+}
+
+// ⚠️ THE ANSWER TO "AM I THE TAB THIS RUN BELONGS TO?"
+//
+// The run is written to storage and storage is announced to every tab at once, so
+// every open Flipkart or Meesho orders tab hears it. Only this worker knows which
+// tab it actually opened the run in, and only that tab may act on it. Everything
+// else gets no. The tab id is checked against the portal and against how old the
+// note is as well, because the browser hands tab numbers out again from the bottom
+// every session and yesterday's number is today's other tab.
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || msg.type !== 'ACCEPT_MAY_I_RUN') return;
+  (async () => {
+    const key   = msg.portal === 'meesho' ? 'meesho' : 'flipkart';
+    const tabId = sender && sender.tab ? sender.tab.id : null;
+    if (tabId == null) return sendResponse({ run: false });
+    const all = (await chrome.storage.local.get(ACCEPT_TABS))[ACCEPT_TABS] || {};
+    const rec = all[key];
+    const ok = !!rec && rec.id === tabId
+      && rec.host === CHECKIN_SITES[key].host
+      && !!rec.ts && Date.now() - rec.ts < ACCEPT_TAB_MAX_AGE_MS;
+    sendResponse({ run: ok });
+  })();
+  return true;
+});
 
 // A run whose tab was closed, or whose page was navigated away from, stops moving
 // but never says so. Its own state is the only evidence: every accepted order and
@@ -1155,15 +1211,39 @@ async function startAcceptRun(key, s) {
 // ── after every round ───────────────────────────────────────────────────────
 async function startAcceptPasses() {
   const s = await autoSettings();
-  if (!s.enabled) return;
+  // ⚠️ SAY SO. The three ways this does nothing — the feature off, the portal off,
+  // no SKUs ticked — used to produce no line anywhere the seller could see, so a
+  // day of nothing happening looked identical to a day of it working. Each one now
+  // writes into the round list on the settings page.
+  if (!s.enabled) {
+    await checkinLog({ site: '—', done: [],
+      acceptNote: 'not accepting — "Let it accept orders for me" is switched off' });
+    return;
+  }
+
+  const ticked = (await chrome.storage.local.get('kcOrdersFilter')).kcOrdersFilter || {};
+  const TICK_KEY = { flipkart: 'accept', meesho: 'meeshoAccept' };
 
   for (const key of ['flipkart', 'meesho']) {
-    if (!s.sites[key]) continue;
+    if (!s.sites[key]) {
+      await checkinLog({ site: CHECKIN_SITES[key].name, done: [],
+        acceptNote: 'not accepting — this portal is not ticked in settings' });
+      continue;
+    }
+    if (s.onlyTickedSkus && !((ticked[TICK_KEY[key]] || []).length)) {
+      await checkinLog({ site: CHECKIN_SITES[key].name, done: [],
+        acceptNote: 'not accepting — no SKUs are ticked yet. Open this portal’s orders '
+          + 'page, press Scan SKUs, tick the ones you are happy to take, then Save ticks.' });
+      continue;
+    }
     // The same rule the round itself follows: never work in the tab somebody is
     // reading. Here it also means never starting a run on a portal the seller is
     // sitting on — they are handling it themselves.
-    const open = await findPortalTab(key);
-    if (open && open.watching) {
+    // ⚠️ ANY ACTIVE TAB ON THAT PORTAL, not merely "no background tab exists".
+    // findPortalTab only reports `watching` when it cannot find an idle tab at all,
+    // so with the portal open in front of the seller AND a second tab behind it,
+    // this read as "not watching" and the run started anyway.
+    if (await portalIsInFront(key)) {
       await checkinLog({ site: CHECKIN_SITES[key].name, done: [],
         acceptNote: 'not accepting — you were on that portal yourself' });
       continue;

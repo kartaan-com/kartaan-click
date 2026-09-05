@@ -3,6 +3,76 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.5.1 — 5 September 2026
+
+Everything an independent review found in 1.5.0, fixed. That review was asked to
+be adversarial and it was: **four of its findings could have accepted orders that
+were never agreed to.** 1.5.0 was never pushed or released, so nothing reached
+anybody — but it is written down here because the same mistakes are easy to make
+again.
+
+**The four that could have accepted the wrong orders**
+
+- **A Flipkart row is a GROUP, and one press took all of it.** The button says
+  "Accept All 12 Order(s)" and the code counted that as one order. A daily limit of
+  five could have taken twenty-one. Everything is now counted in orders, never
+  presses: a row that would take more than the remaining allowance is left alone
+  entirely, and just before pressing, the number on the button is checked against
+  the number that was counted — if they differ, nothing is pressed.
+- **It could have worked a group of orders it had been told to skip.** Flipkart puts
+  the dispatch date on the group heading, and the old version pressed the heading it
+  wanted and carried on — but nothing on the page reliably says which heading is
+  live, and pressing the one already showing can switch the filter off and show
+  everything. So the question is no longer asked: if every heading on the tab is due
+  soon enough, it works the tab; if even one is too far out, it accepts nothing there
+  and says which heading stopped it.
+- **Meesho's confirmation step could have pressed the next order's Accept.** Every
+  order row's button reads exactly "Accept", so accepting that word as a
+  confirmation could not tell one from the other — and a re-drawn order list looked
+  like a freshly opened box. "Accept" is off that list, and only a box that declares
+  itself a dialog counts.
+- **Meesho started a run in every open Pending tab at once**, including one being
+  read. Two runs, one shared count, each losing the other's tally — which made the
+  per-SKU limit exceedable just by having two tabs open. A run now only acts in the
+  tab it was actually started in, and it will not start at all while that portal is
+  open in front of you.
+
+**Two ways the date reader said "already late", which means accept**
+
+- The words **"Non-Breached Orders"** contain "breached", and that was enough.
+- A **December date read in January** was corrected into last year's and came back
+  as 36 days overdue, when it was 329 days away. The correction that did that has
+  been removed: when the two readings of a bare date disagree, it now says nothing.
+
+**And the rest**
+
+- The off switch now works on a run already going — it is checked before every
+  order — and the Meesho panel has a **Stop** button, which the manual had been
+  promising it had.
+- A new **daily ceiling per portal**, because a per-run limit is not a limit when
+  rounds happen every 20 to 60 minutes. Counts every order accepted since the
+  morning, including SKUs with no limit of their own.
+- **Saving ticks no longer deletes limits it cannot see.** A SKU that had sold out
+  for the day vanished from the list, and re-saving removed its limit — which reads
+  as "no limit", not "nothing left". Only the SKUs on screen are changed now, and
+  the cap boxes have been taken off the Print Labels tab, where saving them wiped
+  the accept limits entirely.
+- Flipkart's confirmation step now ignores boxes that were already open, the same
+  way Meesho's does, and no longer treats "OK" or "Continue" as an accept.
+- When a round cannot find the exact row it decided on, it takes nothing rather than
+  the first one it can see.
+- The "still alive" signal now beats on its own timer rather than once per order, so
+  a genuinely slow run in a background tab is no longer mistaken for a dead one and
+  cleared — which would have started a second run on the same orders.
+- The settings page now shows the accept lines properly instead of "— nothing", and
+  says plainly when nothing happened because the feature, the portal, or the SKU
+  ticks were not set.
+- Meesho's table reader copes with merged cells, refuses a card holding several
+  orders behind one button, and stops if the date column does not line up with the
+  rows.
+- The manual, the privacy policy and the store listing were corrected where they
+  described the code as safer than it was.
+
 ## 1.5.0 — 4 September 2026
 
 **A new tool, and the first one that commits you to anything.** Everything before

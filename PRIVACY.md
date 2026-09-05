@@ -119,6 +119,15 @@ anywhere: which SKUs you ticked, the daily number you set against each, how many
 each SKU have been accepted so far today, and a list of the orders it accepted.
 You can clear the list from the settings page at any time.
 
+Two smaller things are also written to the panel's own troubleshooting log on your
+computer, and are worth naming rather than glossing over: if a box comes up that it
+does not recognise, the words on that box are written down so you can see what it
+refused to press; and a run you start by hand from the Flipkart panel logs the first
+60 characters of the order row it is working on, which on that tab includes the
+Order ID, so that a run which stalls can be traced to the order it stalled on. A run
+started by a check-in round logs only the SKU and the number of orders. Both logs
+stay on your computer and can be cleared.
+
 ## Permissions
 
 Here is exactly what each of the things it asks for is used for.

@@ -153,6 +153,20 @@ function readRows() {
   return readCardRows();
 }
 
+// The cell that actually sits under column `index`, counting merged cells as the
+// several columns they occupy. Indexing `tr.children` directly is not the same
+// thing: one `colspan` anywhere to the left of the date shifts every cell after it,
+// and reading the wrong cell here pairs one order's SKU with another order's date.
+function cellAt(tr, index) {
+  let at = 0;
+  for (const td of tr.children) {
+    const span = Math.max(1, parseInt(td.getAttribute('colspan'), 10) || td.colSpan || 1);
+    if (index >= at && index < at + span) return td;
+    at += span;
+  }
+  return null;
+}
+
 function readTableRows(table) {
   const cols = columnIndexes(table);
   if (!cols) {
@@ -161,12 +175,28 @@ function readTableRows(table) {
   }
   const rows = [];
   for (const tr of table.querySelectorAll('tbody tr')) {
-    const cells = [...tr.children];
-    if (cells.length <= Math.max(cols.sku, cols.due)) continue;   // spacer / empty row
     const btns = innermost([...tr.querySelectorAll('button, [role="button"]')]
       .filter(b => /^accept$/i.test(txt(b)) && isVisible(b) && !isDisabled(b)));
     if (!btns.length) continue;
-    rows.push({ tr, btn: btns[0], sku: txt(cells[cols.sku]), due: txt(cells[cols.due]) });
+    const skuCell = cellAt(tr, cols.sku), dueCell = cellAt(tr, cols.due);
+    if (!skuCell || !dueCell) continue;                     // spacer / short row
+    const sku = txt(skuCell), due = txt(dueCell);
+    if (!sku || !due) continue;
+
+    // ⚠️ A SANITY CHECK ON THE COLUMN ITSELF. If the cell we picked as the date is
+    // not one the date reader understands, but some OTHER cell in the row is, then
+    // the columns and the rows do not line up and we are reading the wrong cell.
+    // Stop the whole run: quietly skipping the row would hide the fault until the
+    // day it lands on a cell that DOES parse, and by then it is accepting orders
+    // against somebody else's date.
+    if (RULES && !RULES.readDue(due)) {
+      const elsewhere = [...tr.children].some(td => td !== dueCell && RULES.readDue(txt(td)));
+      if (elsewhere) {
+        return { error: 'the "Dispatch Date" column does not line up with the rows — a date '
+          + 'was found in a different cell. Nothing was touched.', rows: [] };
+      }
+    }
+    rows.push({ tr, btn: btns[0], sku, due });
   }
   return { error: null, rows, layout: 'table' };
 }
@@ -202,7 +232,15 @@ function cardFor(btn) {
     if (!/order no/i.test(t) || !/sku\s*id/i.test(t)) continue;
     const accepts = [...n.querySelectorAll('button, [role="button"]')]
       .filter(b => /^accept$/i.test(txt(b)));
-    return accepts.length === 1 ? n : null;
+    if (accepts.length !== 1) return null;
+    // ⚠️ EXACTLY ONE ORDER, NOT "AT LEAST ONE". One Accept covering several
+    // sub-orders satisfies everything above, and the reader would then take the
+    // FIRST SKU and the FIRST date in the card and commit all of them — including
+    // ones with a different SKU and a different deadline, neither of which anything
+    // checked. Counted, not assumed.
+    if ((t.match(/order no/gi) || []).length !== 1) return null;
+    if ((t.match(/sku\s*id/gi) || []).length !== 1) return null;
+    return n;
   }
   return null;
 }
@@ -237,6 +275,30 @@ function pendingCount() {
 // ── state and log ───────────────────────────────────────────────────────────
 const getState = async () => (await chrome.storage.local.get(STATE_KEY))[STATE_KEY] || null;
 const setState = async s  => chrome.storage.local.set({ [STATE_KEY]: s });
+
+// ⚠️ IS THIS TAB THE ONE THE RUN WAS STARTED IN?
+//
+// The run is written to storage, and storage is shouted at every tab at once. So
+// every open Meesho Pending tab heard "a run is going" and started its own — two
+// loops, one shared record, both clicking the same rows, both counting into the
+// same daily total and losing each other's increments. The per-SKU cap, which is
+// the thing standing between the seller and accepting more than they have in
+// stock, was exceedable purely by having two tabs open. It also meant a run could
+// start in the tab the seller was reading, with buttons being pressed under their
+// cursor, which the manual explicitly promises will not happen.
+//
+// A tab cannot know its own number, so it asks. Only the worker knows which tab it
+// opened the run in, and it answers no to every other tab. Asked before the loop
+// starts and again on every page load — never assumed, and never cached, because
+// the browser hands tab numbers out again from the bottom each session.
+async function mayIRun() {
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'ACCEPT_MAY_I_RUN', portal: PORTAL });
+    return !!(res && res.run);
+  } catch (e) {
+    return false;      // the worker did not answer: not our place to guess yes
+  }
+}
 
 let panel, logBox, statLine, skuBox;
 
@@ -326,11 +388,20 @@ async function idleFidget() {
 //   - anything else: press NOTHING, write the box's exact words to the log, and
 //     stop the run. The next wording is added from that log line, with proof —
 //     never by guessing at it here.
-const CONFIRM_WORDS = ['confirm', 'yes', 'accept', 'accept order', 'accept orders',
-                       'yes, accept', 'proceed'];
+// ⚠️ "ACCEPT" IS NOT ON THIS LIST, ON PURPOSE. Every order row's button reads
+// exactly "Accept", so a rule that presses a button labelled "Accept" inside
+// anything dialog-shaped cannot tell a confirmation from the NEXT ORDER'S button.
+// React re-renders the list the moment a row disappears, and a re-rendered wrapper
+// is a node that was not there before — so it read as a fresh box, and the first
+// "Accept" inside it belonged to an order that had passed no checks at all.
+// A confirmation that repeats the trigger word is not distinguishable from the
+// trigger. Do not put it back.
+const CONFIRM_WORDS = ['confirm', 'yes', 'yes, accept', 'proceed'];
 
-const DIALOG_SELECTOR = '[role="dialog"], [role="alertdialog"], [class*="modal" i], '
-                      + '[class*="Modal" i], [class*="dialog" i], [class*="drawer" i]';
+// Only things that DECLARE themselves a dialog. Matching on class names containing
+// "modal"/"dialog"/"drawer" swept up ordinary layout wrappers in a React app whose
+// class names are generated — which is what let a re-rendered order list qualify.
+const DIALOG_SELECTOR = '[role="dialog"], [role="alertdialog"], [aria-modal="true"]';
 
 function openDialogs() {
   return [...document.querySelectorAll(DIALOG_SELECTOR)].filter(isVisible);
@@ -368,12 +439,32 @@ let looping = false;
 async function runLoop() {
   if (looping) return;
   looping = true;
+  let beatTimer = null;
   try {
     const s0 = await getState();
     if (!s0 || !s0.running) return;
 
-    const settings = await RULES.settings();
+    // Only the tab the worker actually opened the run in. Every other Meesho tab
+    // hears the same storage change and would otherwise start its own copy.
+    if (!await mayIRun()) { looping = false; return; }
+
+    let settings   = await RULES.settings();
     const ticked   = await RULES.tickedSkus(FILTER_ID);
+
+    // Says "still alive" every 45 seconds on its own timer, so a run that is
+    // merely slow in a throttled tab is never mistaken for a dead one and cleared
+    // — a cleared run that is still going means a second copy gets started on the
+    // same live orders. The top of the loop alone is not often enough: one order
+    // can take several minutes of waiting once the browser throttles the tab.
+    beatTimer = setInterval(async () => {
+      try {
+        const st = await getState();
+        if (!st || !st.running) return;
+        if (st.ts && Date.now() - st.ts < 45000) return;
+        st.ts = Date.now();
+        await setState(st);
+      } catch (e) { /* a missed beat is not worth ending a run over */ }
+    }, 30000);
 
     await log('START — accepting up to ' + s0.limit + ', '
       + (settings.onlyTickedSkus
@@ -391,11 +482,17 @@ async function runLoop() {
       const s = await getState();
       if (!s || !s.running) { await log('stopped.'); break; }
 
-      // A heartbeat, at most once a minute. The worker decides a run has died by
-      // looking at when this last moved, and in a hidden tab the browser can cut
-      // timers to one tick a minute — so a run that is merely slow must never be
-      // mistaken for a dead one and cleared out from under itself.
       if (!s.ts || Date.now() - s.ts > 60000) { s.ts = Date.now(); await setState(s); }
+
+      // The off switch has to work on a run that is ALREADY GOING. Asked again
+      // every time round, which is what makes the manual's promise true — and it
+      // also catches a run resumed from stored state after the seller switched
+      // the feature off.
+      settings = await RULES.settings();
+      if (!settings.enabled || !settings.sites[PORTAL]) {
+        await stop(s, 'STOPPED — accepting has been switched off in settings.');
+        break;
+      }
 
       if (s.done >= s.limit) {
         await stop(s, 'DONE — the limit of ' + s.limit + ' was reached.');
@@ -429,7 +526,8 @@ async function runLoop() {
 
       const picks = [];
       for (const r of read.rows) {
-        const d = RULES.decide({ sku: r.sku, due: r.due }, ctx);
+        // One Meesho row is one order — unlike Flipkart, where a row is a group.
+        const d = RULES.decide({ sku: r.sku, due: r.due, count: 1 }, ctx);
         if (d.ok) picks.push(r);
         else if (!refused.has(r.sku + '|' + d.why)) {
           refused.set(r.sku + '|' + d.why, true);
@@ -481,8 +579,9 @@ async function runLoop() {
       if (gone) {
         consecFails = 0;
         s2.done += 1; s2.ts = Date.now(); await setState(s2);
-        const n = await RULES.noteAccepted(PORTAL, pick.sku, Date.now());
-        await log('  accepted. ' + n + ' of this SKU taken today.');
+        const t = await RULES.noteAccepted(PORTAL, pick.sku, Date.now(), 1);
+        await log('  accepted. ' + t.forSku + ' of this SKU today, '
+          + t.total + ' on Meesho today.');
         tellTheRoundLog({ accepted: 1, sku: pick.sku, due: pick.due });
       } else {
         consecFails += 1;
@@ -512,6 +611,7 @@ async function runLoop() {
     if (s) { s.running = false; s.ts = Date.now(); await setState(s); }
   } finally {
     looping = false;
+    if (beatTimer) clearInterval(beatTimer);
     await paint();
   }
 }
@@ -580,12 +680,16 @@ async function saveTicks() {
   all[FILTER_ID] = skus;
   await chrome.storage.local.set({ [RULES.FILTER_KEY]: all });
 
-  const caps = {};
+  // ⚠️ ONLY THE SKUs ON SCREEN. Writing this list over the whole map deleted the
+  // cap on every SKU that had sold out for the day, and a deleted cap reads as
+  // "no limit on this one" rather than "nothing left". Merging happens in saveCaps.
+  const visible = [], values = {};
   for (const box of skuBox.querySelectorAll('input.cap')) {
-    const n = parseInt(box.value, 10);
-    if (Number.isFinite(n) && n > 0) caps[box.dataset.sku] = n;
+    visible.push(box.dataset.sku);
+    const raw = String(box.value || '').trim();
+    values[box.dataset.sku] = /^\d+$/.test(raw) ? parseInt(raw, 10) : NaN;
   }
-  await RULES.setCaps(PORTAL, caps);
+  const caps = await RULES.saveCaps(PORTAL, visible, values);
   await log('saved — ' + (skus.length ? skus.length + ' SKU(s) ticked' : 'nothing ticked')
     + ', ' + Object.keys(caps).length + ' with a daily limit.');
   await preview();
@@ -606,7 +710,7 @@ async function preview() {
   };
   const yes = [], no = new Map();
   for (const r of read.rows) {
-    const d = RULES.decide({ sku: r.sku, due: r.due }, ctx);
+    const d = RULES.decide({ sku: r.sku, due: r.due, count: 1 }, ctx);
     if (d.ok) yes.push(r); else no.set(d.why, (no.get(d.why) || 0) + 1);
   }
   await log('right now a round would accept ' + yes.length + ' of ' + read.rows.length + ' on screen'
@@ -632,6 +736,7 @@ function buildPanel() {
     'font-size:12px;font-weight:600;color:#fff;background:#3d444d}',
     '#__kcMeeshoPanel .scan{background:#7b2ff7}',
     '#__kcMeeshoPanel .save{background:#1a7f37}',
+    '#__kcMeeshoPanel .stop{background:#b62324}',
     '#__kcMeeshoPanel .stat{font-size:12px;margin-bottom:8px;color:#9fb0c0}',
     '#__kcMeeshoPanel pre{margin:0;height:150px;overflow:auto;background:#0d1117;border-radius:6px;',
     'padding:7px;font:11px/1.4 Consolas,monospace;white-space:pre-wrap;color:#adbac7}',
@@ -677,7 +782,12 @@ function buildPanel() {
 
   const r2 = document.createElement('div'); r2.className = 'row';
   const prevBtn = document.createElement('button'); prevBtn.textContent = 'What would happen now';
-  r2.appendChild(prevBtn);
+  // There is no Start button here on purpose, but there must be a way OUT. Without
+  // this the only way to halt a run on this page was to close the tab, while the
+  // manual said unticking the setting would do it.
+  const stopBtn = document.createElement('button');
+  stopBtn.className = 'stop'; stopBtn.textContent = 'Stop';
+  r2.appendChild(prevBtn); r2.appendChild(stopBtn);
   body.appendChild(r2);
 
   logBox = document.createElement('pre');
@@ -701,6 +811,13 @@ function buildPanel() {
   scanBtn.onclick = () => scanSkus();
   saveBtn.onclick = () => saveTicks();
   prevBtn.onclick = () => preview();
+  stopBtn.onclick = async () => {
+    const s = await getState();
+    if (!s || !s.running) { await log('nothing is running.'); return; }
+    s.running = false; s.ts = Date.now();
+    await setState(s);
+    await log('STOP requested — it will halt after the order it is on.');
+  };
 }
 
 // ── start-up ────────────────────────────────────────────────────────────────
@@ -737,6 +854,13 @@ function buildPanel() {
 
   // The round sets the state from the background worker; this tab is already
   // loaded by then, so it has to notice rather than be told.
+  //
+  // ⚠️ EVERY MEESHO TAB HEARS THIS. Storage changes are shouted at all of them at
+  // once, so this fires in tabs that have nothing to do with the run — including
+  // one the seller is reading. `runLoop` asks the worker whether THIS tab is the
+  // one the run was opened in and gives up immediately if it is not. That check is
+  // the only thing making this listener safe; do not remove it from runLoop and do
+  // not start the loop from anywhere that skips it.
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !changes[STATE_KEY]) return;
     const now = changes[STATE_KEY].newValue;
