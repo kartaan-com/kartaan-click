@@ -3,6 +3,21 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.6.1 — 6 September 2026
+
+**The "a new version is out" notice now actually works.** It has never once told
+anybody anything, and this is why: it read a file from kartaan.com, a site that has
+not been built yet, so every check quietly failed and every user stayed on whatever
+version they first installed.
+
+- It now reads that file from this extension's own public repository — the same
+  place the download itself comes from, so there is nothing extra to set up and
+  nothing that can be forgotten.
+- Making a release now writes that file automatically from the version being
+  packaged, so it can never fall behind what was actually released.
+- No new permission. It is still one small read of one public file, once a day,
+  with nothing about you in it.
+
 ## 1.6.0 — 6 September 2026
 
 Two things you can see, both asked for after using it.

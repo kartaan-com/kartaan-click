@@ -9,7 +9,7 @@ unless you want to reword it.
    your Microsoft account, and choose the **Microsoft Edge** program.
    There is no fee for Edge — unlike Chrome, which charges $5.
 2. Build the upload file: `node tools/make-zip.js`, which produces
-   `kartaan-click-1.6.0.zip` with `manifest.json` at the top level.
+   `kartaan-click-1.6.1.zip` with `manifest.json` at the top level.
 
 ## Listing fields
 
@@ -50,7 +50,7 @@ Orders arrive all day and each one has to be accepted before it can be packed. K
 
 It is off out of the box, and switching it on is not enough on its own: until you have ticked at least one SKU, it accepts nothing at all.
 
-Privacy: it collects nothing about you. No accounts, no tracking, no analytics. Everything it remembers stays in your own browser. It makes one network request in its life: once a day it reads a small public file on kartaan.com to see whether a newer version is out, so it can tell you. Nothing about you is sent in it.
+Privacy: it collects nothing about you. No accounts, no tracking, no analytics. Everything it remembers stays in your own browser. It makes one network request in its life: once a day it reads a small public file in its own public GitHub repository to see whether a newer version is out, so it can tell you. Nothing about you is sent in it.
 
 More free tools are on the way. Learn more at kartaan.com
 
@@ -122,15 +122,17 @@ portal at the time, the round skips that portal. It clicks the site's own order
 tabs, closes pop-ups that are in its way, and reads nothing else. One further use,
 named for completeness: on a Meesho panel page it reads the seller's own account
 code out of the address bar, so a round can find their orders page without asking
-them to paste it. That code stays in the browser. `https://kartaan.com/*` is
-used once a day to read a single small public file holding the current version
-number, so users on a manual install can be told when a new version exists. Nothing
-is sent in that request and no other site is accessed.
+them to paste it. That code stays in the browser. `https://raw.githubusercontent.com/*`
+is used once a day to read a single small public file holding the current version
+number — it sits in this extension's own public repository, the same place the
+download comes from — so users on a manual install can be told when a new version
+exists. Nothing is sent in that request and no other site is accessed.
 
 **Is any user data collected?**
 No. There is no analytics, no tracking and no account. The extension makes exactly
 one network request in its life cycle — a once-a-day read of
-`https://kartaan.com/kartaan-click/version.json`, a small public file containing
+`https://raw.githubusercontent.com/kartaan-com/kartaan-click/main/version.json`,
+a small public file in the extension's own repository containing
 the latest version number. It is a plain GET with no parameters, no identifiers
 and no request body. Nothing about the user or their browsing is transmitted.
 
@@ -174,7 +176,13 @@ machine:
 There is no `XMLHttpRequest` anywhere. The only URLs in the package are
 `seller.flipkart.com`, `supplier.meesho.com`, `sellercentral.amazon.in` — the three
 seller portals the user already works on, opened only for a check-in round — and
-`kartaan.com` for the version file.
+`raw.githubusercontent.com` for the version file, which is read once a day, and
+`*.synlabs.io` for the VMS tool described above. Two further addresses appear in
+the package but are never requested by the extension: `kartaan.com`, the
+publisher's home page, set as `homepage_url` and linked from the popup and the
+settings page; and `github.com`, which is the download address carried in the
+version file, the link to the manual on the settings page, and referenced in the
+included README. Both are opened only if the user clicks them.
 
 ## Screenshots
 

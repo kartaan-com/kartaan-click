@@ -54,9 +54,23 @@ function render(info) {
 
   // An update check that fails is usually just being offline. Say so plainly and
   // quietly rather than hiding it, but never dress it up as a problem.
-  if (info.error && !info.latest) {
+  //
+  // ⚠️ `&& !info.latest` WAS HIDING A REAL FAILURE, and only started being able to.
+  // Once one check has ever succeeded, `latest` stays set for good — so a browser
+  // that has not reached the internet for two months fell straight through to
+  // "Up to date." while a newer version was out. That could not happen while the
+  // old address failed every single time and `latest` was never set; it can now.
+  // So: an erroring check says so whatever it knew before.
+  if (info.error) {
     box.className = 'update muted';
-    box.textContent = 'Could not check for updates right now.';
+    box.textContent = (info.latest && info.latestAt)
+      // "nothing newer THEN" is the honest phrasing: it describes what was true on
+      // that date, not what is true now. Saying "up to date" here would be a claim
+      // about the present that nothing has checked.
+      ? 'Could not check for updates. Last heard on '
+        + new Date(info.latestAt).toLocaleDateString()
+        + ' — the newest then was ' + info.latest + '.'
+      : 'Could not check for updates right now.';
     return;
   }
 

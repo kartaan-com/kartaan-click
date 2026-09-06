@@ -700,9 +700,11 @@ Nothing leaves your computer, with one exception, described below.
   download yourself are never touched, renamed, moved, or read; and `alarms`,
   which holds the time the next portal check-in is due and nothing else.
 
-**The one exception:** once a day it reads a small public file on kartaan.com to
-find out the newest version number, so it can tell you. Nothing about you is sent
-— it is the same kind of request as opening a web page.
+**The one exception:** once a day it reads a small public file on
+`raw.githubusercontent.com` — in this extension's own public repository, the same
+place the download comes from — to find out the newest version number, so it can
+tell you. Nothing about you is sent; it is the same kind of request as opening a
+web page.
 
 The full detail is in [PRIVACY.md](PRIVACY.md).
 

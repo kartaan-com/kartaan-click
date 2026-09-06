@@ -180,7 +180,8 @@ const shipped = referenced.filter(f => f.endsWith('.js'));
 // The only hosts any shipped code may name. The three seller portals are the pages
 // the tools run on; kartaan.com is the version file. Anything else is a finding.
 const ALLOWED_HOSTS = [
-  'kartaan.com', 'seller.flipkart.com', 'supplier.meesho.com',
+  'kartaan.com', 'raw.githubusercontent.com', 'github.com',
+  'seller.flipkart.com', 'supplier.meesho.com',
   'sellercentral.amazon.in', 'www.w3.org',   // the last is the SVG namespace, not a server
 ];
 

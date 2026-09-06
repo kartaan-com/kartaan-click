@@ -192,12 +192,12 @@ it remembers — how far a run has got, which SKUs you ticked, where you dragged
 panel — stays in your own browser.
 
 It asks for `storage` to remember those things between page loads, `downloads` to
-save shipping labels into your Downloads folder, and access to `kartaan.com` for
-the update check above. The downloads permission is inert except in the seconds
+save shipping labels into your Downloads folder, and access to
+`raw.githubusercontent.com` for the update check above. The downloads permission is inert except in the seconds
 after you press Print Labels; files you download yourself are never touched.
 
 It makes exactly one network request in its life: once a day it reads a small
-public file on kartaan.com to see whether a newer version exists. Nothing about
+public file in this repository to see whether a newer version exists. Nothing about
 you is sent in it. See [PRIVACY.md](PRIVACY.md).
 
 ## Suggestions
@@ -221,8 +221,9 @@ the remaining steps. The release asset is always uploaded as `kartaan-click.zip`
 so the download link at the top of this page never changes.
 
 Before releasing: bump `version` in `manifest.json`, add its entry to
-[CHANGELOG.md](CHANGELOG.md), and update the version file on kartaan.com so
-existing users are told.
+[CHANGELOG.md](CHANGELOG.md). `tools/release.js` writes `version.json` for you;
+push it AFTER the release exists, or people are told to fetch a version that is
+not there yet.
 
 ### The release rules
 

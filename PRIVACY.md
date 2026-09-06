@@ -20,14 +20,19 @@ leaves it.
 ## The one time it contacts a server
 
 Once a day, the extension reads a single small file at
-`https://kartaan.com/kartaan-click/version.json` to find out whether a newer
-version has been released, so it can tell you. That is the only network request it
-ever makes.
+`https://raw.githubusercontent.com/kartaan-com/kartaan-click/main/version.json` to
+find out whether a newer version has been released, so it can tell you. That is the
+only network request it ever makes. It is the same public repository the extension
+itself is downloaded from.
 
 It is a plain read of a public file. **Nothing about you is sent** — not your
 identity, not what you were doing, not which sites you visit, not the contents of
-any page. As with visiting any website, kartaan.com sees the request arrive, which
-unavoidably means your IP address, and nothing is recorded against it.
+any page. As with visiting any website, GitHub sees the request arrive, which
+unavoidably means your IP address, and nothing is recorded against it by us.
+
+That file also carries the download address of the newest version, on `github.com`,
+which is shown to you as a link. **Nothing is fetched from it** — following that
+link is your decision and happens in your browser like any other link you click.
 
 If the check fails — you are offline, or the file is missing — nothing happens and
 the extension carries on exactly as normal.
@@ -141,7 +146,7 @@ Here is exactly what each of the things it asks for is used for.
 | `downloads` | Saving Flipkart shipping labels. When you print labels, the extension files each one into a **Kartaan Click Labels** folder inside your normal Downloads folder, and reports back whether it saved. |
 | `alarms` | Knowing when the next portal check-in is due. A browser alarm is the only timer that survives the extension being put to sleep, which browsers do within about half a minute of it doing nothing. It holds one time and nothing else. |
 | access to `seller.flipkart.com`, `supplier.meesho.com`, `sellercentral.amazon.in` | Two things, both about your own seller portals: running the tools described above on those pages, and — before a check-in opens a new tab — asking the browser whether you already have that portal open, so it can use your tab instead of adding another. Tabs on any other site are never looked at. |
-| access to `kartaan.com` | Reading the version file described above, once a day, so the extension can tell you when a new version is out. It is used for nothing else, and no other website is contacted. |
+| access to `raw.githubusercontent.com` | Reading the version file described above, once a day, so the extension can tell you when a new version is out. It is used for nothing else, and no other website is contacted. |
 
 The `downloads` permission is used **only** in the seconds after you press Print
 Labels, and only for the label file itself. Downloads you start yourself are never

@@ -79,14 +79,31 @@ function trackDownload(id) {
 // THIS IS THE ONLY TIME THE EXTENSION EVER CONTACTS A SERVER, and it sends
 // nothing about the user — it is a plain read of one small public file.
 //
-// ⚠️ JAISWAL MUST PUBLISH THIS FILE for the check to do anything. Until it
-// exists the check simply fails quietly and the extension carries on as normal.
-// It should hold, and nothing else:
-//   { "version": "1.2.0",
-//     "url": "https://kartaan.com/download/kartaan-click.zip",
+// WHERE THE FILE LIVES, AND WHY IT MOVED. It used to be read from kartaan.com,
+// which meant the update notice did nothing at all until that site was built and
+// somebody remembered to edit a file there on every release. It is now read from
+// this repository, which is already public and already hands out the download —
+// and `tools/release.js` WRITES version.json as part of making a release, so it
+// can never be forgotten or fall behind the released build.
+//
+// The file holds this, and nothing else:
+//   { "version": "1.6.1",
+//     "url": "https://github.com/kartaan-com/kartaan-click/releases/latest/download/kartaan-click.zip",
 //     "notes": "Short line about what is new" }
-const VERSION_URL    = 'https://kartaan.com/kartaan-click/version.json';
+const VERSION_URL    = 'https://raw.githubusercontent.com/kartaan-com/kartaan-click/main/version.json';
 const CHECK_EVERY_MS = 24 * 60 * 60 * 1000;
+
+// An address is kept only if it is an ordinary secure web address. Anything else
+// is thrown away and the notice shows no link at all — which is the right outcome,
+// because a notice with no link is a nuisance and a bad link is a hazard.
+function safeLink(raw) {
+  try {
+    const u = new URL(String(raw || ''));
+    return u.protocol === 'https:' ? u.href : '';
+  } catch (e) {
+    return '';
+  }
+}
 
 // True when `a` is a later version than `b`. Compares 1.2.0 style numbers part by
 // part, so 1.10.0 correctly beats 1.9.0 — which comparing them as text would not.
@@ -107,20 +124,41 @@ async function checkForUpdate(force) {
 
   // Once a day is plenty, and it means opening twenty tabs does not mean twenty
   // requests. `force` is for the popup's own "check now".
-  if (!force && previous.checkedAt && now - previous.checkedAt < CHECK_EVERY_MS) return previous;
+  //
+  // ⚠️ WORK THE ANSWER OUT AGAIN BEFORE HANDING IT BACK. What is stored was decided
+  // against whatever was installed at the time, and somebody who has just updated —
+  // which is exactly what the notice told them to do — would otherwise be told for
+  // the rest of the day that the version they are now running is available. Same
+  // fault as the failure path below, in the sibling place.
+  if (!force && previous.checkedAt && now - previous.checkedAt < CHECK_EVERY_MS) {
+    return Object.assign({}, previous, {
+      installed,
+      updateAvailable: isNewer(previous.latest, installed),
+    });
+  }
 
   let info;
   try {
-    // NET-OK: kartaan.com/kartaan-click/version.json — the version file, read
-    // only. Sends no body, no identifiers, no cookies of ours.
+    // NET-OK: raw.githubusercontent.com — version.json in this extension's own
+    // public repository, read only. Sends no body, no identifiers, no cookies of
+    // ours. It is the same place the download itself comes from.
     const res = await fetch(VERSION_URL, { cache: 'no-store' });
     if (!res.ok) throw new Error('the server answered ' + res.status);
     const data = await res.json();
     const latest = String(data.version || '');
     if (!latest) throw new Error('no version in the file');
     info = {
-      checkedAt: now, installed, latest,
-      url:   String(data.url || ''),
+      // `checkedAt` is when we last TRIED; `latestAt` is when we last actually
+      // heard back. They part company the moment a check starts failing, and the
+      // popup needs the second one to say honestly how old its answer is.
+      checkedAt: now, latestAt: now, installed, latest,
+      // ⚠️ THIS BECOMES A LINK THE SELLER CAN CLICK, in the popup and on the order
+      // panel, so it is checked before it is kept. Only a secure ordinary web
+      // address survives — anything else, including a `javascript:` one, is dropped
+      // and the notice simply shows no link. The version number beside it was
+      // always handled as plain text; the address deserves the same care, and this
+      // path only started actually running with this release.
+      url:   safeLink(data.url),
       notes: String(data.notes || ''),
       updateAvailable: isNewer(latest, installed),
       error: '',
@@ -129,8 +167,18 @@ async function checkForUpdate(force) {
     // Keep whatever was last known to be true and record why this attempt failed,
     // rather than silently pretending everything is fine (Golden Rule 29). Being
     // offline lands here, which is why it is never shown as an alarm.
+    //
+    // ⚠️ `updateAvailable` MUST BE WORKED OUT AGAIN, not carried over. It was
+    // decided against whatever version was installed at the time, and the seller
+    // has very likely installed the newer one since — that is what the notice told
+    // them to do. Carrying it forward tells somebody already on 1.6.2 that 1.6.2 is
+    // available, and the popup hides the error line whenever a version is known, so
+    // there is nothing on screen to explain it. Unreachable until now, because the
+    // old address failed every single time and there was never a previous answer to
+    // carry.
     info = Object.assign({}, previous, {
       checkedAt: now, installed,
+      updateAvailable: isNewer(previous.latest, installed),
       error: (e && e.message) ? e.message : String(e),
     });
   }
