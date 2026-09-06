@@ -167,6 +167,11 @@ function isDisabled(el) {
 // comparing, so the count changing never breaks the match.
 const norm = t => t.replace(/[()\[\]\d,]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 
+// The underlying text of an element. Costs nothing to read, unlike `txt()` above,
+// which makes the browser work out the page layout again on every single call.
+// Used only to sift before `txt()` — never to decide anything on its own.
+const rawTxt = el => ((el && el.textContent) || '').replace(/\s+/g, ' ');
+
 // A word we are looking for as a TAB is very often also a value in the orders
 // table underneath it — "Pending" is a tab on Amazon and Meesho and also the
 // status of every second row. Clicking the cell instead of the tab opens one
@@ -184,12 +189,30 @@ const IN_A_TABLE = 'table, thead, tbody, tr, td, th, [role="table"], [role="grid
 function findByWords(words) {
   const want  = words.toLowerCase();
   const nodes = [...document.querySelectorAll('a, button, li, span, div, p, [role="tab"], [role="button"], [role="menuitem"]')];
-  const hits  = nodes.filter(el => {
+
+  const match = el => {
     const t = txt(el);
     if (!t || t.length > 60 || norm(t) !== want) return false;
     if (!isVisible(el)) return false;
     return !el.closest(IN_A_TABLE);
-  });
+  };
+
+  // ⚠️ READING `innerText` MAKES THE BROWSER REDO ITS WHOLE LAYOUT, every time.
+  // This runs over every div, span and p on the page, from a loop that polls twice
+  // a second — on a Flipkart order tab that is what locks the page up. So sift on
+  // the underlying text first, which is free.
+  //
+  // ⚠️ AND THE SIFT IS NOT PROVABLY EXACT, WHICH IS WHY THERE IS A FALLBACK BELOW.
+  // `innerText` puts a line break where a block element starts; `textContent` does
+  // not. So "Ready<span>to Ship</span>" reads as "Ready to Ship" on screen but
+  // "Readyto Ship" underneath. Comparing with every space removed survives that.
+  // What it cannot survive is hidden text sitting INSIDE the words. So: if the
+  // sift finds nothing at all, the search is simply run again without it. The fast
+  // path stays fast; the slow path is the old behaviour, never a wrong answer.
+  const wantTight = want.replace(/\s+/g, '');
+  const pool = nodes.filter(el => norm(rawTxt(el)).replace(/\s+/g, '').includes(wantTight));
+  let hits = pool.filter(match);
+  if (!hits.length && pool.length !== nodes.length) hits = nodes.filter(match);
   const inner = hits.filter(e => !hits.some(o => o !== e && e.contains(o)));
   const rank  = (el) => {
     if (el.getAttribute && el.getAttribute('role') === 'tab') return 0;
@@ -316,8 +339,12 @@ function overlayBoxes() {
     // start treating our own panel as a pop-up to be closed. Nothing inside it
     // would actually be pressed (checked: the minimise button has words, so the
     // corner rule refuses it) but it is not ours to guess at. Excluded by name.
-    if (el.id === '__kcSignIn' || el.id === '__kcPanel') continue;
-    if (el.closest('#__kcSignIn, #__kcPanel')) continue;
+    // ⚠️ `#__kcMeeshoPanel` BELONGS HERE TOO — it is the Meesho order panel from
+    // content/meesho-orders.js, and it is on screen for every Meesho check-in
+    // exactly as the Flipkart one is. Any panel this extension draws goes in this
+    // list; a round has no business trying to close our own furniture.
+    if (el.id === '__kcSignIn' || el.id === '__kcPanel' || el.id === '__kcMeeshoPanel') continue;
+    if (el.closest('#__kcSignIn, #__kcPanel, #__kcMeeshoPanel')) continue;
     if (el.closest(NOT_A_POPUP)) continue;             // page furniture, not a pop-up
     const s = getComputedStyle(el);
     if (s.position !== 'fixed' && s.position !== 'absolute') continue;

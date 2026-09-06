@@ -122,56 +122,69 @@ async function showNext() {
 // line that says whether a step failed because the words are wrong or because the
 // portal had put a completely different page in front of us.
 function whereLine(e) {
+  // ⚠️ NO LINE BREAK HERE ANY MORE. This used to start with "\n" and rely on the
+  // log being a <pre>. It is a table cell now, where a newline renders as an
+  // ordinary space and the line silently ran into the one before it.
   if (!e.page && !e.at) return '';
-  return '\n            page: ' + [e.page, e.at].filter(Boolean).join('  —  ');
+  return ' · page: ' + [e.page, e.at].filter(Boolean).join(' — ');
 }
 
+// One round, split into the four columns of the table rather than run together
+// into a sentence. `bad` shades the row so a problem is visible without reading
+// every line of a fortnight's rounds.
 function describe(e) {
-  const at = new Date(e.ts).toLocaleString();
-
   // ⚠️ THE ACCEPT LINES NEED THEIR OWN BRANCHES OR THEY FALL THROUGH TO THE
-  // DEFAULT AND RENDER AS "— nothing", which reads as "the round did nothing"
-  // when the truth is "no SKUs are ticked yet" or "a run had stalled and was
-  // cleared". Anything added to the accept side must be given a branch here.
+  // DEFAULT AND SHOW "nothing", which reads as "the round did nothing" when the
+  // truth is "no SKUs are ticked yet" or "a run had stalled and was cleared".
+  // Anything added to the accept side must be given a branch here.
   if (e.acceptStart != null)
-    return at + '  ' + e.site + ' — started accepting, up to ' + e.acceptStart + ' order(s)';
+    return { did: 'started accepting', note: 'up to ' + e.acceptStart + ' order(s)' };
 
   if (e.acceptNote)
-    return at + '  ' + e.site + ' — ' + e.acceptNote;
+    return { did: 'accepting', note: e.acceptNote };
 
   if (e.roundError)
-    return at + '  ' + e.site + ' — the round hit a problem: ' + e.roundError;
+    return { did: '—', note: 'the round hit a problem: ' + e.roundError, bad: true };
 
   if (e.skipped)
-    return at + '  ' + e.site + ' — skipped, the order panel was mid-run on this portal';
+    return { did: 'skipped', note: 'the order panel was mid-run on this portal' };
 
   if (e.onItAlready)
-    return at + '  ' + e.site + ' — skipped, you were on it yourself at the time';
+    return { did: 'skipped', note: 'you were on it yourself at the time' };
 
   if (e.resumed)
-    return at + '  ' + e.site + ' — you signed in, so it carried on: '
-             + ((e.done && e.done.length) ? e.done.join(' → ') : 'nothing')
-             + (e.stoppedAt ? ' (stopped at "' + e.stoppedAt + '")' : '');
+    return {
+      did:  (e.done && e.done.length) ? e.done.join(' → ') : 'nothing',
+      note: 'you signed in, so it carried on'
+            + (e.stoppedAt ? ' (stopped at "' + e.stoppedAt + '")' : ''),
+      bad:  !!e.stoppedAt,
+    };
 
   if (e.signedOut)
-    return at + '  ' + e.site + ' — NEEDS SIGNING IN. Its tab is open and waiting for you;'
-             + ' sign in there and it picks that portal up by itself. The others carried on.'
-             + whereLine(e);
+    return {
+      did:  '—',
+      note: 'NEEDS SIGNING IN. Its tab is open and waiting for you; sign in there and'
+            + ' it picks that portal up by itself. The others carried on.' + whereLine(e),
+      bad:  true,
+    };
 
   if (e.failed)
-    return at + '  ' + e.site + ' — the tab could not be opened';
+    return { did: '—', note: 'the tab could not be opened', bad: true };
 
   if (e.timedOut)
-    return at + '  ' + e.site + ' — the page never answered. Its tab has been left open'
-             + ' so you can see what it was doing.';
+    return { did: '—', note: 'the page never answered. Its tab has been left open so you'
+                            + ' can see what it was doing.', bad: true };
 
-  const where = e.reused ? ' (in your own tab)' : '';
-  const did   = (e.done && e.done.length) ? e.done.join(' → ') : 'nothing';
-  const shut = (e.closed && e.closed.length)
-    ? '\n            closed on the way: ' + e.closed.join(', ') : '';
-  return at + '  ' + e.site + where + ' — ' + did + shut
-       + (e.stoppedAt ? '\n            stopped: could not find "' + e.stoppedAt + '" on the page'
-                        + whereLine(e) : '');
+  const notes = [];
+  if (e.reused) notes.push('in your own tab');
+  if (e.closed && e.closed.length) notes.push('closed on the way: ' + e.closed.join(', '));
+  if (e.stoppedAt) notes.push('stopped: could not find "' + e.stoppedAt + '" on the page'
+                              + whereLine(e));
+  return {
+    did:  (e.done && e.done.length) ? e.done.join(' → ') : 'nothing',
+    note: notes.join(' · '),
+    bad:  !!e.stoppedAt,
+  };
 }
 
 // Whether the Meesho account code has been picked up yet. Worth saying out loud:
@@ -186,9 +199,106 @@ async function showMeeshoCode() {
       + 'sorts itself out; until then a Meesho round lands on the Meesho home page.';
 }
 
+// ── the record: fifteen days of runs, shown as a table ──────────────────────
+//
+// Records are pruned to fifteen days as each one is written. They are filtered
+// again here, so a browser that has not done a round for a month shows an honest
+// empty table rather than last month's.
+const LOG_DAYS = 15;
+
+function withinRecord(all) {
+  const cutoff = Date.now() - LOG_DAYS * 24 * 60 * 60 * 1000;
+  return (Array.isArray(all) ? all : [])
+    .filter(e => e && typeof e.ts === 'number' && e.ts >= cutoff);
+}
+
+const dayOf  = d => d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+const timeOf = d => d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+// Built with createElement and textContent, never innerHTML: every cell carries
+// text that came off a seller's own page — SKU names, the words a round could not
+// find — and none of it is ours to trust as markup.
+function renderTable(hostId, headers, rows, empty) {
+  const host = $(hostId);
+  if (!host) return;
+  host.textContent = '';
+  if (!rows.length) { host.className = 'log empty'; host.textContent = empty; return; }
+  host.className = 'log';
+
+  const table = document.createElement('table');
+  table.className = 'rec';
+
+  const thead = document.createElement('thead');
+  const hrow  = document.createElement('tr');
+  for (const h of headers) {
+    const th = document.createElement('th');
+    th.textContent = h;
+    hrow.appendChild(th);
+  }
+  thead.appendChild(hrow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  let lastDay = null;
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    if (r.bad) tr.className = 'bad';
+    r.cells.forEach((text, i) => {
+      const td = document.createElement('td');
+      // The date is written once per day rather than against every row — a
+      // fortnight of rounds is otherwise a column of the same date repeated.
+      td.textContent = (i === 0 && text === lastDay) ? '' : text;
+      tr.appendChild(td);
+    });
+    lastDay = r.cells[0];
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  host.appendChild(table);
+}
+
+// ⚠️ A LINE IS NOT A ROUND, AND A LINE IS NOT AN ORDER. The round log holds one
+// line per PORTAL per round, plus accept notes, so counting lines said "300 rounds"
+// where a hundred happened. The accept log holds a "finished:" summary line as well
+// as one line per order, so nine accepted orders read as twelve — on the one page
+// whose whole job is to say what it committed you to. Both are counted properly
+// below and this only prints the number it is handed.
+function countLine(id, n, word) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = n
+    ? n + ' ' + word + (n === 1 ? '' : 's') + ' in the last ' + LOG_DAYS + ' days'
+    : '';
+}
+
+// A round is one sweep of all the portals, so every line written close together
+// belongs to the same one.
+//
+// TEN minutes, not five. A round that goes well takes about a minute — but each
+// portal is allowed 75 seconds before it gives up, so three portals all timing out
+// runs past four minutes before the accepting lines are even written, and five
+// would have counted that as two rounds. Ten is still no longer than the smallest
+// gap the settings page allows between rounds, so two real rounds can never merge.
+function countRounds(all) {
+  const times = all.map(e => e.ts).sort((a, b) => b - a);
+  let rounds = 0, last = null;
+  for (const t of times) {
+    if (last === null || last - t > 10 * 60 * 1000) rounds++;
+    last = t;
+  }
+  return rounds;
+}
+
 async function showLog() {
-  const all = (await chrome.storage.local.get(LOG))[LOG] || [];
-  $('log').textContent = all.length ? all.map(describe).join('\n') : 'Nothing yet.';
+  const all  = withinRecord((await chrome.storage.local.get(LOG))[LOG] || []);
+  const rows = all.map(e => {
+    const d = new Date(e.ts);
+    const p = describe(e);
+    return { bad: p.bad, cells: [dayOf(d), timeOf(d), e.site || '—', p.did, p.note || ''] };
+  });
+  renderTable('log', ['Date', 'Time', 'Portal', 'What it did', 'How it went'], rows,
+              'Nothing yet.');
+  countLine('logCount', countRounds(all), 'round');
 }
 
 $('save').addEventListener('click', async () => {
@@ -304,19 +414,56 @@ function collectAuto() {
   };
 }
 
+// One accepted order — or the summary line a run writes when it finishes — split
+// into the columns of the table.
 function describeAccept(e) {
-  const at = new Date(e.ts).toLocaleString();
   if (e.finished) {
-    return at + '  ' + e.portal + ' — finished: ' + (e.done || 0) + ' accepted, '
-             + (e.failed || 0) + ' did not go through';
+    return {
+      sku:    '—',
+      due:    '—',
+      // ⚠️ THE TWO NUMBERS ARE IN DIFFERENT UNITS AND THE WORDS HAVE TO SAY SO.
+      // `done` counts ORDERS (a press that took twelve adds twelve); `failed`
+      // counts PRESSES, because a press that did not go through committed nothing
+      // and its group size is not known to have applied. Calling both "orders"
+      // would make a failed group of twelve read as one order.
+      result: 'finished: ' + (e.done || 0) + ' order(s) accepted, '
+              + (e.failed || 0) + ' attempt(s) did not go through',
+      bad:    !!e.failed,
+    };
   }
-  return at + '  ' + e.portal + ' — accepted ' + (e.sku || 'an order')
-           + (e.due ? '   (' + e.due + ')' : '');
+  // ⚠️ ONE LINE IS ONE PRESS, AND ONE PRESS CAN BE TWELVE ORDERS. A Flipkart row is
+  // a group — its button says "Accept All 12 Order(s)" — so the number of orders
+  // this line committed is `accepted`, never 1. Entries written before this existed
+  // have no `accepted`, and one is the honest reading of those.
+  const n = ordersIn(e);
+  return {
+    sku:    e.sku || 'an order',
+    due:    e.due || '—',
+    result: n > 1 ? 'accepted ' + n + ' orders' : 'accepted',
+    bad:    false,
+  };
+}
+
+// How many ORDERS one accept line stands for. See the warning above.
+function ordersIn(e) {
+  const n = Number(e && e.accepted);
+  return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
 async function showAcceptLog() {
-  const all = (await chrome.storage.local.get(ACCEPT_LOG))[ACCEPT_LOG] || [];
-  $('acceptLog').textContent = all.length ? all.map(describeAccept).join('\n') : 'Nothing yet.';
+  const all  = withinRecord((await chrome.storage.local.get(ACCEPT_LOG))[ACCEPT_LOG] || []);
+  const rows = all.map(e => {
+    const d = new Date(e.ts);
+    const p = describeAccept(e);
+    return { bad: p.bad, cells: [dayOf(d), timeOf(d), e.portal || '—', p.sku, p.due, p.result] };
+  });
+  renderTable('acceptLog', ['Date', 'Time', 'Portal', 'SKU', 'Due', 'Result'], rows,
+              'Nothing yet.');
+  // Orders, not lines: the "finished:" summary is a note about the run rather than
+  // another order, and each remaining line stands for however many orders that one
+  // press took.
+  const orders = all.filter(e => !e.finished).reduce((sum, e) => sum + ordersIn(e), 0);
+  countLine('acceptCount', orders, 'order');
 }
 
 $('autoSave').addEventListener('click', async () => {

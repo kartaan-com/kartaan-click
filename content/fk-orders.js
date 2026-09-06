@@ -326,6 +326,29 @@ async function waitFor(fn, timeoutMs) {
 
 const txt = el => ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim();
 
+// ⚠️ READING `innerText` MAKES THE BROWSER REDO ITS LAYOUT — every single time.
+// Doing that across every div and span on a Flipkart order list is tens of
+// thousands of layout passes, and it locked the page up for minutes on a real
+// 26-order To Accept tab. `textContent` costs nothing, so the searches below sift
+// with this first and only read the real text off the few that survive.
+//
+// A SIFT MUST NEVER DECIDE ANYTHING. Ask it "could this possibly match" and no
+// more; the real answer always comes from `txt()`.
+//
+// ⚠️ AND IT IS NOT PROVABLY EXACT EITHER WAY, so do not write code that assumes it
+// is. `textContent` picks up text that is hidden, so it usually holds MORE than
+// `innerText` — but `innerText` also inserts a line break where a block starts,
+// which `textContent` does not, so the two can differ in their spacing in both
+// directions. Where an empty result would be silently wrong rather than merely
+// slow, the search is run again without the sift (see `sectionPills`).
+// ⚠️ THE SPACING MUST BE TIDIED THE SAME WAY `txt()` TIDIES IT. Portals write a
+// non-breaking space inside a label — "Dispatch&nbsp;by" — to stop it wrapping
+// mid-phrase, and put real line breaks in their markup. `txt()`'s `\s+` collapses
+// all of those to one plain space; a raw `includes` does not, so without this the
+// sift would throw away the very heading it was looking for.
+const rawTxt = el => ((el && el.textContent) || '').replace(/\s+/g, ' ');
+const holds  = (el, word) => rawTxt(el).toLowerCase().includes(word);
+
 function isVisible(el) {
   if (!el || !el.getBoundingClientRect) return false;
   const r = el.getBoundingClientRect();
@@ -352,6 +375,15 @@ function rowContextFor(el) {
   for (let i = 0; i < 10 && node; i++) {
     node = node.parentElement;
     if (!node) break;
+    // ⚠️ SIFT BEFORE READING THE ON-SCREEN TEXT. This walks up to ten ever-larger
+    // boxes per button, and it is driven from a loop that runs four times a second
+    // during a run — reading on-screen text that often, off boxes as big as the
+    // whole order table, is what froze the page. The underlying text is free to
+    // read and always holds at least as much, so a box without these words could
+    // never have matched anyway.
+    // Compared with every space removed, because the two texts do not agree about
+    // spacing: "SKU ID" written as two separate boxes reads "SKUID" underneath.
+    if (!/SKUID|FSN|ORDERID/i.test(rawTxt(node).replace(/\s+/g, ''))) continue;
     const t = txt(node);
     if (/SKU ID|FSN|Order ID/i.test(t) && t.length > 40) {
       // The toolbar's bulk button has no row of its own, so walking up from it
@@ -392,6 +424,12 @@ function actionRowButtons(mode) {
   const nodes = [...document.querySelectorAll('button, a, [role="button"]')];
   const out = [];
   for (const el of nodes) {
+    // Same sift as above: the label has to match one of these exactly, so a button
+    // whose underlying text does not even contain one of them cannot be it.
+    // Spaces removed on both sides: a label split across two boxes — "Accept" and
+    // "Orders" — reads "acceptorders" underneath but "Accept Orders" on screen.
+    const raw = rawTxt(el).toLowerCase().replace(/\s+/g, '');
+    if (!mode.labels.some(L => raw.includes(L.replace(/\s+/g, '')))) continue;
     const t = txt(el).toLowerCase();
     if (mode.labels.indexOf(t) === -1) continue;
     if (!isVisible(el) || isDisabled(el)) continue;
@@ -404,15 +442,29 @@ function actionRowButtons(mode) {
 
 // Reads a counter chip such as "Pending RTD 75" or the "0 To Accept" tile.
 function readTile(label) {
-  const nodes = [...document.querySelectorAll('div, span, li, button, a')];
-  const re    = new RegExp('^(\\d+)\\s*' + label + '$|^' + label + '\\s*(\\d+)$', 'i');
-  for (const el of nodes) {
-    const t = txt(el);
-    if (t.length > 30) continue;
-    const m = t.match(re);
-    if (m) return parseInt(m[1] || m[2], 10);
-  }
-  return null;
+  const want = label.toLowerCase();
+  const all  = [...document.querySelectorAll('div, span, li, button, a')];
+  const re   = new RegExp('^(\\d+)\\s*' + label + '$|^' + label + '\\s*(\\d+)$', 'i');
+  const read = nodes => {
+    for (const el of nodes) {
+      const t = txt(el);
+      if (t.length > 30) continue;
+      const m = t.match(re);
+      if (m) return parseInt(m[1] || m[2], 10);
+    }
+    return null;
+  };
+  // ⚠️ THIS ONE NEEDS THE FALLBACK MOST OF ALL — "NO TILE, NO RUN". A round that
+  // cannot read this count stops and says so, so a sift that wrongly drops the tile
+  // does not slow anything down: it stops accepting for ever. And this tile is the
+  // shape the sift is weakest on. The pattern allows NO space at all between the
+  // number and the words, which is how they arrive when Flipkart puts them in
+  // separate boxes — and separate boxes are exactly where the underlying text reads
+  // "ToAccept6" while the screen reads "To Accept 6".
+  const sifted = all.filter(el => holds(el, want));
+  const fast   = read(sifted);
+  if (fast != null) return fast;
+  return sifted.length === all.length ? null : read(all);
 }
 
 function readPendingCount(mode) {
@@ -426,10 +478,16 @@ function readPendingCount(mode) {
 // Flipkart's own empty-state artwork, e.g. "No orders to accept" / "No orders
 // to pack". Its exact wording differs per tab, so only the shape is matched.
 function isEmptyState() {
-  return [...document.querySelectorAll('div, p, span, h1, h2, h3')].some(el => {
+  const all   = [...document.querySelectorAll('div, p, span, h1, h2, h3')];
+  const match = el => {
     const t = txt(el);
     return t.length < 60 && /^No orders/i.test(t) && isVisible(el);
-  });
+  };
+  // Same fallback as readTile: missing this leaves a run waiting for rows on a tab
+  // that has plainly said it has none, instead of stopping tidily.
+  const sifted = all.filter(el => holds(el, 'no orders'));
+  if (sifted.some(match)) return true;
+  return sifted.length === all.length ? false : all.some(match);
 }
 
 function isLoggedOut() {
@@ -515,17 +573,25 @@ function buildPanel(mode) {
     '#__kcPanel input.cap{width:46px;background:#161b22;color:#e8eaed;border:1px solid #30363d;',
     'border-radius:5px;padding:2px 4px;font-size:11px;flex:0 0 auto}',
     '#__kcPanel .hint{color:#6e7681;font-size:11px;margin-bottom:8px}',
+    // ⚠️ THESE TWO NOW SIT OUTSIDE `.bd`, which is what carried the side padding.
+    // Without their own margin they run edge to edge across the panel.
     '#__kcPanel .upd{background:#2e2400;border:1px solid #5a4400;border-radius:6px;padding:7px 9px;',
-    'margin-bottom:8px;color:#f0d68a;font-size:11px;line-height:1.5;display:none}',
+    'margin:0 10px 8px;color:#f0d68a;font-size:11px;line-height:1.5;display:none}',
     '#__kcPanel .upd a{color:#ffd866;font-weight:600}',
     '#__kcPanel .notice{background:#3d2c00;border:1px solid #7a5c00;border-radius:6px;padding:8px;',
-    'margin-bottom:8px;color:#f0d68a;font-size:11px;line-height:1.5}',
+    'margin:0 10px 8px;color:#f0d68a;font-size:11px;line-height:1.5}',
     '#__kcPanel .notice b{display:block;margin-bottom:3px;color:#ffd866}',
     '#__kcPanel .notice button{margin-top:6px;padding:4px 8px;font-size:11px;background:#5a4400}',
     '</style>',
-    '<h4><span>Kartaan Click — ' + mode.title + '</span><button id="__kcToggle" title="Collapse">–</button></h4>',
-    '<div class="bd">',
-    '  <div class="stat" id="__kcStat">Idle</div>',
+    // Drawn collapsed. A first-time panel stays collapsed (see the storage read
+    // below); one that was left open is opened again a moment later, and starting
+    // closed means it never flashes open across the page first.
+    '<h4><span>Kartaan Click — ' + mode.title + '</span><button id="__kcToggle" title="Expand">+</button></h4>',
+    // ⚠️ THESE TWO SIT OUTSIDE THE COLLAPSIBLE BODY ON PURPOSE. Both exist to tell
+    // the seller something BEFORE they act — that a browser setting will stall every
+    // label, and that a newer version is out. The panel now starts collapsed, so
+    // anything inside the body is unread by default, which is exactly wrong for a
+    // warning. Keep them here, above `.bd`.
     '  <div class="upd" id="__kcUpdate"></div>',
     // Labels are the only mode that puts a file on the disk, so this is the only
     // mode where the browser's "ask where to save" setting can stall a run.
@@ -541,6 +607,8 @@ function buildPanel(mode) {
         + '<button id="__kcNoticeOk">Got it, don\'t show again</button>'
         + '</div>'
       : ''),
+    '<div class="bd" style="display:none">',
+    '  <div class="stat" id="__kcStat">Idle</div>',
     // ⚠️ THE CAP UI IS FOR THE ACCEPT TAB ONLY. Print Labels also has a SKU list,
     // and the caps are stored per PORTAL, not per tab — so saving ticks from the
     // labels tab wrote the labels tab's SKUs over the whole Flipkart cap map and
@@ -594,12 +662,20 @@ function buildPanel(mode) {
     toggle.textContent = c ? '+' : '–';
     toggle.title       = c ? 'Expand' : 'Collapse';
   };
+  // ⚠️ OPEN IT FIRST, REMEMBER IT AFTER. This used to wait on storage before
+  // touching the panel — and in a tab left open across an extension reload, that
+  // wait throws, so the press did nothing at all. That was survivable when the
+  // panel started open; now that it starts closed, the message telling them to
+  // press F5 is itself inside the part that would not open.
   toggle.onclick = async e => {
     e.stopPropagation();                       // do not start a drag
-    const ui = (await chrome.storage.local.get(UI_KEY))[UI_KEY] || {};
-    ui.collapsed = body.style.display !== 'none';
-    applyCollapsed(ui.collapsed);
-    await chrome.storage.local.set({ [UI_KEY]: ui });
+    const collapsed = body.style.display !== 'none';
+    applyCollapsed(collapsed);
+    try {
+      const ui = (await chrome.storage.local.get(UI_KEY))[UI_KEY] || {};
+      ui.collapsed = collapsed;
+      await chrome.storage.local.set({ [UI_KEY]: ui });
+    } catch (err) { /* orphaned tab — it still opened, which is what matters */ }
   };
 
   // ── drag by the blue header ──
@@ -637,7 +713,9 @@ function buildPanel(mode) {
       panel.style.right = 'auto';
       panel.style.bottom = 'auto';
     }
-    applyCollapsed(!!ui.collapsed);
+    // Collapsed unless he has opened it before. The toggle always writes true or
+    // false, so only a panel that has never been touched reads as undefined here.
+    applyCollapsed(ui.collapsed !== false);
     const notice = panel.querySelector('#__kcNotice');
     if (notice && !ui.saveNoticeRead) notice.style.display = 'block';
   });
@@ -840,8 +918,15 @@ async function gotoPage(mode, i) {
 // in total but only one section's rows on screen at a time, each with its own
 // pages. Missing this is why a scan of 59 labels only ever found 11.
 function sectionPills() {
-  const all = [...document.querySelectorAll('div, span, button, li')]
-    .filter(e => /^(Breached Orders|Dispatch by .{0,60}?)\s*\(\d+\)$/i.test(txt(e)) && isVisible(e));
+  const nodes = [...document.querySelectorAll('div, span, button, li')];
+  const match = e => /^(Breached Orders|Dispatch by .{0,60}?)\s*\(\d+\)$/i.test(txt(e)) && isVisible(e);
+  // ⚠️ FINDING NOTHING HERE IS NOT HARMLESS — it is the old "a scan of 59 orders
+  // only ever found 11" bug. So if the fast sift comes back empty, look again the
+  // slow way before believing it. Costs nothing on a tab that really has none: an
+  // empty list is what both paths return.
+  const sifted = nodes.filter(e => holds(e, 'dispatch by') || holds(e, 'breached orders'));
+  let all = sifted.filter(match);
+  if (!all.length && sifted.length !== nodes.length) all = nodes.filter(match);
   // A pill's own container matches the same text, so keep the innermost ones.
   return all.filter(e => !all.some(o => o !== e && e.contains(o)));
 }
@@ -983,7 +1068,21 @@ async function scanAllPages(mode, onProgress) {
   const sections = Math.max(1, pills.length);
 
   for (let s = 0; s < sections; s++) {
-    if (pills.length && !(await gotoSection(mode, s))) continue;
+    // ⚠️ `> 1`, NOT `length`. With exactly ONE heading on the tab there is nothing
+    // to switch to — its rows are already the rows on screen — and pressing the
+    // heading that is already live switches the filter OFF and redraws the whole
+    // list (see the warning above gotoSection). On a real 26-order To Accept tab
+    // that hung the scan with no output and left Flipkart's page unresponsive.
+    // The run loop below already gets this right: its `sectionHop` starts at 1,
+    // so it never presses a lone heading either.
+    //
+    // ⚠️ AND `s > 0`, NOT JUST `pills.length > 1`. The heading showing when the scan
+    // starts is heading 0 — so pressing it is the same already-live press, just on a
+    // tab that happens to have more than one. It either hangs the page or turns the
+    // filter off, and with the filter off section 0 reads EVERY order and section 1
+    // reads its own again, so a SKU gets counted twice. The rows for heading 0 are
+    // already on screen; only the ones after it need a press.
+    if (s > 0 && !(await gotoSection(mode, s))) continue;
     for (let p = 0; ; p++) {
       if (p > 0 && !(await gotoPage(mode, p))) break;
       await waitFor(() => actionRowButtons(mode).length > 0, 15000);
@@ -1003,6 +1102,18 @@ async function scanAllPages(mode, onProgress) {
 async function scanSkus(mode) {
   const sections = Math.max(1, sectionPills().length);
   await log('scanning ' + sections + ' section(s) of orders…');
+  // ⚠️ SAY THE ASSUMPTION OUT LOUD. The scan reads the group already on screen and
+  // then presses each of the others in turn — because pressing the one that is
+  // already showing turns the filter off and hangs the page. Nothing on Flipkart's
+  // markup says which group is live, so the scan has to assume it is the first. If
+  // the seller had clicked a different group, or paged forward, before pressing
+  // Scan SKUs, the counts below can be short. Reloading the page and scanning again
+  // is the fix, and this line is how they know to.
+  if (sections > 1) {
+    await log('  note: reading "' + txt(sectionPills()[0] || {}) + '" as the group on '
+      + 'screen. If you had switched groups or turned a page first, reload and scan '
+      + 'again — the counts can be short otherwise.');
+  }
   const skus = await scanAllPages(mode, (n, s, t, p) =>
     paint(mode, '(section ' + s + '/' + t + ', page ' + p + ', ' + n + ' orders)'));
   const counts = new Map();
@@ -1258,8 +1369,13 @@ async function waitForRows(mode) {
     const btns = actionRowButtons(mode);
     if (btns.length) return btns;
     // The list may be inside a collapsed "Dispatch by ..." group — open it once.
-    const group = [...document.querySelectorAll('div,button,span,[role="button"]')]
-      .find(e => /^Dispatch by .{0,40}\(\d+\)$/i.test(txt(e)) && isVisible(e));
+    const boxes   = [...document.querySelectorAll('div,button,span,[role="button"]')];
+    const isGroup = e => /^Dispatch by .{0,40}\(\d+\)$/i.test(txt(e)) && isVisible(e);
+    // Fallback again: not finding the folded-shut group makes the run report no
+    // orders on a list that simply had not been opened.
+    const narrowed = boxes.filter(e => holds(e, 'dispatch by'));
+    const group = narrowed.find(isGroup)
+      || (narrowed.length === boxes.length ? null : boxes.find(isGroup));
     if (group && !group.__kcOpened) { group.__kcOpened = true; group.click(); await sleep(1500); }
     await sleep(600);
   }

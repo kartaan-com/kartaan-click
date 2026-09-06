@@ -347,8 +347,38 @@ dropped rather than saved, so a mistyped or wrongly pasted link can never send a
 round off to another website.
 
 **Do one round now** runs a round immediately so you can watch it work rather than
-waiting to find out. Underneath, **What the last rounds did** lists what each round
+waiting to find out. Underneath, **What the rounds did** lists what each round
 actually clicked.
+
+### The record — 15 days of runs
+
+Both lists on the settings page — **What the rounds did** and **What it accepted for
+you** — keep **15 days**, and are laid out as tables you can read down. Both start
+with Date (written once per day, so a day reads as one block), Time and Portal.
+After that they differ:
+
+**What the rounds did**
+
+| Column | What it holds |
+|---|---|
+| What it did | The order tabs it clicked through, in order |
+| How it went | Anything worth knowing — "in your own tab", or what stopped it |
+
+**What it accepted for you**
+
+| Column | What it holds |
+|---|---|
+| SKU | The SKU of the order it accepted |
+| Due | The dispatch group it came from, e.g. "Dispatch by 12 PM, Today" |
+| Result | "accepted", or the summary line at the end of a run |
+
+Anything that needs your attention — a portal wanting a sign-in, a page that never
+answered, a word it could not find — is **shaded**, so you can find the bad days
+without reading every line of a fortnight.
+
+Older than 15 days is thrown away by itself. **Clear this list** empties it now.
+Nothing here is sent anywhere; it is written in your own browser and only you can
+read it.
 
 ### What it will not do
 
@@ -621,10 +651,11 @@ It skips a portal when:
 
 ### Seeing what it did
 
-The settings page has a list, **What it accepted for you** — every order it
-accepted, newest first, with the SKU and when it was due. That is the list to check
-after a day out. The portal panels also keep their own running log of the same
-thing, in more detail, while their tab is open.
+The settings page has a table, **What it accepted for you** — every order it
+accepted over the last 15 days, newest first, with the SKU and when it was due.
+That is the list to check after a day out. Anything that did not go through is
+shaded. The portal panels also keep their own running log of the same thing, in
+more detail, while their tab is open.
 
 ### If you want to stop it
 

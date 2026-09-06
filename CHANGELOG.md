@@ -3,6 +3,45 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.6.0 — 6 September 2026
+
+Two things you can see, both asked for after using it.
+
+- **The panels on Flipkart and Meesho now start closed.** You get the title bar and
+  a **+**; press it and the panel opens as before. It remembers what you choose — open
+  it once and it stays open on that portal from then on. Only the very first time,
+  before you have ever pressed it, has changed.
+- **The panel could lock up the Flipkart page on a busy order list.** Six of its
+  searches read the on-screen text of every box on the page, and each of those reads
+  makes the browser work out the whole page layout again. On a 26-order list that was
+  tens of thousands of times over — four times a second while a run was going — and
+  the page stopped responding for minutes. They now sift on the underlying text
+  first, which costs nothing, and only read the on-screen text of the few that could
+  possibly match.
+- **The panel's warnings are readable without opening it.** The "ask where to save"
+  notice and the new-version banner now sit above the collapse, since both are there
+  to be read before you start rather than after.
+- **Both counts under the settings lists were wrong.** "N rounds" was counting one
+  line per portal, so a hundred rounds read as three hundred; "N orders" was counting
+  the end-of-run summary as an order, and counting a press that took twelve orders as
+  one. Both now count what they say, and a press that took several orders says so.
+- **The panel opens even in a tab left over from before an update.** The button used
+  to wait on stored settings first, which fails in such a tab — so nothing happened,
+  including the message telling you to refresh the page.
+- **Scan SKUs could hang for ever on a tab with exactly one dispatch group.** It
+  pressed that group's heading before reading it — but pressing a heading that is
+  already showing turns the filter off and redraws the whole list, so the scan sat
+  waiting for rows that were being rebuilt underneath it. No SKUs came back, no
+  message said why, and on a real 26-order list it left the Flipkart page unable to
+  respond. With one group there is nothing to switch to, so it no longer presses.
+- **The two lists on the settings page are now a proper table, and they keep 15 days.**
+  They used to keep a fixed number of lines — 50 rounds and 300 orders — so one busy
+  evening could push a whole quiet week off the end, and there was no way to answer
+  "what did it do last Tuesday". Now anything from the last 15 days is there, laid out
+  as Date / Time / Portal / What it did / How it went, with the date written once per
+  day. Anything needing your attention is shaded so you can find it without reading
+  every line. Older than 15 days clears itself.
+
 ## 1.5.4 — 5 September 2026
 
 The fourth independent review, and the first to come back with **nothing that could

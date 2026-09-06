@@ -767,12 +767,13 @@ function buildPanel() {
   const name = document.createElement('span');
   name.textContent = 'Kartaan Click — Meesho orders';
   const toggle = document.createElement('button');
-  toggle.id = '__kcmToggle'; toggle.textContent = '–'; toggle.title = 'Collapse';
+  toggle.id = '__kcmToggle'; toggle.textContent = '+'; toggle.title = 'Expand';
   head.appendChild(name); head.appendChild(toggle);
   panel.appendChild(head);
 
   const body = document.createElement('div');
   body.className = 'bd';
+  body.style.display = 'none';           // drawn collapsed; opened below if he left it open
   statLine = document.createElement('div');
   statLine.className = 'stat'; statLine.textContent = 'Idle';
   body.appendChild(statLine);
@@ -813,13 +814,21 @@ function buildPanel() {
     toggle.textContent = c ? '+' : '–';
     toggle.title = c ? 'Expand' : 'Collapse';
   };
+  // ⚠️ OPEN IT FIRST, REMEMBER IT AFTER — same reason as the Flipkart panel. In a
+  // tab left open across an extension reload the storage call throws, and waiting
+  // on it before opening meant the press did nothing at all.
   toggle.onclick = async () => {
-    const ui = (await chrome.storage.local.get(UI_KEY))[UI_KEY] || {};
-    ui.collapsed = body.style.display !== 'none';
-    await chrome.storage.local.set({ [UI_KEY]: ui });
-    applyCollapsed(ui.collapsed);
+    const collapsed = body.style.display !== 'none';
+    applyCollapsed(collapsed);
+    try {
+      const ui = (await chrome.storage.local.get(UI_KEY))[UI_KEY] || {};
+      ui.collapsed = collapsed;
+      await chrome.storage.local.set({ [UI_KEY]: ui });
+    } catch (err) { /* orphaned tab — it still opened, which is what matters */ }
   };
-  chrome.storage.local.get(UI_KEY).then(res => applyCollapsed(!!((res[UI_KEY] || {}).collapsed)));
+  // Collapsed unless he has opened it before. The toggle always writes true or
+  // false, so only a panel that has never been touched reads as undefined here.
+  chrome.storage.local.get(UI_KEY).then(res => applyCollapsed((res[UI_KEY] || {}).collapsed !== false));
 
   scanBtn.onclick = () => scanSkus();
   saveBtn.onclick = () => saveTicks();

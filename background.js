@@ -235,6 +235,26 @@ chrome.downloads.onCreated.addListener((item) => {
 
 const CHECKIN_KEY   = 'kcCheckin';       // the seller's settings
 const CHECKIN_LOG   = 'kcCheckinLog';    // what the last few rounds did
+
+// ── how long a record is kept ────────────────────────────────────────────────
+//
+// Both lists are pruned by DATE, not by a count. A count is the wrong measure:
+// one busy evening of accepted orders used to push a quiet week of rounds off the
+// end of a fifty-line list, so "what did it do last Tuesday" had no answer at all.
+// Fifteen days is what decides. LOG_MAX is only a backstop so that a runaway loop
+// cannot fill storage — at any sane round gap it is never the thing that bites.
+const LOG_DAYS      = 15;
+const LOG_MAX       = 5000;
+
+// Newest first, nothing older than fifteen days, never more than LOG_MAX.
+// An entry with no readable date is dropped: it cannot be placed on a day, so it
+// can never age out, and it would sit at the top of the table for ever.
+function pruneLog(all) {
+  const cutoff = Date.now() - LOG_DAYS * 24 * 60 * 60 * 1000;
+  return (Array.isArray(all) ? all : [])
+    .filter(e => e && typeof e.ts === 'number' && e.ts >= cutoff)
+    .slice(0, LOG_MAX);
+}
 const CHECKIN_NEXT  = 'kcCheckinNext';   // when the next round is due
 const CHECKIN_TAB   = 'kcCheckinTabId';  // the tab a round is using right now
 const CHECKIN_ALARM = 'kcCheckinRound';
@@ -348,7 +368,7 @@ async function checkinSettings() {
 async function checkinLog(entry) {
   const all = (await chrome.storage.local.get(CHECKIN_LOG))[CHECKIN_LOG] || [];
   all.unshift({ ts: Date.now(), ...entry });
-  await chrome.storage.local.set({ [CHECKIN_LOG]: all.slice(0, 50) });
+  await chrome.storage.local.set({ [CHECKIN_LOG]: pruneLog(all) });
 }
 
 // Is `ts` inside the seller's working hours? Written to cope with a window that
@@ -1361,17 +1381,16 @@ async function startAcceptPasses() {
 
 // ── what was accepted ───────────────────────────────────────────────────────
 //
-// Its own list, kept apart from the round log on purpose. Twenty accepted orders
-// in one round would push every check-in line out of a fifty-line list, and the
-// two answer different questions: one is "did it do its rounds", the other is
-// "what did it commit me to while I was out".
+// Its own list, kept apart from the round log on purpose: the two answer different
+// questions — one is "did it do its rounds", the other is "what did it commit me to
+// while I was out". Both are kept for the same fifteen days (see pruneLog).
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.type !== 'ACCEPT_LOG') return;
   (async () => {
     const all = (await chrome.storage.local.get(ACCEPT_LOG))[ACCEPT_LOG] || [];
     all.unshift({ portal: msg.portal, accepted: msg.accepted, sku: msg.sku, due: msg.due,
                   finished: msg.finished, done: msg.done, failed: msg.failed, ts: Date.now() });
-    await chrome.storage.local.set({ [ACCEPT_LOG]: all.slice(0, 300) });
+    await chrome.storage.local.set({ [ACCEPT_LOG]: pruneLog(all) });
   })();
   sendResponse({ ok: true });
   return true;

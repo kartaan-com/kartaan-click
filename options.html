@@ -36,8 +36,25 @@
   .warn { border-color: #f0dca6; background: #fff5db; color: #6b4a00; }
   .warn h2 { color: #6b4a00; }
   .warn p  { color: #7a6634; }
-  .log { font: 12px/1.6 ui-monospace, Consolas, monospace; max-height: 260px; overflow: auto;
-         background: #f4f6fa; border-radius: 7px; padding: 10px 12px; white-space: pre-wrap; }
+  .log { font: 12px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; max-height: 320px;
+         overflow: auto; background: #f4f6fa; border-radius: 7px; padding: 0; }
+  .log.empty { padding: 10px 12px; color: #6b7890; }
+  table.rec { border-collapse: collapse; width: 100%; }
+  table.rec th, table.rec td {
+    text-align: left; padding: 6px 10px; vertical-align: top;
+    border-bottom: 1px solid #e2e6ee;
+  }
+  table.rec th {
+    position: sticky; top: 0; background: #eaeef6; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .04em; color: #55617a; white-space: nowrap;
+  }
+  /* Date, time and portal read as one block and must not wrap mid-value. The last
+     column carries the sentence, so it takes whatever width is left. */
+  table.rec td:nth-child(1), table.rec td:nth-child(2) { white-space: nowrap; color: #6b7890; }
+  table.rec td:nth-child(3) { white-space: nowrap; font-weight: 600; }
+  table.rec tbody tr:last-child td { border-bottom: 0; }
+  table.rec tbody tr.bad { background: #fff5db; }
+  table.rec tbody tr.bad td:last-child { color: #6b4a00; }
   .muted { color: #6b7890; font-size: 12px; }
   a { color: #1e3a8a; font-weight: 600; text-decoration: none; }
   a:hover { text-decoration: underline; }
@@ -50,6 +67,12 @@
     button:hover { background: #232936; }
     button.primary { background: #2d4ea8; border-color: #2d4ea8; color: #fff; }
     .log { background: #1b202a; }
+    .log.empty { color: #98a3b8; }
+    table.rec th { background: #232936; color: #98a3b8; }
+    table.rec th, table.rec td { border-bottom-color: #2a3140; }
+    table.rec td:nth-child(1), table.rec td:nth-child(2) { color: #98a3b8; }
+    table.rec tbody tr.bad { background: #2e2400; }
+    table.rec tbody tr.bad td:last-child { color: #f0d68a; }
     .warn { border-color: #5a4400; background: #2e2400; color: #f0d68a; }
     .warn h2 { color: #f0d68a; }
     .warn p  { color: #c4ad6e; }
@@ -142,10 +165,12 @@
 </div>
 
 <div class="card">
-  <h2>What the last rounds did</h2>
-  <p>If a round stopped early, the words it could not find are named here. Tell us
-     what they should be and they get corrected.</p>
-  <div class="log" id="log">Nothing yet.</div>
+  <h2>What the rounds did</h2>
+  <p>Every round of the last 15 days, newest first. If a round stopped early, the
+     words it could not find are named here. Tell us what they should be and they
+     get corrected.</p>
+  <div class="log empty" id="log">Nothing yet.</div>
+  <div class="muted" id="logCount" style="margin-top:8px"></div>
   <div class="actions" style="margin-top:12px">
     <button id="clearLog" type="button">Clear this list</button>
   </div>
@@ -236,9 +261,11 @@
 
 <div class="card">
   <h2>What it accepted for you</h2>
-  <p>Every order accepted on a round, newest first. This is the list to check if you
-     want to know what you have been committed to while you were away.</p>
-  <div class="log" id="acceptLog">Nothing yet.</div>
+  <p>Every order accepted on a round over the last 15 days, newest first. This is the
+     list to check if you want to know what you have been committed to while you
+     were away.</p>
+  <div class="log empty" id="acceptLog">Nothing yet.</div>
+  <div class="muted" id="acceptCount" style="margin-top:8px"></div>
   <div class="actions" style="margin-top:12px">
     <button id="clearAcceptLog" type="button">Clear this list</button>
   </div>
