@@ -1330,6 +1330,11 @@ async function openInOwnWindow(key, url) {
 
 // Closes that portal's own window — only ever one Click opened, and only if the
 // tab in it is still Click's. Called when a round or run ends cleanly.
+// ⚠️ SWITCHED OFF WHILE ACCEPTING IS BEING PROVEN. With this false, a window whose run
+// ended in STOPPED stays open so the page can be looked at. Set it to true once
+// accepting works (he asked for it to close either way, success or not).
+const CLOSE_WINDOW_WHEN_STOPPED = false;
+
 async function closeOwnWindow(key) {
   try {
     const wid = await ownWindowId(key);
@@ -1491,7 +1496,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.type !== 'ACCEPT_LOG') return;
   (async () => {
     const all = (await chrome.storage.local.get(ACCEPT_LOG))[ACCEPT_LOG] || [];
-    if (msg.finished) {
+    if (msg.finished && (CLOSE_WINDOW_WHEN_STOPPED || /^DONE/.test(msg.finished))) {
       const k = String(msg.portal || '').toLowerCase();
       if (CHECKIN_SITES[k]) await closeOwnWindow(k);
     }
