@@ -9,7 +9,7 @@ unless you want to reword it.
    your Microsoft account, and choose the **Microsoft Edge** program.
    There is no fee for Edge — unlike Chrome, which charges $5.
 2. Build the upload file: `node tools/make-zip.js`, which produces
-   `kartaan-click-1.6.5.zip` with `manifest.json` at the top level.
+   `kartaan-click-1.6.6.zip` with `manifest.json` at the top level.
 
 ## Listing fields
 
@@ -99,6 +99,11 @@ user starts themselves are never touched, renamed, moved, or cancelled.
 browser alarm is the only timer that survives a Manifest V3 service worker being
 suspended, which happens within about 30 seconds of idle. It stores one scheduled
 time and is used for nothing else.
+
+*idle* — before a timed check-in round, the extension asks whether the computer
+has been used in the last 3 minutes, and waits if it has, so a round never opens
+while the seller is working. Only the browser's "active / idle / locked" answer is
+read; nothing is stored or sent.
 
 The three seller portals are also listed under `host_permissions`, for one reason:
 before a check-in round opens a new tab it asks the browser whether that portal is

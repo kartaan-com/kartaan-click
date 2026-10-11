@@ -3,6 +3,23 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.6.6 — 11 October 2026
+
+**Check-in rounds wait while you are using the computer.** A timed round only goes once
+the computer has been left alone for 3 minutes (a locked screen counts). Until then it opens
+nothing and checks again every minute. If the next round's time comes first, the waiting one
+is dropped. The round list says `waited N min — computer in use` or `skipped — computer in
+use all along`. Same for Flipkart, Meesho and Amazon. A round you start by hand never waits.
+New permission: `idle`.
+
+Also fixed, from a fresh check of 1.6.4 and 1.6.5:
+
+- Meesho: a batch pressed just before a run stopped is now counted against today's limits
+  (it used to be dropped uncounted, so a daily limit could be overrun).
+- Flipkart: the "groups selected" count is no longer read from Click's own log by mistake.
+- Flipkart, by hand, with a "never" list: ticking nothing now means every order except the
+  never list, as it should, instead of only old saved SKUs.
+
 ## 1.6.5 — 11 October 2026
 
 **Flipkart bulk accept now works on a real run: 10 of 10 orders accepted.** Three things

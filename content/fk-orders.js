@@ -794,15 +794,21 @@ function buildPanel(mode) {
     // By hand, nothing ticked means "all of them", so the list is replaced as it always
     // was — except when a do-not list exists, where a wiped accept list would widen what
     // a round takes, so it is merged instead.
+    // The merge is only for what is saved for rounds; THIS run takes what is ticked on
+    // screen, so nothing ticked still means all of them (less the do-not list).
+    let merged = false;
     if (mode.skuFilter) {
-      if (RULES && (await RULES.blockedSkus(mode.id)).length) await saveTickedMerged(mode);
+      if (RULES && (await RULES.blockedSkus(mode.id)).length) { await saveTickedMerged(mode); merged = true; }
       else await setFilter(mode, tickedSkus());
     }
-    const picked = mode.skuFilter ? await getFilter(mode) : [];
+    const picked = mode.skuFilter ? (merged ? tickedSkus() : await getFilter(mode)) : [];
     await chrome.storage.local.set({ [LOG_KEY]: [] });
     await setState({
       mode: mode.id, running: true, dryRun, limit,
       done: 0, failed: 0, reloads: 0, startedAt: Date.now(),
+      // Kept in the run itself so it lasts across reloads; only set when the saved
+      // list was merged and so is not what this run should take.
+      ...(merged ? { skus: picked } : {}),
     });
     await log('START (build ' + BUILD + ') — ' + mode.verb + ', ' + (dryRun ? 'DRY RUN' : 'LIVE') + ', limit ' + limit
       + (mode.skuFilter ? (picked.length ? ', SKUs: ' + picked.join(', ') : ', all SKUs') : ''));
@@ -1597,7 +1603,11 @@ async function runBatchFk(mode, s, candidates, rows, rules) {
     return stopRun('STOPPED — could not get exactly the wanted rows ticked (' + missed
       + ' did not tick, ' + stray + ' others are ticked). Nothing was pressed.');
   }
+  // Read with the panel hidden: its log can hold an old "N/M groups selected" line.
+  const shown = panel ? panel.style.display : '';
+  if (panel) panel.style.display = 'none';
   const said = rawTxt(document.body).match(/(\d+)\s*\/\s*\d+\s*groups? selected/i);
+  if (panel) panel.style.display = shown;
   if (!said || parseInt(said[1], 10) !== batch.length) {
     const near = [...document.querySelectorAll('body *')]
       .filter(e => !(panel && panel.contains(e)) && holds(e, 'selected') && rawTxt(e).length < 80);
@@ -1732,7 +1742,10 @@ async function runLoop(mode) {
     let consecFails = 0;
     let pageHop     = 0;   // how far through the pages we have looked for a ticked SKU
     let sectionHop  = 0;   // and how far through the tab's sections
-    const filter    = mode.skuFilter ? await getFilter(mode) : [];
+    const sRun      = await getState();
+    const filter    = !mode.skuFilter ? []
+                    : (sRun && !sRun.auto && Array.isArray(sRun.skus)) ? sRun.skus
+                    : await getFilter(mode);
     const wanted    = new Set(filter);
     const never     = new Set(mode.skuFilter && RULES ? await RULES.blockedSkus(mode.id) : []);
 

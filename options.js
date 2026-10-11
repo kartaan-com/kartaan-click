@@ -143,6 +143,9 @@ function describe(e) {
   if (e.acceptNote)
     return { did: 'accepting', note: e.acceptNote };
 
+  if (e.idleNote)
+    return { did: 'waited', note: e.idleNote };
+
   if (e.roundError)
     return { did: '—', note: 'the round hit a problem: ' + e.roundError, bad: true };
 
@@ -280,7 +283,8 @@ function countLine(id, n, word) {
 // would have counted that as two rounds. Ten is still no longer than the smallest
 // gap the settings page allows between rounds, so two real rounds can never merge.
 function countRounds(all) {
-  const times = all.map(e => e.ts).sort((a, b) => b - a);
+  // A round that was dropped while waiting for the computer never ran.
+  const times = all.filter(e => !e.idleSkipped).map(e => e.ts).sort((a, b) => b - a);
   let rounds = 0, last = null;
   for (const t of times) {
     if (last === null || last - t > 10 * 60 * 1000) rounds++;

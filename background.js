@@ -744,7 +744,7 @@ async function releaseRoundLock() {
 
 // `force` is the settings page's "do one round now": the seller asked for it there
 // and then, so the working-hours window does not apply to it.
-async function runCheckinRound(force) {
+async function runCheckinRound(force, waitNote) {
   const s = await checkinSettings();
   if (!s.enabled) return;
 
@@ -755,8 +755,14 @@ async function runCheckinRound(force) {
 
   if (!await takeRoundLock()) return;   // one already going
 
+  // A round is going now, so any round that was waiting for the computer to be
+  // left alone is over — whether this is that round or one he started by hand.
+  await endIdleWait();
+
   const stopKeepAwake = keepAwake();
   try {
+    if (waitNote) await checkinLog({ site: '—', done: [], idleNote: waitNote });
+
     // The note from a round this worker was shut down in the middle of. Only that
     // note — NOT the lock, which this round is now holding.
     await chrome.storage.local.remove(CHECKIN_TAB);
@@ -850,6 +856,76 @@ async function runCheckinRound(force) {
   }
 }
 
+// ── waiting for the computer to be left alone ──────────────────────────────
+//
+// His rule (11 Oct): a timed round may only go if nobody has touched the computer
+// for 3 minutes or more. Locked counts as left alone. If it is in use, nothing is
+// opened; it asks again about once a minute and the round runs as soon as the
+// computer has been left alone. There is no "run anyway after a long wait" — he
+// said no to that. If the next timed round comes round first, the waiting one is
+// dropped, so there are never two. A round he starts by hand never waits.
+const CHECKIN_IDLE_SINCE = 'kcCheckinIdleWaitSince';   // when the waiting round was due
+const CHECKIN_IDLE_ALARM = 'kcCheckinIdleWait';
+const IDLE_SECONDS = 180;
+
+// True only when Chrome says somebody used the computer in the last 3 minutes.
+// If Chrome cannot answer, the round goes ahead, as it did before this existed.
+async function computerInUse() {
+  try {
+    return (await chrome.idle.queryState(IDLE_SECONDS)) === 'active';
+  } catch (e) {
+    return false;
+  }
+}
+
+async function endIdleWait() {
+  await chrome.alarms.clear(CHECKIN_IDLE_ALARM);
+  await chrome.storage.local.remove(CHECKIN_IDLE_SINCE);
+}
+
+// `fromWait` — the once-a-minute check, rather than the round's own timer.
+async function roundWhenComputerFree(fromWait) {
+  const s = await checkinSettings();
+  const since = (await chrome.storage.local.get(CHECKIN_IDLE_SINCE))[CHECKIN_IDLE_SINCE];
+
+  if (fromWait && !since) return;   // the wait was already ended
+
+  // The round's own timer has come round again while the last one was still
+  // waiting (or check-ins were switched off, or the hours ended): the waiting
+  // one is dropped.
+  if (since && (!fromWait || !s.enabled || !insideHours(Date.now(), s))) {
+    await endIdleWait();
+    const why = !fromWait ? 'computer in use all along'
+              : !s.enabled ? 'check-ins were switched off while it waited'
+              : 'working hours ended while it waited';
+    await checkinLog({ site: '—', done: [], idleNote: 'skipped — ' + why, idleSkipped: true });
+    if (fromWait) return;   // the next round is already set
+  }
+
+  if (!s.enabled || !insideHours(Date.now(), s)) return runCheckinRound();   // its own rules
+
+  if (await computerInUse()) {
+    if (!fromWait || !since) {
+      await chrome.storage.local.set({ [CHECKIN_IDLE_SINCE]: Date.now() });
+      // The next timed round is set now, so that it can come round while this
+      // one waits and take its place.
+      await scheduleCheckin('computer in use — round waiting');
+    }
+    chrome.alarms.create(CHECKIN_IDLE_ALARM, { delayInMinutes: 1 });
+    return;
+  }
+
+  const waitedFrom = fromWait ? since : null;
+  const note = waitedFrom
+    ? 'waited ' + Math.max(1, Math.round((Date.now() - waitedFrom) / 60000)) + ' min — computer in use'
+    : null;
+  // Ended here, not only inside the round: if another round holds the lock, the
+  // round returns before it gets that far, and a wait left standing would later be
+  // logged as "skipped" when it was not.
+  await endIdleWait();
+  return runCheckinRound(false, note);
+}
+
 // ── the watchdog ────────────────────────────────────────────────────────────
 //
 // The round timer is a single alarm, set for one moment, and it is re-set at the
@@ -900,7 +976,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   // Nothing thrown in here may escape: an alarm listener that rejects takes its
   // error nowhere useful and the round is lost with it.
   if (alarm.name === CHECKIN_ALARM) {
-    Promise.resolve(runCheckinRound()).catch(e => console.log('[Kartaan Click] round: ' + e));
+    Promise.resolve(roundWhenComputerFree(false)).catch(e => console.log('[Kartaan Click] round: ' + e));
+  }
+  if (alarm.name === CHECKIN_IDLE_ALARM) {
+    Promise.resolve(roundWhenComputerFree(true)).catch(e => console.log('[Kartaan Click] round wait: ' + e));
   }
   if (alarm.name === CHECKIN_WATCHDOG) {
     Promise.resolve(checkinWatchdog()).catch(e => console.log('[Kartaan Click] watchdog: ' + e));
@@ -1022,6 +1101,7 @@ async function clearRoundNotes() {
 async function clearStaleSession() {
   await clearRoundNotes();
   await chrome.storage.local.remove(CHECKIN_SIGNIN_TABS);
+  await endIdleWait();
 }
 
 chrome.runtime.onStartup.addListener(() => {

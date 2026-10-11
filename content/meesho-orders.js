@@ -625,6 +625,8 @@ async function runBatch(s, read, picks, ctx) {
   await humanClick(bulk[0], true);
   const yes = await waitFor(() => acceptOrderButton(read.rows), 6000);
   if (!yes) {
+    // "Accept Order" was never pressed, so nothing went through: no batch to count.
+    await chrome.storage.local.remove(PEND_KEY);
     await dumpOverlays('no "Accepting orders" box found');
     await stop(s, 'STOPPED — the "Accepting orders" box with its "Accept Order" button did not '
       + 'appear. Nothing more was pressed. Look at the lines above.');
@@ -646,11 +648,18 @@ async function runBatch(s, read, picks, ctx) {
 async function settleBatch(s) {
   const p = (await chrome.storage.local.get(PEND_KEY))[PEND_KEY];
   if (!p) return 'next';
-  // A batch from an earlier, abandoned run (the box never came up) is not this page's
-  // to count: other orders may have cleared since.
+  // A batch from an earlier run that stopped or closed before it could be settled.
+  // "Accept Order" WAS pressed (a batch whose box never came up leaves no note), so
+  // it may well have gone through. Other orders may have cleared since, so the page
+  // cannot say how many — it is counted in full: counting too many only makes the
+  // daily limits stop early, counting too few lets them be overrun.
   if (!p.at || Date.now() - p.at > 15 * 60 * 1000) {
     await chrome.storage.local.remove(PEND_KEY);
-    await log('an old unfinished batch was dropped without counting it.');
+    for (const sku of Object.keys(p.bySku || {})) {
+      await RULES.noteAccepted(PORTAL, sku, Date.now(), p.bySku[sku]);
+    }
+    await log('an old unfinished batch of ' + (p.n || '?') + ' was counted in full against '
+      + 'the limits for today, to be safe.');
     return 'next';
   }
   await waitFor(() => {

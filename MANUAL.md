@@ -292,6 +292,13 @@ open. You are not interrupted and nothing takes your screen.
 orders page is already signed in, so the next round has no front door and no login
 to get past. One tab per portal, and no more than that.
 
+**It waits while you are using the computer.** A timed round only goes once nobody
+has touched the computer for 3 minutes (a locked screen counts as left alone). If
+you are busy it opens nothing and checks again every minute, then goes as soon as
+you step away; the log says `waited N min — computer in use`. If you are busy right
+up to the next round's time, the waiting one is dropped and the log says `skipped —
+computer in use all along`. **Do one round now** never waits.
+
 The round on each portal is:
 
 | Portal | It opens | Then clicks |
@@ -698,7 +705,8 @@ Nothing leaves your computer, with one exception, described below.
   between page loads; `downloads`, used only to file a shipping label into your
   Downloads folder in the seconds after you press Print Labels — files you
   download yourself are never touched, renamed, moved, or read; and `alarms`,
-  which holds the time the next portal check-in is due and nothing else.
+  which holds the time the next portal check-in is due and nothing else; and
+  `idle`, which only answers whether the computer was used in the last 3 minutes.
 
 **The one exception:** once a day it reads a small public file on
 `raw.githubusercontent.com` — in this extension's own public repository, the same
