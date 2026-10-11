@@ -1491,7 +1491,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.type !== 'ACCEPT_LOG') return;
   (async () => {
     const all = (await chrome.storage.local.get(ACCEPT_LOG))[ACCEPT_LOG] || [];
-    if (msg.finished && /^DONE/.test(msg.finished)) {
+    if (msg.finished) {
       const k = String(msg.portal || '').toLowerCase();
       if (CHECKIN_SITES[k]) await closeOwnWindow(k);
     }
