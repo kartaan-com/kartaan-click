@@ -1266,6 +1266,11 @@ async function tabAlreadyOn(key, url) {
 // all — no load, no content script, no run — and on Flipkart the order tab lives
 // after the "#", so changing only that moves the page without loading it. This is
 // the same trap the check-in round hit; the answer is the same one.
+chrome.windows.onRemoved.addListener(async id => {
+  if (id === (await meeshoOwnWindowId())) await chrome.storage.local.remove(MEESHO_WIN);
+});
+chrome.runtime.onStartup.addListener(() => chrome.storage.local.remove(MEESHO_WIN));
+
 const MEESHO_WIN = 'kcMeeshoWin';        // the window Click opened for Meesho, if any
 async function meeshoOwnWindowId() {
   const id = (await chrome.storage.local.get(MEESHO_WIN))[MEESHO_WIN];
@@ -1459,11 +1464,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.type !== 'ACCEPT_LOG') return;
   (async () => {
     const all = (await chrome.storage.local.get(ACCEPT_LOG))[ACCEPT_LOG] || [];
-    if (msg.finished && msg.portal === 'Meesho') {
-      // Only the window Click opened itself, and only once the run is over.
+    if (msg.finished && msg.portal === 'Meesho' && /^DONE/.test(msg.finished)) {
+      // Only the window Click opened itself, only when the run finished cleanly (a
+      // STOPPED window stays open so the page can be looked at), and only if it
+      // still holds nothing but the tab Click opened.
       const wid = await meeshoOwnWindowId();
       if (wid != null && sender && sender.tab && sender.tab.windowId === wid) {
-        chrome.windows.remove(wid, () => void chrome.runtime.lastError);
+        const tabs = await chrome.tabs.query({ windowId: wid });
+        if (tabs.length === 1 && tabs[0].id === sender.tab.id) {
+          chrome.windows.remove(wid, () => void chrome.runtime.lastError);
+        }
         await chrome.storage.local.remove(MEESHO_WIN);
       }
     }

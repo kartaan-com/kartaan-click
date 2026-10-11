@@ -445,6 +445,7 @@ async function confirmBoxIfAny(before) {
 // "Accept…" button that sits outside every row. If either is not exactly one thing,
 // NOTHING IS PRESSED: the run stops and writes what it found. Never loosen those.
 const BULK = true;
+const PEND_KEY = 'kcMeeshoPending';  // a batch pressed but not yet counted
 const MAX_BATCH_FAILS = 2;           // batches in a row that cleared nothing
 
 const rowsNow = () => readRows().rows || [];
@@ -524,10 +525,31 @@ async function runBatch(s, read, picks, ctx) {
     return 'stop';
   }
 
+  const num = (txt(bulk[0]).match(/\d+/) || [])[0];
+  if (num && parseInt(num, 10) !== batch.length) {
+    await stop(s, 'STOPPED — the bottom-right button says ' + num + ' but ' + batch.length
+      + ' rows were ticked. Nothing was pressed.');
+    return 'stop';
+  }
+
   const bySku = {}, skuBefore = {};
   for (const r of batch) bySku[r.sku] = (bySku[r.sku] || 0) + 1;
   for (const r of read.rows) skuBefore[r.sku] = (skuBefore[r.sku] || 0) + 1;
   const before = pendingCount();
+
+  // Ticking took seconds: ask again whether this is still allowed. A Stop, the
+  // off-switch, a sign-out or a change of page in that time must win.
+  const live = await getState();
+  const st2  = await RULES.settings();
+  if (!live || !live.running || !st2.enabled || !st2.sites[PORTAL] || signedOut() || !onPendingTab()) {
+    await stop(live || s, 'STOPPED — switched off or left the page while ticking. Nothing was pressed.');
+    return 'stop';
+  }
+
+  // Written BEFORE the press, in its own key, so a batch that went through is
+  // counted even if the run is stopped or the tab dies straight afterwards.
+  await chrome.storage.local.set({ [PEND_KEY]: { at: Date.now(), n: batch.length, before, bySku,
+    skuBefore, due: batch[0].due } });
 
   await log('pressing the bottom-right "' + txt(bulk[0]) + '" for ' + batch.length + ' ticked row(s)');
   const dialogsBefore = openDialogs();
@@ -536,10 +558,6 @@ async function runBatch(s, read, picks, ctx) {
   if (box === 'stuck') { await stop(s, 'STOPPED — see the box above.'); return 'stop'; }
 
   await sleep(rand(3000, 4000));
-  const s2 = await getState();
-  if (!s2 || !s2.running) return 'stop';
-  s2.pending = { at: Date.now(), n: batch.length, before, bySku, skuBefore, due: batch[0].due };
-  s2.ts = Date.now(); await setState(s2);
   await log('reloading the page to finish the batch…');
   location.reload();
   return 'reload';
@@ -547,7 +565,8 @@ async function runBatch(s, read, picks, ctx) {
 
 // After the reload: press "okay" if it appears, then count what cleared.
 async function settleBatch(s) {
-  const p = s.pending;
+  const p = (await chrome.storage.local.get(PEND_KEY))[PEND_KEY];
+  if (!p) return 'next';
   await waitFor(() => {
     const r = readRows();
     return (r.error || r.rows.length || pendingCount() === 0) ? true : null;
@@ -565,6 +584,22 @@ async function settleBatch(s) {
     await sleep(rand(1500, 2500));
   } else {
     await log('no "okay" appeared after the reload — carrying on.');
+  }
+
+  // Let Meesho's count settle (two equal readings 2s apart) before believing it.
+  let last = pendingCount();
+  for (let i = 0; i < 5; i++) {
+    await sleep(2000);
+    const now = pendingCount();
+    if (now === last) break;
+    last = now;
+  }
+  const check = readRows();
+  if (check.error || (!check.rows.length && pendingCount() == null)) {
+    await chrome.storage.local.remove(PEND_KEY);
+    await stop(s, 'STOPPED — could not read the page after the reload, so that batch of ' + p.n
+      + ' was NOT counted. Look at Meesho by hand.');
+    return 'stop';
   }
 
   const afterRows = rowsNow();
@@ -596,9 +631,9 @@ async function settleBatch(s) {
   await log('batch: ' + accepted + ' of ' + p.n + ' cleared (waiting count '
     + (p.before == null ? '?' : p.before) + ' → ' + (after == null ? '?' : after) + ').');
 
+  await chrome.storage.local.remove(PEND_KEY);
   const s2 = await getState();
   if (!s2 || !s2.running) return 'stop';
-  delete s2.pending;
   s2.done = (s2.done || 0) + accepted;
   s2.failed = (s2.failed || 0) + (accepted ? 0 : 1);
   s2.batchFails = accepted ? 0 : (s2.batchFails || 0) + 1;
@@ -693,7 +728,7 @@ async function runLoop() {
 
       // A batch was pressed before the last page reload: settle it first (press the
       // "okay", count what cleared) before anything new is ticked.
-      if (s.pending) {
+      if ((await chrome.storage.local.get(PEND_KEY))[PEND_KEY]) {
         const verdict = await settleBatch(s);
         if (verdict === 'stop') break;
         continue;
