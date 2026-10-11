@@ -12,6 +12,10 @@ the daily total and the 20-per-run limit, presses Meesho's one bottom-right Acce
 nothing is left. Chrome slowed down Meesho when it sat in a background tab, which is why
 accepts never finished. If the tick-boxes or the one Accept button are not found exactly
 as expected, nothing is pressed and the log says what was found. 
+Also: there is no longer a built-in limit of 20 per run or 60 per day. Click accepts
+every order that passes your SKU rules unless you save a number in settings (blank
+boxes mean no limit), on Flipkart and Meesho alike.
+
 ## 1.6.2 — 11 October 2026
 
 **Finding out why Meesho orders are not clearing.** Click presses Accept on a Meesho

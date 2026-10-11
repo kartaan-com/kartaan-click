@@ -138,7 +138,7 @@ function describe(e) {
   // truth is "no SKUs are ticked yet" or "a run had stalled and was cleared".
   // Anything added to the accept side must be given a branch here.
   if (e.acceptStart != null)
-    return { did: 'started accepting', note: 'up to ' + e.acceptStart + ' order(s)' };
+    return { did: 'started accepting', note: e.acceptStart === 'all' ? 'every order that qualifies' : 'up to ' + e.acceptStart + ' order(s)' };
 
   if (e.acceptNote)
     return { did: 'accepting', note: e.acceptNote };
@@ -376,8 +376,8 @@ const AUTO_DEFAULTS = {
   onlyTickedSkus:  true,
   dueWithinDays:   1,
   includeBreached: true,
-  maxPerRound:     20,
-  maxPerDay:       60,
+  maxPerRound:     null,
+  maxPerDay:       null,
 };
 
 function fillAuto(s) {
@@ -387,8 +387,8 @@ function fillAuto(s) {
   $('autoOnlyTicked').checked = !!s.onlyTickedSkus;
   $('autoBreached').checked   = !!s.includeBreached;
   $('autoDays').value         = String(s.dueWithinDays);
-  $('autoMax').value          = String(s.maxPerRound);
-  $('autoMaxDay').value       = String(s.maxPerDay);
+  $('autoMax').value          = (Number.isFinite(s.maxPerRound) ? String(s.maxPerRound) : '');
+  $('autoMaxDay').value       = (Number.isFinite(s.maxPerDay) ? String(s.maxPerDay) : '');
 }
 
 // A typed number can be blank, negative or nonsense, and every one of these ends
@@ -409,8 +409,8 @@ function collectAuto() {
     // 0 is a real answer here — "only what is due today" — so it is checked for
     // being a number rather than for being truthy.
     dueWithinDays:   Number.isFinite(days) && days >= 0 ? Math.min(days, 30) : AUTO_DEFAULTS.dueWithinDays,
-    maxPerRound:     Number.isFinite(max)  && max  > 0  ? Math.min(max, 500) : AUTO_DEFAULTS.maxPerRound,
-    maxPerDay:       Number.isFinite(perDay) && perDay > 0 ? Math.min(perDay, 2000) : AUTO_DEFAULTS.maxPerDay,
+    maxPerRound:     Number.isFinite(max)  && max  > 0  ? Math.min(max, 500) : null,
+    maxPerDay:       Number.isFinite(perDay) && perDay > 0 ? Math.min(perDay, 2000) : null,
   };
 }
 

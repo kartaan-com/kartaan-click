@@ -762,7 +762,7 @@ async function runLoop() {
       } catch (e) { /* a missed beat is not worth ending a run over */ }
     }, 30000);
 
-    await log('START — accepting up to ' + s0.limit + ', '
+    await log('START — accepting ' + (s0.limit >= 100000 ? 'every order that qualifies' : 'up to ' + s0.limit) + ', '
       + (settings.onlyTickedSkus
           ? (ticked.length ? ticked.length + ' SKU(s) ticked' : 'NO SKUs ticked, so nothing is allowed')
           : 'any SKU')

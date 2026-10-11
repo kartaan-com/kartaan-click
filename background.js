@@ -1082,8 +1082,8 @@ const AUTO_DEFAULTS = {
   onlyTickedSkus:  true,
   dueWithinDays:   1,
   includeBreached: true,
-  maxPerRound:     20,
-  maxPerDay:       60,
+  maxPerRound:     null,     // blank = no limit; only a saved number is applied
+  maxPerDay:       null,
 };
 
 async function autoSettings() {
@@ -1347,6 +1347,10 @@ async function openAcceptTab(key, url) {
 }
 
 // ── starting one portal's run ───────────────────────────────────────────────
+// A run needs a number to count against; "no limit" is simply a number nobody reaches.
+const NO_LIMIT = 100000;
+const runLimit = s => (Number.isFinite(s.maxPerRound) && s.maxPerRound > 0) ? s.maxPerRound : NO_LIMIT;
+
 async function startAcceptRun(key, s) {
   const name = CHECKIN_SITES[key].name;
 
@@ -1400,13 +1404,13 @@ async function startAcceptRun(key, s) {
   // goes quiet for good: skip, restart, fail, skip, round after round.
   const state = key === 'flipkart'
     ? { mode: 'accept', running: true, started: false, dryRun: false, auto: true,
-        limit: s.maxPerRound, done: 0, failed: 0, reloads: 0,
+        limit: runLimit(s), done: 0, failed: 0, reloads: 0,
         startedAt: Date.now(), ts: Date.now() }
-    : { running: true, started: false, dryRun: false, auto: true, limit: s.maxPerRound,
+    : { running: true, started: false, dryRun: false, auto: true, limit: runLimit(s),
         done: 0, failed: 0, startedAt: Date.now(), ts: Date.now(),
         ownWindow: tab.windowId === await ownWindowId(key) };
   await chrome.storage.local.set({ [ACCEPT_STATE_KEY[key]]: state });
-  await checkinLog({ site: name, done: [], acceptStart: s.maxPerRound });
+  await checkinLog({ site: name, done: [], acceptStart: runLimit(s) >= NO_LIMIT ? 'all' : runLimit(s) });
 }
 
 // ── after every round ───────────────────────────────────────────────────────

@@ -40,8 +40,8 @@ const DEFAULTS = {
   onlyTickedSkus: true,    // nothing ticked = accept NOTHING. See the note below.
   dueWithinDays:  1,       // 0 = only what is due today; 1 = today and tomorrow
   includeBreached: true,   // orders already past their date — usually the urgent ones
-  maxPerRound:    20,      // a backstop on one run
-  maxPerDay:      60,      // and a backstop on the whole day, per portal
+  maxPerRound:    null,    // no limit unless the seller saves one (settings page)
+  maxPerDay:      null,    // same — one limit for the whole day, per portal
 };
 
 // ⚠️ `onlyTickedSkus` DEFAULTS TO TRUE AND MUST STAY THAT WAY. With it on and
@@ -340,7 +340,9 @@ function allowedByCap(sku, capMap, tally, want) {
 function allowedByDayTotal(s, tally, want) {
   const n = countOrRefuse(want);
   if (n === null) return { ok: false, why: 'could not tell how many orders this would take' };
-  const limit = Number.isFinite(s.maxPerDay) && s.maxPerDay > 0 ? s.maxPerDay : DEFAULTS.maxPerDay;
+  // No number saved = no day limit. Only a limit the seller saved is ever applied.
+  if (!(Number.isFinite(s.maxPerDay) && s.maxPerDay > 0)) return { ok: true, why: 'no daily limit on this portal' };
+  const limit = s.maxPerDay;
   const used  = tally.total || 0;
   if (used + n > limit) {
     return { ok: false, why: used >= limit
