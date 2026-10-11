@@ -3,6 +3,15 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.6.5 — 11 October 2026
+
+**Flipkart bulk accept now works on a real run: 10 of 10 orders accepted.** Three things
+stopped 1.6.4 on the real page, all fixed: it looked for a "groups selected" line that only
+appears after something is ticked; it held on to tick-boxes that Flipkart redraws after every
+tick, so it lost track of which were ticked; and it did not know which part of the page was
+the list. Click now finds the list by its heading row and looks each row up again after every
+tick. If anything is not exactly as expected, nothing is pressed and the log says what was seen.
+
 ## 1.6.4 — 11 October 2026
 
 **Flipkart now accepts the way Meesho does, and there is a "never" list.** Click ticks only
