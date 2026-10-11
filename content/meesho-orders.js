@@ -481,6 +481,26 @@ function okayButtons(rows) {
       && !(panel && panel.contains(b)) && !rows.some(r => r.tr.contains(b))));
 }
 
+// Read-only: writes down whatever Meesho has put on top of the page (boxes, toasts,
+// messages) and every button in it, so a press that did nothing can be understood.
+async function dumpOverlays(label) {
+  try {
+    const over = [...document.querySelectorAll('body *')].filter(el => {
+      if (panel && panel.contains(el)) return false;
+      if (!txt(el) || !isVisible(el)) return false;
+      const pos = getComputedStyle(el).position;
+      return pos === 'fixed' || el.matches('[role="dialog"], [role="alert"], [role="status"], [aria-modal="true"]');
+    });
+    const found = innermost(over).slice(0, 6);
+    if (!found.length) { await log('  ' + label + ': nothing extra on screen'); return; }
+    for (const el of found) {
+      const bs = [...el.querySelectorAll('button, [role="button"]')].filter(isVisible)
+        .map(b => '"' + txt(b) + '"').join(', ');
+      await log('  ' + label + ': "' + txt(el).slice(0, 200) + '"' + (bs ? ' — buttons: ' + bs : ''));
+    }
+  } catch (e) { /* diagnostics only */ }
+}
+
 // ⚠️ A TICK-BOX GETS ONE CLICK, NOT humanClick. humanClick sends a pretend click and
 // then a real one — fine for a button, but on a tick-box each one toggles it, so
 // the box ended up exactly as it started ("4 did not tick", 2026-10-11 log).
@@ -587,7 +607,9 @@ async function runBatch(s, read, picks, ctx) {
   const box = await confirmBoxIfAny(dialogsBefore);
   if (box === 'stuck') { await stop(s, 'STOPPED — see the box above.'); return 'stop'; }
 
-  await sleep(rand(3000, 4000));
+  await sleep(rand(1000, 1500));
+  await dumpOverlays('1.5s after the press');
+  await sleep(rand(2000, 2500));
   await log('reloading the page to finish the batch…');
   location.reload();
   return 'reload';
@@ -632,6 +654,7 @@ async function settleBatch(s) {
     return 'stop';
   }
 
+  await dumpOverlays('after the reload');
   const afterRows = rowsNow();
   const after = pendingCount();
   const skuAfter = {};
