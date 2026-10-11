@@ -1304,7 +1304,7 @@ async function openInOwnWindow(key, url) {
     if (wid != null) {
       try {
         const w = await chrome.windows.get(wid, { populate: true });
-        if (w.state === 'minimized') await chrome.windows.update(wid, { state: 'normal' });
+        if (w.state !== 'maximized') await chrome.windows.update(wid, { state: 'maximized' });
         const t = (w.tabs || [])[0];
         if (!t) return await chrome.tabs.create({ url, windowId: wid, active: true });
         const was = t.url;
@@ -1315,6 +1315,9 @@ async function openInOwnWindow(key, url) {
     }
     const win = await chrome.windows.create({ url, focused: false, state: 'normal', width: 1000, height: 700 });
     if (!win || !win.tabs || !win.tabs[0]) return null;
+    // Made full-screen as a second step: asking for "maximized" and "not in front"
+    // together in one call is what Chrome refused.
+    try { await chrome.windows.update(win.id, { state: 'maximized' }); } catch (e) { /* stays normal size */ }
     const m = (await chrome.storage.local.get(CLICK_WINS))[CLICK_WINS] || {};
     m[key] = win.id;
     await chrome.storage.local.set({ [CLICK_WINS]: m });
