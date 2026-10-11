@@ -480,7 +480,7 @@ function bulkAcceptButtons(rows) {
 
 function okayButtons(rows) {
   return innermost([...document.querySelectorAll('button, [role="button"]')]
-    .filter(b => /^okay$/i.test(txt(b)) && isVisible(b) && !isDisabled(b)
+    .filter(b => /^(okay|got it)$/i.test(txt(b)) && isVisible(b) && !isDisabled(b)
       && !(panel && panel.contains(b)) && !rows.some(r => r.tr.contains(b))));
 }
 
@@ -657,8 +657,11 @@ async function settleBatch(s) {
       + 'Nothing else was pressed.');
     return 'stop';
   }
+  // Meesho's own answer, seen 2026-10-11: "6 Orders accepted successfully." + "Got it".
+  const said = (document.body.innerText.match(/(\d+)\s*Orders?\s*accepted\s*successfully/i) || [])[1];
+  if (said !== undefined) await log('Meesho says ' + said + ' order(s) accepted successfully.');
   if (okay) {
-    await log('pressing "okay"');
+    await log('pressing "' + txt(okay[0]) + '"');
     await humanClick(okay[0], true);
     await sleep(rand(1500, 2500));
   } else {
@@ -690,7 +693,8 @@ async function settleBatch(s) {
   // Meesho's own waiting count is the better witness; the per-SKU row counts back
   // it up when the count is missing or fell by less than the batch.
   let counted = {};
-  const cleared = (p.before != null && after != null) ? Math.max(0, p.before - after) : null;
+  const cleared = said !== undefined ? parseInt(said, 10)
+    : (p.before != null && after != null) ? Math.max(0, p.before - after) : null;
   if (cleared !== null && cleared >= p.n) {
     counted = { ...p.bySku };
   } else {
