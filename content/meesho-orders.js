@@ -477,6 +477,22 @@ function okayButtons(rows) {
       && !(panel && panel.contains(b)) && !rows.some(r => r.tr.contains(b))));
 }
 
+// ⚠️ A TICK-BOX GETS ONE CLICK, NOT humanClick. humanClick sends a pretend click and
+// then a real one — fine for a button, but on a tick-box each one toggles it, so
+// the box ended up exactly as it started ("4 did not tick", 2026-10-11 log).
+// If one click changes nothing, the label around it is tried once.
+async function toggleBox(c) {
+  const was = c.checked;
+  c.scrollIntoView({ block: 'center' });
+  await sleep(rand(300, 800));
+  c.click();
+  await sleep(rand(250, 600));
+  if (c.checked === was) {
+    const lab = c.closest('label');
+    if (lab) { lab.click(); await sleep(rand(250, 600)); }
+  }
+}
+
 // Returns 'next' | 'stop' | 'reload'
 async function runBatch(s, read, picks, ctx) {
   // Room left in this run (the 20 cap), then the per-SKU and day limits worked out
@@ -511,11 +527,11 @@ async function runBatch(s, read, picks, ctx) {
   for (let i = 0; i < 12; i++) {
     const strays = strayTicks(boxes);
     if (!strays.length) break;
-    await humanClick(strays[0]);        // the header "select all" box flips every row at once
+    await toggleBox(strays[0]);         // the header "select all" box flips every row at once
     await sleep(rand(400, 900));
   }
   for (const c of boxes) {
-    if (!c.checked) { await humanClick(c); await sleep(rand(250, 700)); }
+    if (!c.checked) { await toggleBox(c); }
   }
   const stray  = strayTicks(boxes);
   const missed = boxes.filter(c => !c.checked).length;
