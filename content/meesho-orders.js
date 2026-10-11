@@ -458,9 +458,13 @@ function rowCheckbox(row) {
   return boxes.length === 1 ? boxes[0] : null;
 }
 
-function strayTicks(batchBoxes) {
+// The "select all" box in the heading is not a row: it ticks itself whenever every
+// row is ticked (seen 2026-10-11, "1 others are ticked"). It only counts as a stray
+// at the START, when it is what has to be cleared.
+function strayTicks(batchBoxes, withHeader) {
   return [...document.querySelectorAll('input[type="checkbox"]')]
-    .filter(c => c.checked && batchBoxes.indexOf(c) === -1 && !(panel && panel.contains(c)));
+    .filter(c => c.checked && batchBoxes.indexOf(c) === -1 && !(panel && panel.contains(c))
+      && (withHeader || !c.closest('thead, th, [role="columnheader"]')));
 }
 
 // The "Accept…" button that is not inside any order row.
@@ -525,7 +529,7 @@ async function runBatch(s, read, picks, ctx) {
   // Tick exactly the batch and nothing else (including any "select all").
   const boxes = batch.map(r => r.cb);
   for (let i = 0; i < 12; i++) {
-    const strays = strayTicks(boxes);
+    const strays = strayTicks(boxes, true);
     if (!strays.length) break;
     await toggleBox(strays[0]);         // the header "select all" box flips every row at once
     await sleep(rand(400, 900));
