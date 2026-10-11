@@ -1303,7 +1303,7 @@ async function openInOwnWindow(key, url) {
     if (wid != null) {
       try {
         const w = await chrome.windows.get(wid, { populate: true });
-        if (w.state === 'minimized') await chrome.windows.update(wid, { state: 'maximized' });
+        if (w.state === 'minimized') await chrome.windows.update(wid, { state: 'normal' });
         const t = (w.tabs || [])[0];
         if (!t) return await chrome.tabs.create({ url, windowId: wid, active: true });
         const was = t.url;
@@ -1312,13 +1312,14 @@ async function openInOwnWindow(key, url) {
         return tab;
       } catch (e) { /* window gone — make a new one below */ }
     }
-    const win = await chrome.windows.create({ url, focused: false, state: 'maximized' });
+    const win = await chrome.windows.create({ url, focused: false, state: 'normal', width: 1000, height: 700 });
     if (!win || !win.tabs || !win.tabs[0]) return null;
     const m = (await chrome.storage.local.get(CLICK_WINS))[CLICK_WINS] || {};
     m[key] = win.id;
     await chrome.storage.local.set({ [CLICK_WINS]: m });
     return win.tabs[0];
   } catch (e) {
+    console.warn('[Kartaan Click] could not open its own window:', (e && e.message) || e);
     return null;
   }
 }
