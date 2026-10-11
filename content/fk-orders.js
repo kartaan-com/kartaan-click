@@ -1550,11 +1550,21 @@ async function runBatchFk(mode, s, candidates, rows, rules) {
   const boxes = batch.map(r => r.cb);
   // Only inside the area that holds the "N/M groups selected" bar and the rows — never
   // a filter or settings tick-box elsewhere on the page.
-  const bar = innermost([...document.querySelectorAll('div, span')]
-    .filter(e => holds(e, 'groups selected') && /groups? selected/i.test(txt(e)) && txt(e).length < 60))[0];
+  // Any tag, and read as plain text (no layout): the first attempt looked only at div
+  // and span and found nothing on the real page (log of 11 Oct).
+  const barRe = /\d+\s*\/\s*\d+\s*groups?\s*selected/i;
+  const barEls = [...document.querySelectorAll('body *')]
+    .filter(e => !(panel && panel.contains(e)) && holds(e, 'selected')
+      && rawTxt(e).length < 80 && barRe.test(rawTxt(e)));
+  const bar = innermost(barEls)[0];
   let scope = bar;
   while (scope && !scope.contains(rows[0].ctx.node)) scope = scope.parentElement;
   if (!scope) {
+    const near = [...document.querySelectorAll('body *')]
+      .filter(e => !(panel && panel.contains(e)) && holds(e, 'selected') && rawTxt(e).length < 80);
+    for (const e of innermost(near).slice(0, 5)) {
+      await log('  saw "' + rawTxt(e).trim() + '" in <' + e.tagName.toLowerCase() + '>');
+    }
     return stopRun('STOPPED — could not find the "groups selected" bar above the rows. '
       + 'Nothing was ticked or pressed. Press Probe and send me the log.');
   }
