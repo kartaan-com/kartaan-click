@@ -346,7 +346,11 @@ function movePanelAsideFor(el) {
   return () => { panel.style.visibility = was; };
 }
 
-async function humanClick(el) {
+// ⚠️ `once` = ONE click event, not two. Normally a pretend click is sent and then a
+// real .click(), so the page gets TWO clicks. On the bulk Accept button that opens
+// Meesho's "Accepting orders" box and closes it again in the same breath (2026-10-11
+// log: the box never appeared), exactly as it did for the tick-boxes.
+async function humanClick(el, once) {
   const restore = movePanelAsideFor(el);
   try {
     el.scrollIntoView({ block: 'center' });
@@ -360,8 +364,7 @@ async function humanClick(el) {
     fire(el, 'pointerdown', x, y); fire(el, 'mousedown', x, y);
     await sleep(rand(55, 165));
     fire(el, 'pointerup', x, y); fire(el, 'mouseup', x, y);
-    fire(el, 'click', x, y);
-    await sleep(rand(40, 90));
+    if (!once) { fire(el, 'click', x, y); await sleep(rand(40, 90)); }
     if (typeof el.click === 'function') el.click();
   } finally {
     restore();
@@ -619,7 +622,7 @@ async function runBatch(s, read, picks, ctx) {
     skuBefore, due: batch[0].due } });
 
   await log('pressing the bottom-right "' + txt(bulk[0]) + '" for ' + batch.length + ' ticked row(s)');
-  await humanClick(bulk[0]);
+  await humanClick(bulk[0], true);
   const yes = await waitFor(() => acceptOrderButton(read.rows), 6000);
   if (!yes) {
     await dumpOverlays('no "Accepting orders" box found');
@@ -629,7 +632,7 @@ async function runBatch(s, read, picks, ctx) {
   }
   await log('box "Accepting orders" — pressing "Accept Order"');
   await sleep(rand(600, 1400));
-  await humanClick(yes);
+  await humanClick(yes, true);
 
   await sleep(rand(1000, 1500));
   await dumpOverlays('1.5s after the press');
@@ -656,7 +659,7 @@ async function settleBatch(s) {
   }
   if (okay) {
     await log('pressing "okay"');
-    await humanClick(okay[0]);
+    await humanClick(okay[0], true);
     await sleep(rand(1500, 2500));
   } else {
     await log('no "okay" appeared after the reload — carrying on.');
