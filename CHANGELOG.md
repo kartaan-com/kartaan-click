@@ -3,6 +3,17 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.6.3 — 11 October 2026
+
+**Meesho orders are now accepted the way you do it by hand.** Click opens Meesho in a
+window of its own (maximized, in front), ticks only the rows that pass your SKU limits,
+the daily total and the 20-per-run limit, presses Meesho's one bottom-right Accept, waits
+3–4 seconds, reloads the page, presses the "okay" that appears, and goes round again until
+nothing is left. Chrome slowed down Meesho when it sat in a background tab, which is why
+accepts never finished. If the tick-boxes or the one Accept button are not found exactly
+as expected, nothing is pressed and the log says what was found. The window closes when
+the run ends.
+
 ## 1.6.2 — 11 October 2026
 
 **Finding out why Meesho orders are not clearing.** Click presses Accept on a Meesho

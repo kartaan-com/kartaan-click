@@ -396,7 +396,7 @@ async function idleFidget() {
 // "Accept" inside it belonged to an order that had passed no checks at all.
 // A confirmation that repeats the trigger word is not distinguishable from the
 // trigger. Do not put it back.
-const CONFIRM_WORDS = ['confirm', 'yes', 'yes, accept', 'proceed'];
+const CONFIRM_WORDS = ['confirm', 'yes', 'yes, accept', 'proceed', 'okay'];
 
 // Only things that DECLARE themselves a dialog. Matching on class names containing
 // "modal"/"dialog"/"drawer" swept up ordinary layout wrappers in a React app whose
@@ -431,6 +431,183 @@ async function confirmBoxIfAny(before) {
   await humanClick(hit);
   await sleep(rand(700, 1600));
   return 'confirmed';
+}
+
+
+// ── bulk accepting (1.6.3) ──────────────────────────────────────────────────
+//
+// Tick the rows that pass the rules, press Meesho's ONE bottom-right Accept, wait,
+// RELOAD, press the "okay" that comes up, then go round again until nothing is left.
+// The old press-one-row-at-a-time path further down is kept but switched off.
+//
+// ⚠️ NOBODY HAS SEEN THIS MARKUP YET. The row tick-box is looked for as a plain
+// `input[type=checkbox]` inside the row, and the bulk button as the one visible
+// "Accept…" button that sits outside every row. If either is not exactly one thing,
+// NOTHING IS PRESSED: the run stops and writes what it found. Never loosen those.
+const BULK = true;
+const MAX_BATCH_FAILS = 2;           // batches in a row that cleared nothing
+
+const rowsNow = () => readRows().rows || [];
+
+function rowCheckbox(row) {
+  const boxes = [...row.tr.querySelectorAll('input[type="checkbox"]')];
+  return boxes.length === 1 ? boxes[0] : null;
+}
+
+function strayTicks(batchBoxes) {
+  return [...document.querySelectorAll('input[type="checkbox"]')]
+    .filter(c => c.checked && batchBoxes.indexOf(c) === -1 && !(panel && panel.contains(c)));
+}
+
+// The "Accept…" button that is not inside any order row.
+function bulkAcceptButtons(rows) {
+  return innermost([...document.querySelectorAll('button, [role="button"]')]
+    .filter(b => /^accept\b/i.test(txt(b)) && isVisible(b) && !isDisabled(b)
+      && !(panel && panel.contains(b))
+      && !b.closest('tr') && !rows.some(r => r.tr.contains(b))));
+}
+
+function okayButtons(rows) {
+  return innermost([...document.querySelectorAll('button, [role="button"]')]
+    .filter(b => /^okay$/i.test(txt(b)) && isVisible(b) && !isDisabled(b)
+      && !(panel && panel.contains(b)) && !rows.some(r => r.tr.contains(b))));
+}
+
+// Returns 'next' | 'stop' | 'reload'
+async function runBatch(s, read, picks, ctx) {
+  // Room left in this run (the 20 cap), then the per-SKU and day limits worked out
+  // AGAINST EACH OTHER: each row added counts toward the next row's limit.
+  const room = Math.max(0, s.limit - s.done);
+  const sim  = { skus: { ...(ctx.tally.skus || {}) }, total: ctx.tally.total || 0 };
+  const batch = [];
+  for (const r of picks) {
+    if (batch.length >= room) break;
+    const cb = rowCheckbox(r);
+    if (!cb) { await log('leaving alone: ' + r.sku + ' — no single tick-box found on its row'); continue; }
+    const d = RULES.decide({ sku: r.sku, due: r.due, count: 1 }, { ...ctx, tally: sim });
+    if (!d.ok) continue;
+    batch.push({ ...r, cb });
+    sim.skus[r.sku] = (sim.skus[r.sku] || 0) + 1; sim.total += 1;
+  }
+  if (!batch.length) {
+    await stop(s, 'STOPPED — rows pass the rules but none has a tick-box this tool can use. '
+      + 'Nothing was touched. Run the console check and send me what it prints.');
+    return 'stop';
+  }
+
+  for (const r of batch) await log((s.dryRun ? '(dry) would tick ' : 'tick ') + r.sku + ' — due ' + r.due);
+  if (s.dryRun) {
+    await log('(dry) would press the bottom-right Accept for ' + batch.length + ' row(s), then reload.');
+    s.done += batch.length; s.ts = Date.now(); await setState(s);
+    return 'next';
+  }
+
+  // Tick exactly the batch and nothing else (including any "select all").
+  const boxes = batch.map(r => r.cb);
+  for (const c of strayTicks(boxes)) { await humanClick(c); await sleep(rand(200, 500)); }
+  for (const c of boxes) {
+    if (!c.checked) { await humanClick(c); await sleep(rand(250, 700)); }
+  }
+  const stray  = strayTicks(boxes);
+  const missed = boxes.filter(c => !c.checked).length;
+  if (stray.length || missed) {
+    await stop(s, 'STOPPED — could not get exactly the wanted rows ticked (' + missed
+      + ' did not tick, ' + stray.length + ' others are ticked). Nothing was pressed.');
+    return 'stop';
+  }
+
+  const bulk = bulkAcceptButtons(read.rows);
+  if (bulk.length !== 1) {
+    await stop(s, 'STOPPED — expected ONE bottom-right Accept button and found ' + bulk.length
+      + (bulk.length ? ': ' + bulk.map(b => '"' + txt(b) + '"').join(', ') : '')
+      + '. Nothing was pressed. Run the console check and send me what it prints.');
+    return 'stop';
+  }
+
+  const bySku = {}, skuBefore = {};
+  for (const r of batch) bySku[r.sku] = (bySku[r.sku] || 0) + 1;
+  for (const r of read.rows) skuBefore[r.sku] = (skuBefore[r.sku] || 0) + 1;
+  const before = pendingCount();
+
+  await log('pressing the bottom-right "' + txt(bulk[0]) + '" for ' + batch.length + ' ticked row(s)');
+  const dialogsBefore = openDialogs();
+  await humanClick(bulk[0]);
+  const box = await confirmBoxIfAny(dialogsBefore);
+  if (box === 'stuck') { await stop(s, 'STOPPED — see the box above.'); return 'stop'; }
+
+  await sleep(rand(3000, 4000));
+  const s2 = await getState();
+  if (!s2 || !s2.running) return 'stop';
+  s2.pending = { at: Date.now(), n: batch.length, before, bySku, skuBefore, due: batch[0].due };
+  s2.ts = Date.now(); await setState(s2);
+  await log('reloading the page to finish the batch…');
+  location.reload();
+  return 'reload';
+}
+
+// After the reload: press "okay" if it appears, then count what cleared.
+async function settleBatch(s) {
+  const p = s.pending;
+  await waitFor(() => {
+    const r = readRows();
+    return (r.error || r.rows.length || pendingCount() === 0) ? true : null;
+  }, PACE.rowWaitMs);
+
+  const okay = await waitFor(() => { const b = okayButtons(rowsNow()); return b.length ? b : null; }, 12000);
+  if (okay && okay.length > 1) {
+    await stop(s, 'STOPPED — ' + okay.length + ' "okay" buttons on screen; not guessing which. '
+      + 'Nothing else was pressed.');
+    return 'stop';
+  }
+  if (okay) {
+    await log('pressing "okay"');
+    await humanClick(okay[0]);
+    await sleep(rand(1500, 2500));
+  } else {
+    await log('no "okay" appeared after the reload — carrying on.');
+  }
+
+  const afterRows = rowsNow();
+  const after = pendingCount();
+  const skuAfter = {};
+  for (const r of afterRows) skuAfter[r.sku] = (skuAfter[r.sku] || 0) + 1;
+
+  // Meesho's own waiting count is the better witness; the per-SKU row counts back
+  // it up when the count is missing or fell by less than the batch.
+  let counted = {};
+  const cleared = (p.before != null && after != null) ? Math.max(0, p.before - after) : null;
+  if (cleared !== null && cleared >= p.n) {
+    counted = { ...p.bySku };
+  } else {
+    for (const sku of Object.keys(p.bySku)) {
+      const gone = Math.max(0, (p.skuBefore[sku] || 0) - (skuAfter[sku] || 0));
+      const c = Math.min(p.bySku[sku], gone);
+      if (c) counted[sku] = c;
+    }
+  }
+  let accepted = 0;
+  for (const sku of Object.keys(counted)) {
+    const t = await RULES.noteAccepted(PORTAL, sku, Date.now(), counted[sku]);
+    accepted += counted[sku];
+    await log('  accepted ' + counted[sku] + ' of ' + sku + '. ' + t.forSku + ' of it today, '
+      + t.total + ' on Meesho today.');
+    tellTheRoundLog({ accepted: counted[sku], sku, due: p.due });
+  }
+  await log('batch: ' + accepted + ' of ' + p.n + ' cleared (waiting count '
+    + (p.before == null ? '?' : p.before) + ' → ' + (after == null ? '?' : after) + ').');
+
+  const s2 = await getState();
+  if (!s2 || !s2.running) return 'stop';
+  delete s2.pending;
+  s2.done = (s2.done || 0) + accepted;
+  s2.failed = (s2.failed || 0) + (accepted ? 0 : 1);
+  s2.batchFails = accepted ? 0 : (s2.batchFails || 0) + 1;
+  s2.ts = Date.now(); await setState(s2);
+  if (s2.batchFails >= MAX_BATCH_FAILS) {
+    await stop(s2, 'STOPPED — ' + MAX_BATCH_FAILS + ' batches in a row cleared nothing.');
+    return 'stop';
+  }
+  return 'next';
 }
 
 // ── the run ─────────────────────────────────────────────────────────────────
@@ -489,7 +666,10 @@ async function runLoop() {
       // limit, while its heartbeat kept the run looking alive: that made every later
       // round skip this portal's check-in for as long as the tab stayed on screen.
       // Stopping frees the portal at once and the next round picks the work up.
-      if (document.visibilityState === 'visible' && document.hasFocus()) {
+      // In Click's OWN window (s.ownWindow, set by the worker only for a window it
+      // opened itself) the seller is not reading this tab, so being in focus is the
+      // plan, not a reason to stop. In any other tab the old rule still holds.
+      if (!s.ownWindow && document.visibilityState === 'visible' && document.hasFocus()) {
         await stop(s, 'STOPPED — you came to this tab. It will pick this up at the next round.');
         break;
       }
@@ -510,6 +690,14 @@ async function runLoop() {
       }
       if (signedOut()) { await stop(s, 'STOPPED — signed out of Meesho.'); break; }
       if (!onPendingTab()) { await stop(s, 'STOPPED — this is no longer the Pending tab.'); break; }
+
+      // A batch was pressed before the last page reload: settle it first (press the
+      // "okay", count what cleared) before anything new is ticked.
+      if (s.pending) {
+        const verdict = await settleBatch(s);
+        if (verdict === 'stop') break;
+        continue;
+      }
 
       const read = await waitFor(async () => {
         const r = readRows();
@@ -551,6 +739,13 @@ async function runLoop() {
           + (total != null && total > read.rows.length
               ? ' (' + read.rows.length + ' of ' + total + ' were on screen)' : '') + '.');
         break;
+      }
+
+      if (BULK) {
+        const verdict = await runBatch(s, read, picks, ctx);
+        if (verdict === 'stop' || verdict === 'reload') break;
+        await humanPause(PACE.betweenOrdersMin, PACE.betweenOrdersMax);
+        continue;
       }
 
       // Mostly top-down, but not always the very first row.
