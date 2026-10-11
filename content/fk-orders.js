@@ -1534,7 +1534,7 @@ async function runBatchFk(mode, s, candidates, rows, rules) {
         || !RULES.allowedByDayTotal(rules, sim, r.count).ok) continue;
     const cb = rowBox(r);
     if (!cb) { await log('leaving alone: ' + r.sku + ' — no single tick-box found on its row'); continue; }
-    batch.push({ ...r, cb });
+    batch.push({ ...r, cb, idx: rows.indexOf(r) });
     sim.skus[r.sku] = (sim.skus[r.sku] || 0) + r.count; sim.total += r.count; used += r.count;
   }
   if (!batch.length) {
@@ -1547,41 +1547,52 @@ async function runBatchFk(mode, s, candidates, rows, rules) {
   // Tick exactly the batch and nothing else, including the header "select all". The
   // page opens with everything ticked ("9/9 groups selected"), so that box is cleared
   // first (it comes first on the page) and then each wanted row is ticked.
-  const boxes = batch.map(r => r.cb);
+  // ⚠️ ROWS ARE LOOKED UP AGAIN AFTER EVERY CLICK, NEVER HELD. Flipkart redraws the
+  // list when a box is ticked, so a box held from before is a dead copy: it read "not
+  // ticked" while the live one was ticked ("1 did not tick, 1 others are ticked", the
+  // 16:37 log of 11 Oct). A row is found by its place in the list, and its SKU must
+  // still be the one that was chosen.
+  const boxFor = (cur, w) => (cur[w.idx] && cur[w.idx].sku === w.sku) ? rowBox(cur[w.idx]) : null;
+  const wantedNow = () => { const cur = actionRowButtons(mode); return batch.map(w => boxFor(cur, w)); };
   // Only inside the list itself: the column-heading row ("Smart Group … Items to Pack in
   // Each Order", which holds the select-all box) and the rows — never a filter or
   // settings tick-box elsewhere on the page. (The "N/M groups selected" bar is NOT used:
   // on a fresh page nothing is ticked and the bar is not there — log of 11 Oct, 16:33.)
-  const head = innermost([...document.querySelectorAll('body *')]
-    .filter(e => !(panel && panel.contains(e)) && holds(e, 'items to pack') && rawTxt(e).length < 80))[0];
-  let scope = head;
-  while (scope && !scope.contains(rows[0].ctx.node)) scope = scope.parentElement;
-  if (!scope) {
-    // No heading found: fall back to the smallest box holding every row. The header
-    // select-all is then not touched here; the count checks after ticking cover it.
-    scope = rows[0].ctx.node;
-    while (scope && !rows.every(r => scope.contains(r.ctx.node))) scope = scope.parentElement;
-    await log('  (could not find the column-heading row; working inside the rows only)');
-  }
-  if (!scope) {
-    return stopRun('STOPPED — could not tell where the list is. Nothing was ticked or pressed. '
-      + 'Press Probe and send me the log.');
-  }
-  const others = () => [...scope.querySelectorAll(BOX_SEL)]
-    .filter(c => boxOn(c) && boxes.indexOf(c) === -1 && !(panel && panel.contains(c)));
+  const scopeNow = () => {
+    const cur = actionRowButtons(mode);
+    if (!cur.length) return null;
+    let sc = innermost([...document.querySelectorAll('body *')]
+      .filter(e => !(panel && panel.contains(e)) && holds(e, 'items to pack') && rawTxt(e).length < 80))[0];
+    while (sc && !sc.contains(cur[0].ctx.node)) sc = sc.parentElement;
+    if (!sc) {
+      // No heading found: the smallest box holding every row. The header select-all is
+      // then not touched here; the count checks after ticking cover it.
+      sc = cur[0].ctx.node;
+      while (sc && !cur.every(r => sc.contains(r.ctx.node))) sc = sc.parentElement;
+    }
+    return sc;
+  };
   for (let i = 0; i < 12; i++) {
-    const o = others();
+    const sc = scopeNow();
+    if (!sc) return stopRun('STOPPED — could not tell where the list is. Nothing was pressed. '
+      + 'Press Probe and send me the log.');
+    const want = wantedNow();
+    const o = [...sc.querySelectorAll(BOX_SEL)]
+      .filter(c => boxOn(c) && want.indexOf(c) === -1 && !(panel && panel.contains(c)));
     if (!o.length) break;
     await toggleBox(o[0]);
-    await sleep(rand(400, 900));
+    await sleep(rand(700, 1400));
   }
-  for (const c of boxes) if (!boxOn(c)) await toggleBox(c);
+  for (let k = 0; k < batch.length; k++) {
+    const c = wantedNow()[k];
+    if (c && !boxOn(c)) { await toggleBox(c); await sleep(rand(600, 1200)); }
+  }
 
   // Only OTHER ROWS count as strays now: with every row wanted Flipkart may tick the
   // header itself. The "N/M groups selected" line below is the check on everything else.
-  const rowBoxes = rows.map(rowBox).filter(Boolean);
-  const stray  = rowBoxes.filter(c => boxOn(c) && boxes.indexOf(c) === -1).length;
-  const missed = boxes.filter(c => !boxOn(c)).length;
+  const want   = wantedNow();
+  const stray  = actionRowButtons(mode).map(rowBox).filter(c => c && boxOn(c) && want.indexOf(c) === -1).length;
+  const missed = want.filter(c => !c || !boxOn(c)).length;
   if (stray || missed) {
     return stopRun('STOPPED — could not get exactly the wanted rows ticked (' + missed
       + ' did not tick, ' + stray + ' others are ticked). Nothing was pressed.');
