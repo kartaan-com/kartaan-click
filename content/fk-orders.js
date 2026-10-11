@@ -1548,25 +1548,24 @@ async function runBatchFk(mode, s, candidates, rows, rules) {
   // page opens with everything ticked ("9/9 groups selected"), so that box is cleared
   // first (it comes first on the page) and then each wanted row is ticked.
   const boxes = batch.map(r => r.cb);
-  // Only inside the area that holds the "N/M groups selected" bar and the rows — never
-  // a filter or settings tick-box elsewhere on the page.
-  // Any tag, and read as plain text (no layout): the first attempt looked only at div
-  // and span and found nothing on the real page (log of 11 Oct).
-  const barRe = /\d+\s*\/\s*\d+\s*groups?\s*selected/i;
-  const barEls = [...document.querySelectorAll('body *')]
-    .filter(e => !(panel && panel.contains(e)) && holds(e, 'selected')
-      && rawTxt(e).length < 80 && barRe.test(rawTxt(e)));
-  const bar = innermost(barEls)[0];
-  let scope = bar;
+  // Only inside the list itself: the column-heading row ("Smart Group … Items to Pack in
+  // Each Order", which holds the select-all box) and the rows — never a filter or
+  // settings tick-box elsewhere on the page. (The "N/M groups selected" bar is NOT used:
+  // on a fresh page nothing is ticked and the bar is not there — log of 11 Oct, 16:33.)
+  const head = innermost([...document.querySelectorAll('body *')]
+    .filter(e => !(panel && panel.contains(e)) && holds(e, 'items to pack') && rawTxt(e).length < 80))[0];
+  let scope = head;
   while (scope && !scope.contains(rows[0].ctx.node)) scope = scope.parentElement;
   if (!scope) {
-    const near = [...document.querySelectorAll('body *')]
-      .filter(e => !(panel && panel.contains(e)) && holds(e, 'selected') && rawTxt(e).length < 80);
-    for (const e of innermost(near).slice(0, 5)) {
-      await log('  saw "' + rawTxt(e).trim() + '" in <' + e.tagName.toLowerCase() + '>');
-    }
-    return stopRun('STOPPED — could not find the "groups selected" bar above the rows. '
-      + 'Nothing was ticked or pressed. Press Probe and send me the log.');
+    // No heading found: fall back to the smallest box holding every row. The header
+    // select-all is then not touched here; the count checks after ticking cover it.
+    scope = rows[0].ctx.node;
+    while (scope && !rows.every(r => scope.contains(r.ctx.node))) scope = scope.parentElement;
+    await log('  (could not find the column-heading row; working inside the rows only)');
+  }
+  if (!scope) {
+    return stopRun('STOPPED — could not tell where the list is. Nothing was ticked or pressed. '
+      + 'Press Probe and send me the log.');
   }
   const others = () => [...scope.querySelectorAll(BOX_SEL)]
     .filter(c => boxOn(c) && boxes.indexOf(c) === -1 && !(panel && panel.contains(c)));
@@ -1589,6 +1588,11 @@ async function runBatchFk(mode, s, candidates, rows, rules) {
   }
   const said = rawTxt(document.body).match(/(\d+)\s*\/\s*\d+\s*groups? selected/i);
   if (!said || parseInt(said[1], 10) !== batch.length) {
+    const near = [...document.querySelectorAll('body *')]
+      .filter(e => !(panel && panel.contains(e)) && holds(e, 'selected') && rawTxt(e).length < 80);
+    for (const e of innermost(near).slice(0, 5)) {
+      await log('  saw "' + rawTxt(e).trim() + '" in <' + e.tagName.toLowerCase() + '>');
+    }
     return stopRun('STOPPED — Flipkart says ' + (said ? said[1] : 'no count of') + ' groups selected but '
       + batch.length + ' rows were ticked. Nothing was pressed.');
   }
