@@ -1,5 +1,5 @@
 {
-  "version": "1.6.5",
+  "version": "1.6.6",
   "url": "https://github.com/kartaan-com/kartaan-click/releases/latest/download/kartaan-click.zip",
-  "notes": "Flipkart bulk accept now works on a real run: 10 of 10 orders accepted."
+  "notes": "Check-in rounds wait while you are using the computer."
 }
