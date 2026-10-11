@@ -597,6 +597,20 @@ async function runLoop() {
         consecFails += 1;
         s2.failed = (s2.failed || 0) + 1; s2.ts = Date.now(); await setState(s2);
         await log('  the row did not clear — counting it as a miss, not a success.');
+        // Writes down what Meesho put on screen after our press, so the next log shows
+        // whether a box or an error message is in the way. It only READS — presses nothing.
+        try {
+          const over = [...document.querySelectorAll('body *')].filter(el => {
+            if (panel && panel.contains(el)) return false;
+            if (!txt(el) || !isVisible(el)) return false;
+            return getComputedStyle(el).position === 'fixed';
+          });
+          for (const el of innermost(over).slice(0, 3)) {
+            const bs = [...el.querySelectorAll('button, [role="button"]')].filter(isVisible)
+              .map(b => '"' + txt(b) + '"').join(', ');
+            await log('    on screen: "' + txt(el).slice(0, 200) + '"' + (bs ? ' — buttons: ' + bs : ''));
+          }
+        } catch (e) { /* diagnostics only */ }
         if (consecFails >= PACE.maxFails) {
           await stop(s2, 'STOPPED — ' + PACE.maxFails + ' rows in a row did not clear.');
           break;

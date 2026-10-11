@@ -3,6 +3,13 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.6.2 — 11 October 2026
+
+**Finding out why Meesho orders are not clearing.** Click presses Accept on a Meesho
+order and the order stays on the Pending tab, four times, then stops. The log did not
+say what Meesho showed in between. When this happens the log now also writes down any
+box or message that is on screen after the press. It only reads; it presses nothing.
+
 ## 1.6.1 — 6 September 2026
 
 **The "a new version is out" notice now actually works.** It has never once told
