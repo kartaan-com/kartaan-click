@@ -1330,10 +1330,10 @@ async function openInOwnWindow(key, url) {
 
 // Closes that portal's own window — only ever one Click opened, and only if the
 // tab in it is still Click's. Called when a round or run ends cleanly.
-// ⚠️ SWITCHED OFF WHILE ACCEPTING IS BEING PROVEN. With this false, a window whose run
-// ended in STOPPED stays open so the page can be looked at. Set it to true once
-// accepting works (he asked for it to close either way, success or not).
-const CLOSE_WINDOW_WHEN_STOPPED = false;
+// Accepting is proven, so the window is closed whether the run succeeded or stopped
+// (signed-out check-ins keep theirs, so he can sign in). Set false to keep a stopped
+// run's window open for looking at.
+const CLOSE_WINDOW_WHEN_STOPPED = true;
 
 async function closeOwnWindow(key) {
   try {

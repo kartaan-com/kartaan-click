@@ -5,16 +5,23 @@ change whose version is not listed.
 
 ## 1.6.3 — 11 October 2026
 
-**Meesho orders are now accepted the way you do it by hand.** Click opens Meesho in a
-window of its own (its own size, opened without taking your screen — the same way Rumee Auto-Sync does it; Flipkart, Meesho and Amazon each get one, and none of your own tabs is borrowed), ticks only the rows that pass your SKU limits,
-the daily total and the 20-per-run limit, presses Meesho's one bottom-right Accept, waits
-3–4 seconds, reloads the page, presses the "okay" that appears, and goes round again until
-nothing is left. Chrome slowed down Meesho when it sat in a background tab, which is why
-accepts never finished. If the tick-boxes or the one Accept button are not found exactly
-as expected, nothing is pressed and the log says what was found. 
-Also: there is no longer a built-in limit of 20 per run or 60 per day. Click accepts
-every order that passes your SKU rules unless you save a number in settings (blank
-boxes mean no limit), on Flipkart and Meesho alike.
+**Meesho orders are now accepted the way you do it by hand — and it works.** Tested on
+the real Meesho panel, 11 October. Click ticks only the rows that pass your SKU rules,
+presses Meesho's one "Accept Selected Orders", presses "Accept Order" in the box that
+comes up, waits, reloads, presses "Got it", and goes round again until nothing is left.
+If anything on the page is not exactly as expected, nothing is pressed and the log says
+what was found. Chrome slowed Meesho down when it sat in a background tab, which is why
+accepts never finished.
+
+- **Every portal now works in a window of its own.** Flipkart, Meesho and Amazon each get
+  one, opened without taking your screen, full-size, the same way Rumee Auto-Sync does it.
+  None of your own tabs is borrowed. The window closes when the run ends, successful or
+  not (a window waiting for you to sign in stays open).
+- **No built-in limit.** The old limits of 20 per run and 60 per day are gone: Click
+  accepts every order that passes your SKU rules unless you save a number in settings
+  (blank boxes mean no limit). If you had saved numbers before, clear the two boxes.
+- Not yet checked on a real run: Flipkart's own window opening, and the new window
+  behaviour on Amazon check-ins.
 
 ## 1.6.2 — 11 October 2026
 
