@@ -646,6 +646,13 @@ async function runBatch(s, read, picks, ctx) {
 async function settleBatch(s) {
   const p = (await chrome.storage.local.get(PEND_KEY))[PEND_KEY];
   if (!p) return 'next';
+  // A batch from an earlier, abandoned run (the box never came up) is not this page's
+  // to count: other orders may have cleared since.
+  if (!p.at || Date.now() - p.at > 15 * 60 * 1000) {
+    await chrome.storage.local.remove(PEND_KEY);
+    await log('an old unfinished batch was dropped without counting it.');
+    return 'next';
+  }
   await waitFor(() => {
     const r = readRows();
     return (r.error || r.rows.length || pendingCount() === 0) ? true : null;
@@ -658,7 +665,12 @@ async function settleBatch(s) {
     return 'stop';
   }
   // Meesho's own answer, seen 2026-10-11: "6 Orders accepted successfully." + "Got it".
+  // ⚠️ READ WITH THE PANEL HIDDEN: its log already holds a copy of Meesho's earlier
+  // toast word for word, and that stale line was read as this batch's answer.
+  const shown = panel ? panel.style.display : '';
+  if (panel) panel.style.display = 'none';
   const said = (document.body.innerText.match(/(\d+)\s*Orders?\s*accepted\s*successfully/i) || [])[1];
+  if (panel) panel.style.display = shown;
   if (said !== undefined) await log('Meesho says ' + said + ' order(s) accepted successfully.');
   if (okay) {
     await log('pressing "' + txt(okay[0]) + '"');
@@ -746,6 +758,7 @@ async function runLoop() {
 
     let settings   = await RULES.settings();
     const ticked   = await RULES.tickedSkus(FILTER_ID);
+    const blocked  = await RULES.blockedSkus(FILTER_ID);
 
     // Says "still alive" every 45 seconds on its own timer, so a run that is
     // merely slow in a throttled tab is never mistaken for a dead one and cleared
@@ -763,9 +776,10 @@ async function runLoop() {
     }, 30000);
 
     await log('START — accepting ' + (s0.limit >= 100000 ? 'every order that qualifies' : 'up to ' + s0.limit) + ', '
-      + (settings.onlyTickedSkus
-          ? (ticked.length ? ticked.length + ' SKU(s) ticked' : 'NO SKUs ticked, so nothing is allowed')
-          : 'any SKU')
+      + (ticked.length ? ticked.length + ' SKU(s) ticked'
+          : blocked.length ? 'every SKU except the ' + blocked.length + ' you said never'
+          : settings.onlyTickedSkus ? 'NO SKUs ticked, so nothing is allowed' : 'any SKU')
+      + (ticked.length && blocked.length ? ' (and ' + blocked.length + ' never)' : '')
       + ', due within ' + settings.dueWithinDays + ' day(s)'
       + (settings.includeBreached ? ', late ones included' : ', late ones left alone'));
 
@@ -839,7 +853,7 @@ async function runLoop() {
       // Freshly this turn: the tally can have moved since the last order, and the
       // caps are what the seller may have just changed in the panel.
       const tally = await RULES.tallyToday(PORTAL, Date.now());
-      const ctx   = { ticked, settings, caps: await RULES.caps(PORTAL), tally, now: Date.now() };
+      const ctx   = { ticked, blocked, settings, caps: await RULES.caps(PORTAL), tally, now: Date.now() };
 
       const picks = [];
       for (const r of read.rows) {
@@ -982,6 +996,7 @@ async function scanSkus() {
   const all    = (await chrome.storage.local.get(RULES.FILTER_KEY))[RULES.FILTER_KEY] || {};
   const ticked = all[FILTER_ID] || [];
   const capMap = await RULES.caps(PORTAL);
+  const never  = await RULES.blockedSkus(FILTER_ID);
 
   skuBox.textContent = '';
   for (const [sku, n] of sorted) {
@@ -1001,7 +1016,14 @@ async function scanSkus() {
     if (Number.isFinite(capMap[sku]) && capMap[sku] >= 0) cap.value = String(capMap[sku]);
     const cnt = document.createElement('b');
     cnt.textContent = n + (n === 1 ? ' order' : ' orders');
-    line.appendChild(cb); line.appendChild(name); line.appendChild(cap); line.appendChild(cnt);
+    // The "do NOT accept" list. Ticked here = never taken, whatever else is set.
+    const blk = document.createElement('input');
+    blk.type = 'checkbox'; blk.className = 'blk'; blk.dataset.sku = sku;
+    blk.checked = never.indexOf(sku) !== -1;
+    blk.title = 'Never accept this SKU';
+    const nv = document.createElement('i'); nv.textContent = ' never';
+    line.appendChild(cb); line.appendChild(name); line.appendChild(blk); line.appendChild(nv);
+    line.appendChild(cap); line.appendChild(cnt);
     skuBox.appendChild(line);
   }
   skuBox.style.display = sorted.length ? 'block' : 'none';
@@ -1015,11 +1037,13 @@ async function scanSkus() {
 }
 
 async function saveTicks() {
-  const skus = [...skuBox.querySelectorAll('input[type=checkbox]')]
+  const skus = [...skuBox.querySelectorAll('input[type=checkbox]:not(.blk)')]
     .filter(c => c.checked).map(c => c.dataset.sku);
-  const all = (await chrome.storage.local.get(RULES.FILTER_KEY))[RULES.FILTER_KEY] || {};
-  all[FILTER_ID] = skus;
-  await chrome.storage.local.set({ [RULES.FILTER_KEY]: all });
+  const nev = [...skuBox.querySelectorAll('input.blk')];
+  const never = await RULES.saveBlocked(FILTER_ID, nev.map(b => b.dataset.sku),
+    nev.filter(b => b.checked).map(b => b.dataset.sku));
+  await RULES.saveTicked(FILTER_ID,
+    [...skuBox.querySelectorAll('input[type=checkbox]:not(.blk)')].map(c => c.dataset.sku), skus);
 
   // ⚠️ ONLY THE SKUs ON SCREEN. Writing this list over the whole map deleted the
   // cap on every SKU that had sold out for the day, and a deleted cap reads as
@@ -1032,7 +1056,7 @@ async function saveTicks() {
   }
   const caps = await RULES.saveCaps(PORTAL, visible, values);
   await log('saved — ' + (skus.length ? skus.length + ' SKU(s) ticked' : 'nothing ticked')
-    + ', ' + Object.keys(caps).length + ' with a daily limit.');
+    + ', ' + never.length + ' never to accept, ' + Object.keys(caps).length + ' with a daily limit.');
   await preview();
 }
 
@@ -1044,6 +1068,7 @@ async function preview() {
   const settings = await RULES.settings();
   const ctx = {
     ticked: await RULES.tickedSkus(FILTER_ID),
+    blocked: await RULES.blockedSkus(FILTER_ID),
     settings,
     caps:   await RULES.caps(PORTAL),
     tally:  await RULES.tallyToday(PORTAL, Date.now()),
@@ -1118,8 +1143,9 @@ function buildPanel() {
   const hint = document.createElement('div');
   hint.className = 'hint';
   hint.textContent = 'Tick the SKUs a round may accept, and put a number beside one to cap '
-    + 'how many of it you will take in a day. Blank means no cap. Nothing ticked means nothing '
-    + 'is accepted at all.';
+    + 'how many of it you will take in a day. Blank means no cap. Tick "never" beside a SKU to '
+    + 'keep it out; if you only use "never", everything else is taken. Nothing ticked and no '
+    + '"never" means nothing is accepted at all.';
   body.appendChild(hint);
 
   const r2 = document.createElement('div'); r2.className = 'row';

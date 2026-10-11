@@ -160,12 +160,15 @@ chrome.storage.local.get(['kcAutoAccept', 'kcOrdersFilter']).then(res => {
   if (!on) { badge.className = 'off'; badge.textContent = 'Off'; return; }
   const filter = res.kcOrdersFilter || {};
   const ticked = (filter.accept || []).length + (filter.meeshoAccept || []).length;
+  const never  = (filter.acceptBlock || []).length + (filter.meeshoAcceptBlock || []).length;
   const onlyTicked = s.onlyTickedSkus !== false;
-  if (onlyTicked && !ticked) {
+  if (onlyTicked && !ticked && !never) {
     badge.className   = 'off';
     badge.textContent = 'On, but no SKUs ticked — nothing will be accepted';
     return;
   }
   badge.className   = 'on';
-  badge.textContent = onlyTicked ? 'On — ' + ticked + ' SKU(s) ticked' : 'On — any SKU';
+  badge.textContent = ticked ? 'On — ' + ticked + ' SKU(s) ticked'
+    : never ? 'On — everything except ' + never + ' SKU(s)'
+    : onlyTicked ? 'On — ' + ticked + ' SKU(s) ticked' : 'On — any SKU';
 });

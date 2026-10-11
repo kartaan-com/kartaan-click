@@ -210,15 +210,47 @@ async function tickedSkus(filterId) {
   return all[filterId] || [];
 }
 
-function allowedBySku(sku, ticked, s) {
-  if (!s.onlyTickedSkus) return { ok: true, why: 'you accept any SKU' };
-  if (!ticked.length) {
-    return { ok: false, why: 'no SKUs are ticked yet, so nothing is allowed — '
-      + 'press Scan SKUs on the orders page and tick the ones you are happy to take' };
+// The "do NOT accept" list lives in the same record under "<id>Block" — one more
+// list, not one more place. (1.6.4)
+async function blockedSkus(filterId) {
+  const all = (await chrome.storage.local.get(FILTER_KEY))[FILTER_KEY] || {};
+  return all[filterId + 'Block'] || [];
+}
+
+// ⚠️ MERGE, NEVER REPLACE — same reason as saveCaps. The panel only shows the SKUs
+// waiting right now; replacing the list with what is on screen would quietly drop the
+// block on a SKU that has sold out, and a SKU off the list is a SKU that is accepted.
+// The ACCEPT list needs the same care since 1.6.4: an empty accept list used to mean
+// "nothing", but next to a do-not list it now means "everything else", so a Save that
+// wiped the SKUs not on screen would widen what is accepted.
+async function saveSkuList(key, visibleSkus, checkedSkus) {
+  const all  = (await chrome.storage.local.get(FILTER_KEY))[FILTER_KEY] || {};
+  const kept = (all[key] || []).filter(k => visibleSkus.indexOf(k) === -1);
+  all[key] = kept.concat(checkedSkus);
+  await chrome.storage.local.set({ [FILTER_KEY]: all });
+  return all[key];
+}
+const saveBlocked = (filterId, visible, checked) => saveSkuList(filterId + 'Block', visible, checked);
+const saveTicked  = (filterId, visible, checked) => saveSkuList(filterId, visible, checked);
+
+// His rule (11 Oct), the same on every portal:
+//   only an accept list  -> only those
+//   only a do-not list   -> everything except those
+//   both                 -> accepted AND not blocked
+//   neither              -> nothing, unless the seller switched "only ticked" off
+// A SKU on the do-not list is refused whatever else is true.
+function allowedBySku(sku, ticked, s, blocked) {
+  blocked = blocked || [];
+  if (blocked.indexOf(sku) !== -1) return { ok: false, why: 'this SKU is on your do-not-accept list' };
+  if (ticked.length) {
+    return ticked.indexOf(sku) !== -1
+      ? { ok: true,  why: 'you ticked this SKU' }
+      : { ok: false, why: 'this SKU is not ticked' };
   }
-  return ticked.indexOf(sku) !== -1
-    ? { ok: true,  why: 'you ticked this SKU' }
-    : { ok: false, why: 'this SKU is not ticked' };
+  if (blocked.length) return { ok: true, why: 'you only listed SKUs not to accept, and this is not one' };
+  if (!s.onlyTickedSkus) return { ok: true, why: 'you accept any SKU' };
+  return { ok: false, why: 'no SKUs are ticked yet, so nothing is allowed — '
+    + 'press Scan SKUs on the orders page and tick the ones you are happy to take' };
 }
 
 // ── the per-SKU cap ─────────────────────────────────────────────────────────
@@ -362,7 +394,7 @@ function allowedByDayTotal(s, tally, want) {
 // and whatever the Flipkart row's "Accept All N Order(s)" button says.
 function decide(order, ctx) {
   const want   = countOrRefuse(order.count);
-  const bySku  = allowedBySku(order.sku, ctx.ticked, ctx.settings);
+  const bySku  = allowedBySku(order.sku, ctx.ticked, ctx.settings, ctx.blocked);
   const byDate = allowedByDate(order.due, ctx.settings, ctx.now);
   const byCap  = allowedByCap(order.sku, ctx.caps, ctx.tally, want);
   const byDay  = allowedByDayTotal(ctx.settings, ctx.tally, want);
@@ -377,7 +409,7 @@ function decide(order, ctx) {
 
 return {
   SETTINGS_KEY, CAPS_KEY, FILTER_KEY, DEFAULTS,
-  settings, tickedSkus, caps, saveCaps, tallyToday, noteAccepted,
+  settings, tickedSkus, blockedSkus, saveBlocked, saveTicked, caps, saveCaps, tallyToday, noteAccepted,
   readDue, allowedByDate, allowedBySku, allowedByCap, allowedByDayTotal, decide,
   dayStamp, daysBetween,
 };

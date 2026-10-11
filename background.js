@@ -1405,7 +1405,8 @@ async function startAcceptRun(key, s) {
   const state = key === 'flipkart'
     ? { mode: 'accept', running: true, started: false, dryRun: false, auto: true,
         limit: runLimit(s), done: 0, failed: 0, reloads: 0,
-        startedAt: Date.now(), ts: Date.now() }
+        startedAt: Date.now(), ts: Date.now(),
+        ownWindow: tab.windowId === await ownWindowId(key) }
     : { running: true, started: false, dryRun: false, auto: true, limit: runLimit(s),
         done: 0, failed: 0, startedAt: Date.now(), ts: Date.now(),
         ownWindow: tab.windowId === await ownWindowId(key) };
@@ -1460,7 +1461,9 @@ async function startAcceptPasses() {
         CHECKIN_SITES[key].name);
       continue;
     }
-    if (s.onlyTickedSkus && !((ticked[TICK_KEY[key]] || []).length)) {
+    // A do-not-accept list on its own is enough: everything else is then taken.
+    if (s.onlyTickedSkus && !((ticked[TICK_KEY[key]] || []).length)
+        && !((ticked[TICK_KEY[key] + 'Block'] || []).length)) {
       // Through sayOnce like the other two — this is the state right after switching
       // the feature on, so it is the one that would actually flood the list.
       await sayOnce(key + '-nosku',

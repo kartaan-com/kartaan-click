@@ -625,7 +625,8 @@ function buildPanel(mode) {
         // — because a filter nobody has filled in must never be read as consent.
         + '  <div class="hint" id="__kcHint">Scan first, then tick the SKUs.<br>'
         + '<b>Start</b> (by hand): nothing ticked = all of them.<br>'
-        + '<b>Accepting on its own</b>: nothing ticked = nothing accepted. Put a number '
+        + '<b>Accepting on its own</b>: nothing ticked and nothing in "never" = nothing accepted. '
+        + 'Tick "never" beside a SKU to keep it out; if only "never" is used, everything else is taken. Put a number '
         + 'beside a SKU to cap how many of it you will take in one day; blank means no cap. '
         + 'Press <b>Save ticks</b> to keep them without starting a run.</div>'
         + '  <div class="row"><button id="__kcAutoPreview">What a round would do now</button></div>'
@@ -790,7 +791,13 @@ function buildPanel(mode) {
     }
     const dryRun = DRY_RUN;
     const limit  = parseInt(panel.querySelector('#__kcLimit').value, 10) || 1;
-    if (mode.skuFilter) await setFilter(mode, tickedSkus());
+    // By hand, nothing ticked means "all of them", so the list is replaced as it always
+    // was — except when a do-not list exists, where a wiped accept list would widen what
+    // a round takes, so it is merged instead.
+    if (mode.skuFilter) {
+      if (RULES && (await RULES.blockedSkus(mode.id)).length) await saveTickedMerged(mode);
+      else await setFilter(mode, tickedSkus());
+    }
     const picked = mode.skuFilter ? await getFilter(mode) : [];
     await chrome.storage.local.set({ [LOG_KEY]: [] });
     await setState({
@@ -824,16 +831,23 @@ function buildPanel(mode) {
   };
 }
 
+// Merged, not replaced — see RULES.saveSkuList. Only the SKUs on screen are changed.
+async function saveTickedMerged(mode) {
+  if (!skuBox || !RULES) { await setFilter(mode, tickedSkus()); return; }
+  const visible = [...skuBox.querySelectorAll('input[type=checkbox]:not(.blk)')].map(c => c.dataset.sku);
+  await RULES.saveTicked(mode.id, visible, tickedSkus());
+}
+
 function tickedSkus() {
   if (!skuBox) return [];
-  return [...skuBox.querySelectorAll('input[type=checkbox]')]
+  return [...skuBox.querySelectorAll('input[type=checkbox]:not(.blk)')]
     .filter(c => c.checked).map(c => c.dataset.sku);
 }
 
 // AUTO. Puts the ticks and the daily caps away without starting anything.
 async function saveTicksAndCaps(mode) {
   if (!skuBox) return;
-  await setFilter(mode, tickedSkus());
+  await saveTickedMerged(mode);
   // ⚠️ ONLY THE SKUs ON SCREEN ARE CHANGED. The panel can only show what is
   // waiting on the tab right now, so writing that list over the whole map deleted
   // the cap on every SKU that had already sold out for the day — and a deleted cap
@@ -849,8 +863,11 @@ async function saveTicksAndCaps(mode) {
   }
   const caps = RULES ? await RULES.saveCaps(AUTO_PORTAL, visible, values) : {};
   const ticked = tickedSkus();
+  const boxes  = [...skuBox.querySelectorAll('input.blk')];
+  const never  = RULES ? await RULES.saveBlocked(mode.id, boxes.map(b => b.dataset.sku),
+    boxes.filter(b => b.checked).map(b => b.dataset.sku)) : [];
   await log('saved — ' + (ticked.length ? ticked.length + ' SKU(s) ticked' : 'nothing ticked')
-    + ', ' + Object.keys(caps).length + ' with a daily limit.');
+    + ', ' + never.length + ' never to accept, ' + Object.keys(caps).length + ' with a daily limit.');
   await autoPreview(mode);
 }
 
@@ -870,7 +887,7 @@ async function autoPreview(mode) {
   const ticked = await RULES.tickedSkus(mode.id);
   const caps   = await RULES.caps(AUTO_PORTAL);
   const tally  = await RULES.tallyToday(AUTO_PORTAL, Date.now());
-  const ctx    = { ticked, settings: s, caps, tally, now: Date.now() };
+  const ctx    = { ticked, blocked: await RULES.blockedSkus(mode.id), settings: s, caps, tally, now: Date.now() };
   let orders = 0, presses = 0;
   const no = new Map();
   for (const r of actionRowButtons(mode)) {
@@ -1124,6 +1141,7 @@ async function scanSkus(mode) {
   // AUTO. The daily caps already saved, so re-scanning does not wipe them.
   const showCaps = RULES && mode.id === 'accept';
   const capMap = showCaps ? await RULES.caps(AUTO_PORTAL) : {};
+  const never  = showCaps ? await RULES.blockedSkus(mode.id) : [];
 
   skuBox.innerHTML = '';
   for (const [sku, n] of sorted) {
@@ -1154,6 +1172,15 @@ async function scanSkus(mode) {
     const cnt = document.createElement('b');
     cnt.textContent = n + (n === 1 ? ' order' : ' orders');
     line.appendChild(cb); line.appendChild(name);
+    if (showCaps) {
+      // The "do NOT accept" list. Ticked here = never taken, whatever else is set.
+      const blk = document.createElement('input');
+      blk.type = 'checkbox'; blk.className = 'blk'; blk.dataset.sku = sku;
+      blk.checked = never.indexOf(sku) !== -1;
+      blk.title = 'Never accept this SKU on its own';
+      const nv = document.createElement('i'); nv.textContent = ' never';
+      line.appendChild(blk); line.appendChild(nv);
+    }
     if (cap) line.appendChild(cap);
     line.appendChild(cnt);
     skuBox.appendChild(line);
@@ -1408,6 +1435,261 @@ function tellTheRoundLog(entry) {
   } catch (e) { /* the worker is asleep — the panel log still has it */ }
 }
 
+// ── bulk accepting (1.6.4) ──────────────────────────────────────────────────
+// The way Meesho 1.6.3 does it: tick ONLY the rows that pass the rules (never a blind
+// select-all), press the ONE blue "Accept N Orders" button top-right, press the
+// confirmation if a box comes up, then check the count really went down.
+//
+// ⚠️ THE BOX THAT COMES UP AFTER THAT BUTTON HAS NOT BEEN SEEN YET. So nothing in it
+// is pressed unless exactly one button in it is whole-label one of a short list; any
+// other box is written to the log word for word and the run stops. Never loosen that.
+const FK_BULK = true;
+const MAX_BATCH_FAILS = 2;           // batches in a row that cleared nothing
+
+const BOX_SEL = 'input[type="checkbox"], [role="checkbox"]';
+const boxOn = c => (c.type === 'checkbox' ? c.checked : c.getAttribute('aria-checked') === 'true');
+const innermost = list => list.filter(e => !list.some(o => o !== e && e.contains(o)));
+
+// The tick-box on one row: the only one inside the row's box, widening up to three
+// boxes while a wider one still holds just this row's SKU. More than one, or none:
+// null — and that row is left alone.
+function rowBox(pick) {
+  let n = pick.ctx.node;
+  for (let i = 0; i < 4 && n; i++, n = n.parentElement) {
+    // ⚠️ THE "MORE THAN ONE ROW" TEST COMES FIRST. A wider box that holds two rows and
+    // only one tick-box would otherwise hand back the OTHER row's box.
+    if ((rawTxt(n).match(/SKU ?ID/gi) || []).length > 1) return null;
+    const b = [...n.querySelectorAll(BOX_SEL)].filter(c => !(panel && panel.contains(c)));
+    if (b.length === 1) return b[0];
+    if (b.length > 1) return null;
+  }
+  return null;
+}
+
+// ⚠️ A TICK-BOX GETS ONE CLICK, NOT humanClick — a pretend click plus a real one is two
+// toggles, and the box ends up as it started (the Meesho 1.6.3 lesson). If one click
+// changes nothing, the label around it is tried once.
+async function toggleBox(c) {
+  const was = boxOn(c);
+  c.scrollIntoView({ block: 'center' });
+  await sleep(rand(300, 800));
+  c.click();
+  await sleep(rand(250, 600));
+  if (boxOn(c) === was) {
+    const lab = c.closest('label');
+    if (lab) { lab.click(); await sleep(rand(250, 600)); }
+  }
+}
+
+// Read-only: writes down whatever Flipkart has put on top of the page and every
+// button in it, so a box nobody has seen yet can be understood from the log.
+async function dumpOverlays(label) {
+  try {
+    const over = [...document.querySelectorAll('body *')].filter(el => {
+      if (panel && panel.contains(el)) return false;
+      if (!isVisible(el) || !txt(el)) return false;
+      return getComputedStyle(el).position === 'fixed'
+        || el.matches('[role="dialog"], [role="alert"], [role="status"], [aria-modal="true"]');
+    });
+    const found = innermost(over).slice(0, 6);
+    if (!found.length) { await log('  ' + label + ': nothing extra on screen'); return; }
+    for (const el of found) {
+      const bs = [...el.querySelectorAll('button, [role="button"]')].filter(isVisible)
+        .map(b => '"' + txt(b) + '"').join(', ');
+      await log('  ' + label + ': "' + txt(el).slice(0, 200) + '"' + (bs ? ' — buttons: ' + bs : ''));
+    }
+  } catch (e) { /* diagnostics only */ }
+}
+
+// The blue "Accept 9 Orders" button — whole label, outside every row.
+function bulkAcceptButtons(rows) {
+  return innermost([...document.querySelectorAll('button, [role="button"]')]
+    .filter(b => /^accept \d+ orders?$/i.test(txt(b)) && isVisible(b) && !isDisabled(b)
+      && !(panel && panel.contains(b)) && !rows.some(r => r.ctx.node.contains(b))));
+}
+
+const CONFIRM_BTN = ['accept', 'accept order', 'accept orders', 'confirm', 'yes', 'yes, accept',
+  'proceed', 'submit', 'continue'];
+
+const ordersOn = list => list.reduce((n, r) => n + (r.count || 0), 0);
+
+// Returns 'next' | 'stop'. The reason has already been written when it says stop.
+async function runBatchFk(mode, s, candidates, rows, rules) {
+  const stopRun = async why => {
+    const live = (await getState()) || s;
+    live.running = false; await setState(live); await log(why);
+    return 'stop';
+  };
+
+  // The room left in this run and the per-SKU / day limits, worked out AGAINST EACH
+  // OTHER: every row added counts toward the next row's limit.
+  const t0   = await RULES.tallyToday(AUTO_PORTAL, Date.now());
+  const caps = await RULES.caps(AUTO_PORTAL);
+  const sim  = { skus: { ...(t0.skus || {}) }, total: t0.total || 0 };
+  const batch = [];
+  let used = 0;
+  for (const r of candidates) {
+    if (used + r.count > s.limit - s.done) continue;
+    if (!RULES.allowedByCap(r.sku, caps, sim, r.count).ok
+        || !RULES.allowedByDayTotal(rules, sim, r.count).ok) continue;
+    const cb = rowBox(r);
+    if (!cb) { await log('leaving alone: ' + r.sku + ' — no single tick-box found on its row'); continue; }
+    batch.push({ ...r, cb });
+    sim.skus[r.sku] = (sim.skus[r.sku] || 0) + r.count; sim.total += r.count; used += r.count;
+  }
+  if (!batch.length) {
+    return stopRun('STOPPED — rows pass the rules but none has a tick-box this tool can use. '
+      + 'Nothing was touched. Press Probe and send me the log.');
+  }
+  const n = ordersOn(batch);
+  for (const r of batch) await log('tick ' + r.sku + ' — ' + r.count + ' order(s)');
+
+  // Tick exactly the batch and nothing else, including the header "select all". The
+  // page opens with everything ticked ("9/9 groups selected"), so that box is cleared
+  // first (it comes first on the page) and then each wanted row is ticked.
+  const boxes = batch.map(r => r.cb);
+  // Only inside the area that holds the "N/M groups selected" bar and the rows — never
+  // a filter or settings tick-box elsewhere on the page.
+  const bar = innermost([...document.querySelectorAll('div, span')]
+    .filter(e => holds(e, 'groups selected') && /groups? selected/i.test(txt(e)) && txt(e).length < 60))[0];
+  let scope = bar;
+  while (scope && !scope.contains(rows[0].ctx.node)) scope = scope.parentElement;
+  if (!scope) {
+    return stopRun('STOPPED — could not find the "groups selected" bar above the rows. '
+      + 'Nothing was ticked or pressed. Press Probe and send me the log.');
+  }
+  const others = () => [...scope.querySelectorAll(BOX_SEL)]
+    .filter(c => boxOn(c) && boxes.indexOf(c) === -1 && !(panel && panel.contains(c)));
+  for (let i = 0; i < 12; i++) {
+    const o = others();
+    if (!o.length) break;
+    await toggleBox(o[0]);
+    await sleep(rand(400, 900));
+  }
+  for (const c of boxes) if (!boxOn(c)) await toggleBox(c);
+
+  // Only OTHER ROWS count as strays now: with every row wanted Flipkart may tick the
+  // header itself. The "N/M groups selected" line below is the check on everything else.
+  const rowBoxes = rows.map(rowBox).filter(Boolean);
+  const stray  = rowBoxes.filter(c => boxOn(c) && boxes.indexOf(c) === -1).length;
+  const missed = boxes.filter(c => !boxOn(c)).length;
+  if (stray || missed) {
+    return stopRun('STOPPED — could not get exactly the wanted rows ticked (' + missed
+      + ' did not tick, ' + stray + ' others are ticked). Nothing was pressed.');
+  }
+  const said = rawTxt(document.body).match(/(\d+)\s*\/\s*\d+\s*groups? selected/i);
+  if (!said || parseInt(said[1], 10) !== batch.length) {
+    return stopRun('STOPPED — Flipkart says ' + (said ? said[1] : 'no count of') + ' groups selected but '
+      + batch.length + ' rows were ticked. Nothing was pressed.');
+  }
+  const bulk = bulkAcceptButtons(rows);
+  if (bulk.length !== 1) {
+    return stopRun('STOPPED — expected ONE blue "Accept N Orders" button and found ' + bulk.length
+      + (bulk.length ? ': ' + bulk.map(b => '"' + txt(b) + '"').join(', ') : '')
+      + '. Nothing was pressed. Press Probe and send me the log.');
+  }
+  // The button says how many ORDERS it takes; it must be what was decided.
+  const btnN = parseInt((txt(bulk[0]).match(/\d+/) || [])[0], 10);
+  if (btnN !== n) {
+    return stopRun('STOPPED — the button says "' + txt(bulk[0]) + '" but ' + n
+      + ' order(s) were chosen. Nothing was pressed.');
+  }
+
+  // Ticking took seconds: ask again whether this is still allowed.
+  const live = await getState();
+  const st2  = await RULES.settings();
+  if (!live || !live.running || !st2.enabled || !st2.sites[AUTO_PORTAL] || isLoggedOut() || currentMode() !== mode) {
+    return stopRun('STOPPED — switched off or left the page while ticking. Nothing was pressed.');
+  }
+
+  const bySku = {}, skuBefore = {};
+  for (const r of batch) bySku[r.sku] = (bySku[r.sku] || 0) + r.count;
+  for (const r of rows) skuBefore[r.sku] = (skuBefore[r.sku] || 0) + (r.count || 0);
+  const before = readPendingCount(mode);
+  const modalsBefore = new Set(openModals());
+
+  await log('pressing "' + txt(bulk[0]) + '"');
+  await humanClick(bulk[0], { native: true });
+
+  let unknownBox = false;
+  const box = await waitFor(() => {
+    const fresh = openModals().filter(m => !modalsBefore.has(m));
+    return fresh.length ? innermost(fresh)[0] : null;
+  }, 6000);
+  if (box) {
+    const btns = innermost([...box.querySelectorAll('button, [role="button"]')]
+      .filter(b => isVisible(b) && !isDisabled(b) && CONFIRM_BTN.indexOf(txt(b).toLowerCase()) !== -1
+        && !rows.some(r => r.ctx.node.contains(b))));
+    if (btns.length !== 1) {
+      // The orders may have gone through anyway (a toast is "a box" too), so the count
+      // below is still read and counted — and only THEN does the run stop.
+      await dumpOverlays('a box came up and nothing in it was pressed');
+      unknownBox = true;
+    } else {
+      await log('box came up — pressing "' + txt(btns[0]) + '"');
+      await sleep(rand(600, 1400));
+      await humanClick(btns[0], { native: true });
+    }
+  } else {
+    await dumpOverlays('no box after the button');
+  }
+
+  // Did it go? The tab's own count dropping is the answer — waited for, then read twice.
+  await sleep(rand(1500, 2500));
+  await dumpOverlays('after the press');
+  const fell = await waitFor(() => {
+    const a = readPendingCount(mode);
+    return (before != null && a != null && a < before) ? true : null;
+  }, 20000);
+  let last = readPendingCount(mode);
+  for (let i = 0; i < 4; i++) {
+    await sleep(2000);
+    const now = readPendingCount(mode);
+    if (now === last) break;
+    last = now;
+  }
+  const after = last;
+  const skuAfter = {};
+  for (const r of actionRowButtons(mode)) skuAfter[r.sku] = (skuAfter[r.sku] || 0) + (r.count || 0);
+
+  const cleared = (before != null && after != null) ? Math.max(0, before - after) : null;
+  let counted = {};
+  if (cleared !== null && cleared >= n) counted = { ...bySku };
+  else {
+    for (const sku of Object.keys(bySku)) {
+      const c = Math.min(bySku[sku], Math.max(0, (skuBefore[sku] || 0) - (skuAfter[sku] || 0)));
+      if (c) counted[sku] = c;
+    }
+  }
+  let accepted = 0;
+  for (const sku of Object.keys(counted)) {
+    const t = await RULES.noteAccepted(AUTO_PORTAL, sku, Date.now(), counted[sku]);
+    accepted += counted[sku];
+    await log('  accepted ' + counted[sku] + ' of ' + sku + '. ' + t.forSku + ' of it today, '
+      + t.total + ' on Flipkart today.');
+    tellTheRoundLog({ accepted: counted[sku], sku, due: liveGroupLabel() });
+  }
+  await log('batch: ' + accepted + ' of ' + n + ' cleared (waiting count '
+    + (before == null ? '?' : before) + ' → ' + (after == null ? '?' : after) + ')'
+    + (fell ? '.' : ' — the count never fell.'));
+
+  const s2 = await getState();
+  if (!s2 || !s2.running) return 'stop';
+  if (unknownBox) {
+    s2.done = (s2.done || 0) + accepted; await setState(s2);
+    return stopRun('STOPPED — a box came up after the button and it was not one this knows. '
+      + 'Nothing more was pressed. Send me the lines above.');
+  }
+  s2.done = (s2.done || 0) + accepted;
+  s2.failed = (s2.failed || 0) + (accepted ? 0 : 1);
+  s2.batchFails = accepted ? 0 : (s2.batchFails || 0) + 1;
+  await setState(s2);
+  if (s2.batchFails >= MAX_BATCH_FAILS) {
+    return stopRun('STOPPED — ' + MAX_BATCH_FAILS + ' batches in a row cleared nothing.');
+  }
+  return 'next';
+}
+
 // ── main loop ───────────────────────────────────────────────────────────────
 let looping = false;
 
@@ -1427,6 +1709,7 @@ async function runLoop(mode) {
     let sectionHop  = 0;   // and how far through the tab's sections
     const filter    = mode.skuFilter ? await getFilter(mode) : [];
     const wanted    = new Set(filter);
+    const never     = new Set(mode.skuFilter && RULES ? await RULES.blockedSkus(mode.id) : []);
 
     // ── AUTO ─────────────────────────────────────────────────────────────────
     // All of this sits idle unless a round started the run. `autoRules` staying
@@ -1480,16 +1763,17 @@ async function runLoop(mode) {
       autoRules = await RULES.settings();
       autoCaps  = await RULES.caps(AUTO_PORTAL);
       await log('this run was started by a round — '
-        + (autoRules.onlyTickedSkus
-            ? (wanted.size ? wanted.size + ' SKU(s) ticked' : 'NO SKUs ticked, so nothing is allowed')
-            : 'any SKU')
+        + (wanted.size ? wanted.size + ' SKU(s) ticked'
+            : never.size ? 'every SKU except the ' + never.size + ' you said never'
+            : autoRules.onlyTickedSkus ? 'NO SKUs ticked, so nothing is allowed' : 'any SKU')
+        + (wanted.size && never.size ? ' (and ' + never.size + ' never)' : '')
         + ', due within ' + autoRules.dueWithinDays + ' day(s)'
         + (autoRules.includeBreached ? ', late ones included' : ', late ones left alone')
         + ', at most ' + s0.limit + ' this time.');
       // Nothing is ticked and the seller said only ticked SKUs may be taken. Stop
       // before touching anything rather than working out one order at a time that
       // the answer is no.
-      if (autoRules.onlyTickedSkus && !wanted.size) {
+      if (autoRules.onlyTickedSkus && !wanted.size && !never.size) {
         s0.running = false; await setState(s0);
         await log('STOPPED — no SKUs are ticked, so a round is not allowed to accept anything. '
           + 'Press Scan SKUs, tick the ones you are happy to take, then Save ticks.');
@@ -1538,7 +1822,9 @@ async function runLoop(mode) {
       // hold did nothing. Stopping frees the portal at once and the next round picks
       // the work up when he has moved on. `hasFocus` as well as `visible`, so a tab
       // left showing in a window behind the editor does not count as being read.
-      if (isAuto && document.visibilityState === 'visible' && document.hasFocus()) {
+      // In Click's OWN window (s.ownWindow, set by the worker for a window it opened
+      // itself) nobody is reading this tab, so being in focus is the plan. (1.6.4)
+      if (isAuto && !s.ownWindow && document.visibilityState === 'visible' && document.hasFocus()) {
         s.running = false; await setState(s);
         await log('STOPPED — you came to this tab. It will pick this up at the next round.');
         break;
@@ -1604,7 +1890,8 @@ async function runLoop(mode) {
       // Only the ticked SKUs, when a filter is set. The chosen SKUs may sit on a
       // later page, or in another section of the tab, so walk both before
       // concluding there is nothing left.
-      let candidates = wanted.size ? rows.filter(r => wanted.has(r.sku)) : rows;
+      let candidates = (wanted.size ? rows.filter(r => wanted.has(r.sku)) : rows)
+        .filter(r => !never.has(r.sku));
 
       // AUTO. On top of the tick, the seller's daily number for that SKU. Read
       // fresh every time round: the tally moves as this run accepts, and the caps
@@ -1666,6 +1953,13 @@ async function runLoop(mode) {
         break;
       }
       pageHop = 0; sectionHop = 0;   // found work here — start from this spot next time
+
+      if (FK_BULK && isAuto && mode.id === 'accept') {
+        const verdict = await runBatchFk(mode, s, candidates, rows, autoRules);
+        if (verdict === 'stop') break;
+        await humanPause(PACE.betweenOrdersMin, PACE.betweenOrdersMax);
+        continue;
+      }
 
       // Work mostly top-down, but not always the very first row.
       const pick  = candidates[Math.random() < 0.75 ? 0 : rand(0, Math.min(3, candidates.length))];

@@ -3,6 +3,25 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.6.4 — 11 October 2026
+
+**Flipkart now accepts the way Meesho does, and there is a "never" list.** Click ticks only
+the Flipkart rows that pass your rules (never the whole column), presses the blue
+"Accept N Orders" button, presses the confirmation if a box comes up, and checks Flipkart's
+"To Accept" count really went down. The box that comes up after that button has never been
+seen: if it is not one Click knows, nothing in it is pressed and its exact words go to the log.
+
+- **Why Flipkart accepted nothing before:** its run stopped itself three times with "you came
+  to this tab" even though it was in Click's own window. Fixed — in its own window it just
+  carries on.
+- **A "never accept these" list, next to the accept list, on Flipkart and Meesho.** Only an
+  accept list: only those. Only a never list: everything except those. Both: both. Neither:
+  nothing (unless "only ticked" is switched off). Tick "never" beside a SKU after Scan SKUs,
+  then Save. Save no longer wipes saved SKUs that are not on screen at the time.
+- Meesho: the "accepted successfully" message is no longer read from Click's own log, and an
+  old unfinished batch is dropped instead of counted.
+- Not yet seen on a real Flipkart run: the box after the blue button.
+
 ## 1.6.3 — 11 October 2026
 
 **Meesho orders are now accepted the way you do it by hand — and it works.** Tested on
