@@ -589,6 +589,7 @@ function sameDocument(a, b) {
 }
 
 function visitOnce(key, url, reuse) {
+  reuse = null;      // never borrow one of his tabs — see openInOwnWindow
   return new Promise(resolve => {
     const cfg = CHECKIN_SITES[key];
     // Where his own tab was before the round borrowed it, so it can be put back.
@@ -663,9 +664,9 @@ function visitOnce(key, url, reuse) {
         }
       });
     } else {
-      // Opened behind whatever the seller is doing — a round must never take the
-      // screen away from them mid-task.
-      chrome.tabs.create({ url, active: false }, started);
+      // In that portal's own window, opened unfocused — a round must never take
+      // the screen away from them mid-task.
+      openInOwnWindow(key, url).then(started);
     }
   });
 }
@@ -1132,8 +1133,8 @@ async function portalIsInFront(key) {
     const tabs = await chrome.tabs.query({
       url: 'https://' + CHECKIN_SITES[key].host + '/*', active: true, lastFocusedWindow: true,
     });
-    const own = key === 'meesho' ? await meeshoOwnWindowId() : null;
-    return !!(tabs && tabs.filter(t => own == null || t.windowId !== own).length);
+    const own = await ownWindowIds();
+    return !!(tabs && tabs.filter(t => own.indexOf(t.windowId) === -1).length);
   } catch (e) {
     return true;    // cannot tell — assume they are there and leave it alone
   }
@@ -1266,52 +1267,64 @@ async function tabAlreadyOn(key, url) {
 // all — no load, no content script, no run — and on Flipkart the order tab lives
 // after the "#", so changing only that moves the page without loading it. This is
 // the same trap the check-in round hit; the answer is the same one.
-chrome.windows.onRemoved.addListener(async id => {
-  if (id === (await meeshoOwnWindowId())) await chrome.storage.local.remove(MEESHO_WIN);
-});
-chrome.runtime.onStartup.addListener(() => chrome.storage.local.remove(MEESHO_WIN));
+// ⚠️ ONE WINDOW OF ITS OWN PER PORTAL, SAME METHOD AS RUMEE AUTO-SYNC
+// (rumee-auto-sync/background.js getOrCreateRumeeTab). Chrome slows a tab that is
+// not the selected one in its window, so work done in a tab among his own tabs
+// crawls. A window of Click's own, with the working tab selected in it and not
+// minimized, is never slowed — and opening it unfocused leaves his screen alone.
+// Kept per portal because only one tab in a window can be the selected one.
+// Nothing outside these windows is ever borrowed, navigated or closed.
+const CLICK_WINS = 'kcClickWins';          // { meesho: windowId, flipkart: windowId, amazon: windowId }
 
-const MEESHO_WIN = 'kcMeeshoWin';        // the window Click opened for Meesho, if any
-async function meeshoOwnWindowId() {
-  const id = (await chrome.storage.local.get(MEESHO_WIN))[MEESHO_WIN];
-  return Number.isInteger(id) ? id : null;
+async function ownWindowId(key) {
+  const m = (await chrome.storage.local.get(CLICK_WINS))[CLICK_WINS] || {};
+  return Number.isInteger(m[key]) ? m[key] : null;
 }
 
-function openAcceptTab(key, url) {
-  return new Promise(resolve => {
-    const done = tab => resolve(chrome.runtime.lastError || !tab ? null : tab);
-    // ⚠️ THE .catch AT THE END IS LOAD-BEARING. Without it, anything thrown inside
-    // the async callback below left this promise unsettled for ever — and whatever
-    // was awaiting it waited for ever too.
-    knownAcceptTab(key).then(async known => {
-      const reuse = known || await tabAlreadyOn(key, url);
-      if (reuse) {
-        const was = reuse.url;
-        chrome.tabs.update(reuse.id, { url }, tab => {
-          if (chrome.runtime.lastError || !tab) { done(null); return; }
-          if (sameDocument(was, url)) chrome.tabs.reload(tab.id, () => void chrome.runtime.lastError);
-          done(tab);
-        });
-        if (key === 'meesho' && reuse.windowId === await meeshoOwnWindowId()) {
-          chrome.windows.update(reuse.windowId, { focused: true, state: 'maximized' },
-            () => void chrome.runtime.lastError);
-        }
-      } else if (key === 'meesho') {
-        // ⚠️ OWN WINDOW, MAXIMIZED, IN FRONT. Chrome slows a tab that is not the
-        // selected one in its window, and a Meesho accept in such a tab took minutes
-        // (rounds of "0 accepted, 4 attempts did not go through"). A window of its
-        // own with this as its only tab is never slowed. Kept in `kcMeeshoWin` so only
-        // this window is ever treated as Click's own — never a tab he is reading.
-        chrome.windows.create({ url, focused: true, state: 'maximized' }, async win => {
-          if (chrome.runtime.lastError || !win || !win.tabs || !win.tabs[0]) { done(null); return; }
-          await chrome.storage.local.set({ [MEESHO_WIN]: win.id });
-          done(win.tabs[0]);
-        });
-      } else {
-        chrome.tabs.create({ url, active: false }, done);
-      }
-    }).catch(() => resolve(null));
-  });
+async function ownWindowIds() {
+  const m = (await chrome.storage.local.get(CLICK_WINS))[CLICK_WINS] || {};
+  return Object.values(m).filter(Number.isInteger);
+}
+
+// Window ids are handed out again from the bottom each browser session, so a
+// stored id is dropped the moment its window closes and at start-up.
+chrome.windows.onRemoved.addListener(async id => {
+  const m = (await chrome.storage.local.get(CLICK_WINS))[CLICK_WINS] || {};
+  let changed = false;
+  for (const k of Object.keys(m)) if (m[k] === id) { delete m[k]; changed = true; }
+  if (changed) await chrome.storage.local.set({ [CLICK_WINS]: m });
+});
+chrome.runtime.onStartup.addListener(() => chrome.storage.local.remove(CLICK_WINS));
+
+// Puts `url` in that portal's own window and returns the tab (null if it could not).
+async function openInOwnWindow(key, url) {
+  try {
+    const wid = await ownWindowId(key);
+    if (wid != null) {
+      try {
+        const w = await chrome.windows.get(wid, { populate: true });
+        if (w.state === 'minimized') await chrome.windows.update(wid, { state: 'maximized' });
+        const t = (w.tabs || [])[0];
+        if (!t) return await chrome.tabs.create({ url, windowId: wid, active: true });
+        const was = t.url;
+        const tab = await chrome.tabs.update(t.id, { url, active: true });
+        if (sameDocument(was, url)) chrome.tabs.reload(t.id, () => void chrome.runtime.lastError);
+        return tab;
+      } catch (e) { /* window gone — make a new one below */ }
+    }
+    const win = await chrome.windows.create({ url, focused: false, state: 'maximized' });
+    if (!win || !win.tabs || !win.tabs[0]) return null;
+    const m = (await chrome.storage.local.get(CLICK_WINS))[CLICK_WINS] || {};
+    m[key] = win.id;
+    await chrome.storage.local.set({ [CLICK_WINS]: m });
+    return win.tabs[0];
+  } catch (e) {
+    return null;
+  }
+}
+
+async function openAcceptTab(key, url) {
+  return openInOwnWindow(key, url);
 }
 
 // ── starting one portal's run ───────────────────────────────────────────────
@@ -1372,7 +1385,7 @@ async function startAcceptRun(key, s) {
         startedAt: Date.now(), ts: Date.now() }
     : { running: true, started: false, dryRun: false, auto: true, limit: s.maxPerRound,
         done: 0, failed: 0, startedAt: Date.now(), ts: Date.now(),
-        ownWindow: tab.windowId === await meeshoOwnWindowId() };
+        ownWindow: tab.windowId === await ownWindowId(key) };
   await chrome.storage.local.set({ [ACCEPT_STATE_KEY[key]]: state });
   await checkinLog({ site: name, done: [], acceptStart: s.maxPerRound });
 }
@@ -1464,19 +1477,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.type !== 'ACCEPT_LOG') return;
   (async () => {
     const all = (await chrome.storage.local.get(ACCEPT_LOG))[ACCEPT_LOG] || [];
-    if (msg.finished && msg.portal === 'Meesho' && /^DONE/.test(msg.finished)) {
-      // Only the window Click opened itself, only when the run finished cleanly (a
-      // STOPPED window stays open so the page can be looked at), and only if it
-      // still holds nothing but the tab Click opened.
-      const wid = await meeshoOwnWindowId();
-      if (wid != null && sender && sender.tab && sender.tab.windowId === wid) {
-        const tabs = await chrome.tabs.query({ windowId: wid });
-        if (tabs.length === 1 && tabs[0].id === sender.tab.id) {
-          chrome.windows.remove(wid, () => void chrome.runtime.lastError);
-        }
-        await chrome.storage.local.remove(MEESHO_WIN);
-      }
-    }
     all.unshift({ portal: msg.portal, accepted: msg.accepted, sku: msg.sku, due: msg.due,
                   finished: msg.finished, done: msg.done, failed: msg.failed, ts: Date.now() });
     await chrome.storage.local.set({ [ACCEPT_LOG]: pruneLog(all) });
