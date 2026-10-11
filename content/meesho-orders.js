@@ -501,6 +501,23 @@ async function dumpOverlays(label) {
   } catch (e) { /* diagnostics only */ }
 }
 
+// The box Meesho puts up after "Accept Selected Orders" (seen 2026-10-11): title
+// "Accepting orders", text "Once you accept orders it will be moved to the 'Ready to
+// Ship' tab", buttons "Accept Order" and "Close". It is NOT matched by role, only by
+// that title plus a button whose WHOLE label is "Accept Order" — never the row
+// buttons (whose whole label is "Accept") and never "Close".
+function acceptOrderButton(rows) {
+  const btns = [...document.querySelectorAll('button, [role="button"]')]
+    .filter(b => /^accept order$/i.test(txt(b)) && isVisible(b) && !isDisabled(b)
+      && !(panel && panel.contains(b)) && !b.closest('tr') && !rows.some(r => r.tr.contains(b)));
+  const ok = btns.filter(b => {
+    let n = b;
+    for (let i = 0; i < 6 && n; i++) { n = n.parentElement; if (n && /accepting orders/i.test(txt(n))) return true; }
+    return false;
+  });
+  return ok.length === 1 ? ok[0] : null;
+}
+
 // ⚠️ A TICK-BOX GETS ONE CLICK, NOT humanClick. humanClick sends a pretend click and
 // then a real one — fine for a button, but on a tick-box each one toggles it, so
 // the box ended up exactly as it started ("4 did not tick", 2026-10-11 log).
@@ -602,10 +619,17 @@ async function runBatch(s, read, picks, ctx) {
     skuBefore, due: batch[0].due } });
 
   await log('pressing the bottom-right "' + txt(bulk[0]) + '" for ' + batch.length + ' ticked row(s)');
-  const dialogsBefore = openDialogs();
   await humanClick(bulk[0]);
-  const box = await confirmBoxIfAny(dialogsBefore);
-  if (box === 'stuck') { await stop(s, 'STOPPED — see the box above.'); return 'stop'; }
+  const yes = await waitFor(() => acceptOrderButton(read.rows), 6000);
+  if (!yes) {
+    await dumpOverlays('no "Accepting orders" box found');
+    await stop(s, 'STOPPED — the "Accepting orders" box with its "Accept Order" button did not '
+      + 'appear. Nothing more was pressed. Look at the lines above.');
+    return 'stop';
+  }
+  await log('box "Accepting orders" — pressing "Accept Order"');
+  await sleep(rand(600, 1400));
+  await humanClick(yes);
 
   await sleep(rand(1000, 1500));
   await dumpOverlays('1.5s after the press');
