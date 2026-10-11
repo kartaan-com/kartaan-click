@@ -1,5 +1,5 @@
 {
-  "version": "1.6.4",
+  "version": "1.6.5",
   "url": "https://github.com/kartaan-com/kartaan-click/releases/latest/download/kartaan-click.zip",
-  "notes": "Flipkart now accepts the way Meesho does, and there is a \"never\" list."
+  "notes": "Flipkart bulk accept now works on a real run: 10 of 10 orders accepted."
 }
