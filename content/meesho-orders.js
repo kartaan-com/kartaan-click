@@ -175,8 +175,11 @@ function readTableRows(table) {
   }
   const rows = [];
   for (const tr of table.querySelectorAll('tbody tr')) {
+    // ⚠️ A GREYED Accept still makes it an order row: Meesho greys the row's own
+    // Accept while the row is ticked (seen 2026-10-11), and a page that opens with
+    // everything ticked would otherwise read as "no orders".
     const btns = innermost([...tr.querySelectorAll('button, [role="button"]')]
-      .filter(b => /^accept$/i.test(txt(b)) && isVisible(b) && !isDisabled(b)));
+      .filter(b => /^accept$/i.test(txt(b)) && isVisible(b)));
     if (!btns.length) continue;
     const skuCell = cellAt(tr, cols.sku), dueCell = cellAt(tr, cols.due);
     if (!skuCell || !dueCell) continue;                     // spacer / short row
@@ -505,7 +508,12 @@ async function runBatch(s, read, picks, ctx) {
 
   // Tick exactly the batch and nothing else (including any "select all").
   const boxes = batch.map(r => r.cb);
-  for (const c of strayTicks(boxes)) { await humanClick(c); await sleep(rand(200, 500)); }
+  for (let i = 0; i < 12; i++) {
+    const strays = strayTicks(boxes);
+    if (!strays.length) break;
+    await humanClick(strays[0]);        // the header "select all" box flips every row at once
+    await sleep(rand(400, 900));
+  }
   for (const c of boxes) {
     if (!c.checked) { await humanClick(c); await sleep(rand(250, 700)); }
   }
@@ -525,10 +533,12 @@ async function runBatch(s, read, picks, ctx) {
     return 'stop';
   }
 
-  const num = (txt(bulk[0]).match(/\d+/) || [])[0];
-  if (num && parseInt(num, 10) !== batch.length) {
-    await stop(s, 'STOPPED — the bottom-right button says ' + num + ' but ' + batch.length
-      + ' rows were ticked. Nothing was pressed.');
+  // Meesho prints "4/4 Orders Selected" beside the button. It must say exactly how
+  // many rows were ticked — a "select all" that reached beyond this page shows here.
+  const sel = (document.body.innerText.match(/(\d+)\s*\/\s*\d+\s*Orders? Selected/i) || [])[1];
+  if (sel === undefined || parseInt(sel, 10) !== batch.length) {
+    await stop(s, 'STOPPED — Meesho says ' + (sel === undefined ? 'no count of' : sel)
+      + ' orders selected but ' + batch.length + ' rows were ticked. Nothing was pressed.');
     return 'stop';
   }
 

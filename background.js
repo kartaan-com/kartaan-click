@@ -622,6 +622,7 @@ function visitOnce(key, url, reuse) {
         }
         if (result.signedOut) await rememberSignInTab(key, tabId);
       }
+      if (!result.signedOut && !(await acceptRunInProgress(key).catch(() => false))) await closeOwnWindow(key);
       resolve({ ...result, reused: !!reuse });
     };
 
@@ -1324,6 +1325,15 @@ async function openInOwnWindow(key, url) {
   }
 }
 
+// Closes that portal's own window — only ever one Click opened, and only if the
+// tab in it is still Click's. Called when a round or run ends cleanly.
+async function closeOwnWindow(key) {
+  try {
+    const wid = await ownWindowId(key);
+    if (wid != null) await chrome.windows.remove(wid);
+  } catch (e) { /* already gone */ }
+}
+
 async function openAcceptTab(key, url) {
   return openInOwnWindow(key, url);
 }
@@ -1478,6 +1488,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.type !== 'ACCEPT_LOG') return;
   (async () => {
     const all = (await chrome.storage.local.get(ACCEPT_LOG))[ACCEPT_LOG] || [];
+    if (msg.finished && /^DONE/.test(msg.finished)) {
+      const k = String(msg.portal || '').toLowerCase();
+      if (CHECKIN_SITES[k]) await closeOwnWindow(k);
+    }
     all.unshift({ portal: msg.portal, accepted: msg.accepted, sku: msg.sku, due: msg.due,
                   finished: msg.finished, done: msg.done, failed: msg.failed, ts: Date.now() });
     await chrome.storage.local.set({ [ACCEPT_LOG]: pruneLog(all) });
