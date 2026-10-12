@@ -466,6 +466,22 @@ async function scheduleCheckin(reason) {
   if (reason) console.log('[Kartaan Click] next check-in ' + new Date(when).toLocaleString() + ' (' + reason + ')');
 }
 
+// A next-round time that has already passed is never left standing. The computer
+// being off at the moment a round was due (or Chrome being closed, or asleep) loses
+// that round, and the settings page then went on showing a time in the past for
+// good. Whenever this is asked it works the time out fresh from his schedule.
+// It does not look at whether a round is running: a round that is going will set
+// its own next time when it ends, and setting one earlier is harmless.
+async function healCheckinTime() {
+  const s = await checkinSettings();
+  if (!s.enabled) return;
+  const next = (await chrome.storage.local.get(CHECKIN_NEXT))[CHECKIN_NEXT];
+  if (next && Date.now() - next <= 2 * 60 * 1000) return;   // still ahead, or only just due
+  // A round waiting for the computer to be left alone has its own once-a-minute
+  // alarm; it is still waiting, so the time is only re-set, not run.
+  await scheduleCheckin('time had passed — set again');
+}
+
 // ── one round ───────────────────────────────────────────────────────────────
 
 // The tab this round is driving, and the way to finish waiting on it. The content
@@ -753,7 +769,14 @@ async function runCheckinRound(force, waitNote) {
     return;
   }
 
-  if (!await takeRoundLock()) return;   // one already going
+  if (!await takeRoundLock()) {   // one already going
+    await healCheckinTime();   // but a time in the past is still put right
+    return;
+  }
+
+  // The next time is set now, not only when this round ends - a round that is
+  // cut short (computer shut down mid-round) must not leave the old time behind.
+  await healCheckinTime();
 
   // A round is going now, so any round that was waiting for the computer to be
   // left alone is over — whether this is that round or one he started by hand.
@@ -1117,6 +1140,10 @@ chrome.runtime.onInstalled.addListener(() => {
 // and gone — a message, an alarm, a download. Making sure the watchdog exists is
 // cheap and it is the one timer that must never quietly not be there.
 armWatchdog();
+
+// And the time itself, every time the worker starts: after a sleep or a restart
+// this is the first code to run, long before the 15-minute watchdog.
+healCheckinTime().catch(e => console.log('[Kartaan Click] heal: ' + e));
 
 // ─── Accepting orders on the round ───────────────────────────────────────────
 //

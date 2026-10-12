@@ -3,6 +3,13 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.6.7 — 12 October 2026
+
+**A missed round no longer leaves a time in the past.** If the computer was off when a
+round was due, the settings page kept showing that old time and the next round never came
+round. Now, whenever Click wakes up, and at the start of a round you press by hand, a time
+that has already passed is worked out again from your hours and gap. Nothing else changed.
+
 ## 1.6.6 — 11 October 2026
 
 **Check-in rounds wait while you are using the computer.** A timed round only goes once
