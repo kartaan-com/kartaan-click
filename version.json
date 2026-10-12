@@ -1,5 +1,5 @@
 {
-  "version": "1.6.6",
+  "version": "1.6.7",
   "url": "https://github.com/kartaan-com/kartaan-click/releases/latest/download/kartaan-click.zip",
-  "notes": "Check-in rounds wait while you are using the computer."
+  "notes": "A missed round no longer leaves a time in the past."
 }
