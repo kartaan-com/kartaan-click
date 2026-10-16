@@ -85,25 +85,12 @@
   } else {
     // Meesho and Flipkart rename their page styles often, so lean on the structured
     // data and on the section headings the page itself shows.
-    f.title = first('h1');
+    // The page's own heading can be cut short ("...more"); the structured name is whole.
+    f.title = clean(ld && ld.name) || first('h1').replace(/\.{2,}\s*more$/i, '');
+    // Their class names change too often to pick fields out of, so the text the page
+    // shows is included as well: price, MRP, highlights, seller and rating are in it.
+    f.page_text = clean(document.body.innerText);
     f.category = [...document.querySelectorAll('[class*="readcrumb"] a')].map(txt).filter(t => t && t.length < 40).slice(0, 8).join(' > ');
-    const section = (re) => {
-      for (const el of document.querySelectorAll('h1,h2,h3,h4,div,span,p')) {
-        if (el.children.length > 1) continue;
-        const own = clean(el.textContent);
-        if (own.length < 40 && re.test(own)) {
-          let box = el.nextElementSibling || (el.parentElement && el.parentElement.nextElementSibling);
-          if (box) { const t = txt(box); if (t) return t; }
-        }
-      }
-      return '';
-    };
-    f.description = section(/^(product )?description$/i) || section(/^product details$/i);
-    const sp = section(/^specifications?$/i);
-    f.specifications_text = sp;
-    f.highlights_text = section(/^highlights$/i);
-    const sold = [...document.querySelectorAll('div,span,a')].find(e => e.children.length < 2 && /^(sold by|seller)\b/i.test(clean(e.textContent)) && clean(e.textContent).length < 80);
-    f.seller = sold ? clean(sold.textContent).replace(/^(sold by|seller)\s*:?\s*/i, '') : '';
     f.link = '';
   }
 
@@ -152,8 +139,7 @@
   one('description', f.description, 3000);
   uniq(bullets).slice(0, 15).forEach(b => one('bullet', b, 500));
   uniq(specs).slice(0, 60).forEach(s => one('spec', s, 300));
-  one('specifications_text', f.specifications_text, 2500);
-  one('highlights_text', f.highlights_text, 1500);
+  one('page_text', f.page_text, 5000);
   uniq(images).slice(0, 10).forEach(u => one('image', u, 500));
   lines.push('=== END ===');
   return { ok: true, text: lines.join('\n'), title: f.title };
