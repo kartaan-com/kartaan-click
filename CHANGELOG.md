@@ -3,6 +3,15 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.6.8 — 16 October 2026
+
+**New: Copy product details.** Open a product page on Amazon.in, Meesho or Flipkart, open
+Click and press the button. It copies the product's title, price, MRP, description, bullets,
+specifications, category, rating, seller and image links as one block of plain text, ready to
+paste into ChatGPT, Gemini or Claude. It reads only the page you are looking at, only when
+you press the button, and if the page is a robot check it tells you instead of going round it.
+New permissions: `activeTab` and `scripting`.
+
 ## 1.6.7 — 12 October 2026
 
 **A missed round no longer leaves a time in the past.** If the computer was off when a

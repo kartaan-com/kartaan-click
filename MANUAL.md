@@ -674,6 +674,16 @@ one both have it — or close the tab it is working in.
 
 ---
 
+## Tool 5 — Copy product details
+
+Open a product page on Amazon.in, Meesho or Flipkart, click the Kartaan Click icon and press
+**Copy product details**. It says "Copied, now paste it into your chat"; paste into ChatGPT,
+Gemini or Claude. The block starts with `=== KARTAAN CLICK PRODUCT DETAILS v1 ===` and has
+one `field: value` line each for the title, price, MRP, rating, seller, category, description,
+bullets, specifications and image links. It reads only the page in front of you, only when
+you press the button. If the page is a robot check or shows no product, it says so and
+copies nothing. It uses the `activeTab` and `scripting` permissions.
+
 ## Getting updates
 
 Because this is installed from a ZIP rather than from a browser's store, it does
@@ -706,7 +716,9 @@ Nothing leaves your computer, with one exception, described below.
   Downloads folder in the seconds after you press Print Labels — files you
   download yourself are never touched, renamed, moved, or read; and `alarms`,
   which holds the time the next portal check-in is due and nothing else; and
-  `idle`, which only answers whether the computer was used in the last 3 minutes.
+  `idle`, which only answers whether the computer was used in the last 3 minutes; and
+  `activeTab` with `scripting`, used only when you press Copy product details, to read the
+  one product page you are looking at.
 
 **The one exception:** once a day it reads a small public file on
 `raw.githubusercontent.com` — in this extension's own public repository, the same

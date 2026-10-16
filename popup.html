@@ -31,9 +31,10 @@
   .keyrow { display: flex; align-items: center; gap: 8px; }
   kbd { font: 600 12px/1 ui-monospace, Consolas, monospace; background: #eef1f7; border: 1px solid #d3dae6;
         border-bottom-width: 2px; border-radius: 5px; padding: 5px 9px; color: #16233a; }
-  .setting button { font: inherit; font-size: 12px; padding: 5px 10px; border: 1px solid #d3dae6;
+  .tool button, .setting button { font: inherit; font-size: 12px; padding: 5px 10px; border: 1px solid #d3dae6;
         background: #fff; color: #1e3a8a; border-radius: 6px; cursor: pointer; }
-  .setting button:hover { background: #f4f6fa; }
+  .tool button { margin-top: 8px; }
+  .tool button:hover, .setting button:hover { background: #f4f6fa; }
   .hint { font-size: 11px; color: #6b7890; margin-top: 6px; }
   a { color: #1e3a8a; font-weight: 600; text-decoration: none; }
   a:hover { text-decoration: underline; }
@@ -44,8 +45,8 @@
     .setting { border-color: #2a3140; }
     .setting p, .hint { color: #98a3b8; }
     kbd { background: #232936; border-color: #39415280; color: #e8ecf4; }
-    .setting button { background: #1b202a; border-color: #2a3140; color: #8fb0ff; }
-    .setting button:hover { background: #232936; }
+    .tool button, .setting button { background: #1b202a; border-color: #2a3140; color: #8fb0ff; }
+    .tool button:hover, .setting button:hover { background: #232936; }
     .update.muted { color: #98a3b8; background: #1b202a; }
     .update.new { color: #f0d68a; background: #2e2400; border-color: #5a4400; }
     .update .notes { color: #c4ad6e; }
@@ -82,6 +83,13 @@
   <p>On Flipkart and Meesho, accepts the orders waiting for you — but only the SKUs you have ticked, only ones due soon enough, and only up to the daily number you set per SKU. Off until you switch it on, and it accepts nothing until you tick your SKUs.</p>
   <span class="off" id="acceptState">Off</span>
   <div class="hint"><a href="options.html" target="_blank">Settings</a></div>
+</div>
+
+<div class="tool">
+  <h2>Copy product details</h2>
+  <p>Open a product page on Amazon.in, Meesho or Flipkart, press the button, and paste into ChatGPT, Gemini or Claude. It reads only the page you are looking at, only when you press.</p>
+  <button id="copyDetails" type="button">Copy product details</button>
+  <div class="hint" id="copyMsg"></div>
 </div>
 
 <div class="setting">

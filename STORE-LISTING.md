@@ -9,7 +9,7 @@ unless you want to reword it.
    your Microsoft account, and choose the **Microsoft Edge** program.
    There is no fee for Edge — unlike Chrome, which charges $5.
 2. Build the upload file: `node tools/make-zip.js`, which produces
-   `kartaan-click-1.6.7.zip` with `manifest.json` at the top level.
+   `kartaan-click-1.6.8.zip` with `manifest.json` at the top level.
 
 ## Listing fields
 
@@ -104,6 +104,13 @@ time and is used for nothing else.
 has been used in the last 3 minutes, and waits if it has, so a round never opens
 while the seller is working. Only the browser's "active / idle / locked" answer is
 read; nothing is stored or sent.
+
+*activeTab* and *scripting* — the "Copy product details" button. When the user
+presses it, the browser lets the extension read the one tab in front of them, for that
+press only, and a small reader collects the product's public details (title, price,
+description, specifications, rating, image links) and puts them on the clipboard.
+Nothing is stored or sent. It works only on Amazon.in, Meesho and Flipkart pages and
+does not get past a robot check.
 
 The three seller portals are also listed under `host_permissions`, for one reason:
 before a check-in round opens a new tab it asks the browser whether that portal is
