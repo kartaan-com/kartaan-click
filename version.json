@@ -1,5 +1,5 @@
 {
-  "version": "1.6.7",
+  "version": "1.6.8",
   "url": "https://github.com/kartaan-com/kartaan-click/releases/latest/download/kartaan-click.zip",
-  "notes": "A missed round no longer leaves a time in the past."
+  "notes": "New: Copy product details."
 }
