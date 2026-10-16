@@ -12,9 +12,9 @@
   'use strict';
 
   const host = location.hostname.toLowerCase();
-  const platform = /(^|\.)amazon\.in$/.test(host) ? 'Amazon'
-    : /(^|\.)meesho\.com$/.test(host) ? 'Meesho'
-    : /(^|\.)flipkart\.com$/.test(host) ? 'Flipkart' : '';
+  const platform = /^(www\.)?amazon\.in$/.test(host) ? 'Amazon'
+    : /^(www\.)?meesho\.com$/.test(host) ? 'Meesho'
+    : /^(www\.)?flipkart\.com$/.test(host) ? 'Flipkart' : '';
   if (!platform) return { ok: false, reason: 'wrong-site' };
 
   const clean = s => String(s == null ? '' : s).replace(/[‎‏]/g, '').replace(/\s+/g, ' ').trim();
@@ -38,7 +38,7 @@
     if (Array.isArray(node)) { node.forEach(walk); return; }
     if (typeof node !== 'object') return;
     const t = node['@type'];
-    if (t === 'Product' || (Array.isArray(t) && t.includes('Product'))) { ld = node; return; }
+    if (t === 'Product' || t === 'ProductGroup' || (Array.isArray(t) && t.includes('Product'))) { ld = node; return; }
     if (node['@graph']) walk(node['@graph']);
   };
   document.querySelectorAll('script[type="application/ld+json"]').forEach(s => {
@@ -76,7 +76,7 @@
     const hi = document.querySelector('#landingImage, #imgBlkFront');
     if (hi) { const big = hi.getAttribute('data-old-hires') || hi.src; if (big) images.push(big); }
     document.querySelectorAll('#altImages img').forEach(i => {
-      const u = (i.src || '').replace(/\._[A-Z0-9_,]+_\./, '.');
+      const u = (i.src || '').replace(/\._[A-Za-z0-9_,]+_\./, '.');
       if (u && !/sprite|play-button|transparent-pixel/.test(u)) images.push(u);
     });
     const asin = (location.pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i) || [])[1];
@@ -97,7 +97,7 @@
   // structured data / page meta fill anything still empty
   if (ld) {
     f.title = f.title || clean(ld.name);
-    f.brand = f.brand || clean(ld.brand && (ld.brand.name || ld.brand));
+    f.brand = f.brand || clean(ld.brand && (typeof ld.brand === 'string' ? ld.brand : ld.brand.name));
     f.price = f.price || (offer.price ? clean((offer.priceCurrency === 'INR' ? '₹' : (offer.priceCurrency || '') + ' ') + offer.price) : '');
     f.description = f.description || clean(ld.description);
     f.sku = clean(ld.sku || ld.productID || '');
@@ -109,14 +109,14 @@
     const im = Array.isArray(ld.image) ? ld.image : (ld.image ? [ld.image] : []);
     im.forEach(u => images.push(typeof u === 'string' ? u : (u && u.url) || ''));
   }
-  f.title = f.title || meta('og:title');
   f.description = f.description || meta('og:description') || meta('description');
   if (!images.length && meta('og:image')) images.push(meta('og:image'));
   const canon = document.querySelector('link[rel="canonical"]');
   f.link = f.link || (canon && canon.href) || location.href.split('#')[0];
 
-  // No title means no product on this page (home page, search results, error page…).
-  if (!f.title) return { ok: false, reason: 'no-product' };
+  // No product title (Amazon) or product data (others) means this is not a product
+  // page: home, search, cart, account, error. Copy nothing.
+  if (!f.title || (platform !== 'Amazon' && !ld)) return { ok: false, reason: 'no-product' };
 
   const uniq = a => [...new Set(a.filter(Boolean))];
   const lines = [

@@ -193,7 +193,7 @@ copyBtn.addEventListener('click', async () => {
   copyMsg.textContent = 'Reading the page…';
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !/^https:\/\/([^/]+\.)?(amazon\.in|meesho\.com|flipkart\.com)\//i.test(tab.url || '')) {
+    if (!tab || !/^https:\/\/(www\.)?(amazon\.in|meesho\.com|flipkart\.com)\//i.test(tab.url || '')) {
       copyMsg.textContent = 'Open a product page on Amazon.in, Meesho or Flipkart first, then press this again.';
       return;
     }

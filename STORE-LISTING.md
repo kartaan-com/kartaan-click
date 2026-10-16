@@ -108,8 +108,8 @@ read; nothing is stored or sent.
 *activeTab* and *scripting* — the "Copy product details" button. When the user
 presses it, the browser lets the extension read the one tab in front of them, for that
 press only, and a small reader collects the product's public details (title, price,
-description, specifications, rating, image links) and puts them on the clipboard.
-Nothing is stored or sent. It works only on Amazon.in, Meesho and Flipkart pages and
+description, specifications, rating, image links; on Meesho and Flipkart, the text that product page shows) and puts them on the clipboard.
+Nothing is stored or sent. It works only on the shop pages of Amazon.in, Meesho and Flipkart (not their seller portals) and
 does not get past a robot check.
 
 The three seller portals are also listed under `host_permissions`, for one reason:

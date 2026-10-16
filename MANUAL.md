@@ -680,7 +680,7 @@ Open a product page on Amazon.in, Meesho or Flipkart, click the Kartaan Click ic
 **Copy product details**. It says "Copied, now paste it into your chat"; paste into ChatGPT,
 Gemini or Claude. The block starts with `=== KARTAAN CLICK PRODUCT DETAILS v1 ===` and has
 one `field: value` line each for the title, price, MRP, rating, seller, category, description,
-bullets, specifications and image links. It reads only the page in front of you, only when
+bullets, specifications and image links (Amazon). On Meesho and Flipkart the block also carries `page_text`, the text that product page shows (price, MRP, highlights, seller), because their pages do not give clean fields; Amazon pages give separate lines for each. It works only on the shop's own product pages, not on seller portals. It reads only the page in front of you, only when
 you press the button. If the page is a robot check or shows no product, it says so and
 copies nothing. It uses the `activeTab` and `scripting` permissions.
 

@@ -7,7 +7,7 @@ change whose version is not listed.
 
 **New: Copy product details.** Open a product page on Amazon.in, Meesho or Flipkart, open
 Click and press the button. It copies the product's title, price, MRP, description, bullets,
-specifications, category, rating, seller and image links as one block of plain text, ready to
+specifications, category, rating, seller and image links (on Meesho and Flipkart, the text the product page shows) as one block of plain text, ready to
 paste into ChatGPT, Gemini or Claude. It reads only the page you are looking at, only when
 you press the button, and if the page is a robot check it tells you instead of going round it.
 New permissions: `activeTab` and `scripting`.
