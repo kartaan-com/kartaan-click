@@ -550,6 +550,10 @@ function buildPanel(mode) {
     'cursor:move;display:flex;align-items:center;justify-content:space-between;user-select:none}',
     '#__kcPanel #__kcToggle{flex:0 0 auto;width:24px;padding:1px 0;background:rgba(0,0,0,.25);',
     'font-size:14px;line-height:1.2}',
+    '#__kcPanel.kcI{width:40px;height:40px;border-radius:50%}',
+    '#__kcPanel.kcI h4{padding:0;height:40px;justify-content:center;cursor:pointer}',
+    '#__kcPanel.kcI h4 span{display:none}',
+    '#__kcPanel.kcI #__kcToggle{width:40px;height:40px;padding:0;background:transparent;font-size:13px;font-weight:700}',
     '#__kcPanel .bd{padding:10px 12px}',
     '#__kcPanel .row{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}',
     '#__kcPanel button{flex:1;padding:7px 8px;border:0;border-radius:6px;cursor:pointer;',
@@ -660,7 +664,8 @@ function buildPanel(mode) {
   const toggle = panel.querySelector('#__kcToggle');
   const applyCollapsed = c => {
     body.style.display = c ? 'none' : '';
-    toggle.textContent = c ? '+' : '–';
+    panel.classList.toggle('kcI', c);          // folded = a small round KC icon
+    toggle.textContent = c ? 'KC' : '–';
     toggle.title       = c ? 'Expand' : 'Collapse';
   };
   // ⚠️ OPEN IT FIRST, REMEMBER IT AFTER. This used to wait on storage before

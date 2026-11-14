@@ -172,6 +172,20 @@ The extension cannot save files anywhere outside your Downloads folder — brows
 do not allow that — and it cannot see or change your browser's own download
 settings.
 
+## Other add-ons' boxes on your seller pages
+
+On the Flipkart, Meesho and Amazon seller pages, Kartaan Click shrinks the floating
+boxes that other add-ons draw on top of the page into small round buttons. It only
+hides and shows the box. It does not read what is inside it, change it, or send
+anything about it. One click on the round button shows the box; a second click
+folds it again. It recognises only boxes drawn by add-ons, never the seller site's
+own controls. If a box keeps redrawing itself, Kartaan Click leaves it as it was.
+
+## Content policy
+
+The extension's pages may load scripts only from the extension itself and may not
+be placed inside other pages' frames (a content security policy in the manifest).
+
 ## Contact
 
 Questions: [kartaan.com](https://kartaan.com)

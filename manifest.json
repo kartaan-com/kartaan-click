@@ -8,11 +8,15 @@
   "permissions": ["storage", "downloads", "alarms", "idle", "activeTab", "scripting"],
 
   "host_permissions": [
-    "https://raw.githubusercontent.com/*",
+    "https://raw.githubusercontent.com/kartaan-com/kartaan-click/*",
     "https://seller.flipkart.com/*",
     "https://supplier.meesho.com/*",
     "https://sellercentral.amazon.in/*"
   ],
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'none'; frame-ancestors 'none'"
+  },
 
   "background": {
     "service_worker": "background.js"
@@ -33,6 +37,11 @@
   },
 
   "content_scripts": [
+    {
+      "matches": ["https://seller.flipkart.com/*", "https://supplier.meesho.com/*", "https://sellercentral.amazon.in/*"],
+      "js": ["content/kc-shrink.js"],
+      "run_at": "document_idle"
+    },
     {
       "matches": ["https://*.synlabs.io/*"],
       "js": ["content/vms-awb.js"],

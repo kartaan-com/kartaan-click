@@ -1105,6 +1105,10 @@ function buildPanel() {
     '#__kcMeeshoPanel h4{margin:0;padding:9px 12px;background:#7b2ff7;font-size:13px;font-weight:600;',
     'display:flex;align-items:center;justify-content:space-between;user-select:none}',
     '#__kcMeeshoPanel #__kcmToggle{flex:0 0 auto;width:24px;padding:1px 0;background:rgba(0,0,0,.25);font-size:14px}',
+    '#__kcMeeshoPanel.kcI{width:40px;height:40px;border-radius:50%}',
+    '#__kcMeeshoPanel.kcI h4{padding:0;height:40px;justify-content:center;cursor:pointer}',
+    '#__kcMeeshoPanel.kcI h4 span{display:none}',
+    '#__kcMeeshoPanel.kcI #__kcmToggle{width:40px;height:40px;padding:0;background:transparent;font-size:13px;font-weight:700}',
     '#__kcMeeshoPanel .bd{padding:10px 12px}',
     '#__kcMeeshoPanel .row{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}',
     '#__kcMeeshoPanel button{flex:1;padding:7px 8px;border:0;border-radius:6px;cursor:pointer;',
@@ -1174,7 +1178,8 @@ function buildPanel() {
 
   const applyCollapsed = c => {
     body.style.display = c ? 'none' : '';
-    toggle.textContent = c ? '+' : '–';
+    panel.classList.toggle('kcI', c);          // folded = a small round KC icon
+    toggle.textContent = c ? 'KC' : '–';
     toggle.title = c ? 'Expand' : 'Collapse';
   };
   // ⚠️ OPEN IT FIRST, REMEMBER IT AFTER — same reason as the Flipkart panel. In a
