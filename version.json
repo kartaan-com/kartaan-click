@@ -1,5 +1,5 @@
 {
-  "version": "1.6.8",
+  "version": "1.6.9",
   "url": "https://github.com/kartaan-com/kartaan-click/releases/latest/download/kartaan-click.zip",
-  "notes": "New: Copy product details."
+  "notes": "Every overlay is now a small round icon."
 }
