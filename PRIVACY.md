@@ -148,7 +148,7 @@ Here is exactly what each of the things it asks for is used for.
 | `idle` | Asking the browser one yes-or-no question before a timed check-in: has anybody used this computer in the last 3 minutes? If so, the round waits until the computer has been left alone. The browser only answers "in use", "left alone" or "locked" — nothing about what you were doing. Nothing is stored or sent. |
 | `activeTab` and `scripting` | Copy product details. When you press that button in the pop-up, the browser lets the extension read the one tab you are looking at, for that one press, and the extension runs a small reader on it. It reads the product's public details (title, price, description, specifications, rating, image links; on Meesho and Flipkart, the text that product page shows) and puts them on your clipboard. Nothing is stored and nothing is sent anywhere; where you paste it is your choice. It only works on the shop pages of Amazon.in, Meesho and Flipkart (not their seller portals), and never on a page you did not have in front of you when you pressed the button. It does not get past robot checks. |
 | access to `seller.flipkart.com`, `supplier.meesho.com`, `sellercentral.amazon.in` | Two things, both about your own seller portals: running the tools described above on those pages, and — before a check-in opens a new tab — asking the browser whether you already have that portal open, so it can use your tab instead of adding another. Tabs on any other site are never looked at. |
-| access to `raw.githubusercontent.com` | Reading the version file described above, once a day, so the extension can tell you when a new version is out. It is used for nothing else, and no other website is contacted. |
+| (no permission needed) the version file on `raw.githubusercontent.com` | Read once a day as a plain public file, so the extension can tell you when a new version is out. It asks the browser for no access to that site, and no other website is contacted. |
 
 The `downloads` permission is used **only** in the seconds after you press Print
 Labels, and only for the label file itself. Downloads you start yourself are never
@@ -179,7 +179,10 @@ boxes that other add-ons draw on top of the page into small round buttons. It on
 hides and shows the box. It does not read what is inside it, change it, or send
 anything about it. One click on the round button shows the box; a second click
 folds it again. It recognises only boxes drawn by add-ons, never the seller site's
-own controls. If a box keeps redrawing itself, Kartaan Click leaves it as it was.
+own controls, but it recognises them by how they are drawn (a floating box with its
+own hidden layer), so a site's own box drawn that way could be shrunk by mistake;
+one click on its round button always shows it again. It does nothing on sign-in
+pages. If a box keeps redrawing itself, Kartaan Click leaves it as it was.
 
 ## Content policy
 

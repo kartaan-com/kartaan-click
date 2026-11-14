@@ -18,9 +18,12 @@
 (function () {
 'use strict';
 
+// Sign-in pages are left alone: a password manager's list there is not an add-on box to shrink.
+if (/sign-?in|login|\/ap\//i.test(location.pathname)) return;
+
 const OWN_IDS = ['__kcPanel', '__kcMeeshoPanel', '__kcSignIn', '__kcShrinkHost'];
-const REPORT_KEY = 'kcShrinkReport';
 const MAX_REDRAWS = 5;          // after this, the box keeps coming back: leave it open and say so
+const REDRAW_WINDOW_MS = 10000; // the count starts again after ten quiet seconds
 const tracked = new Map();      // element -> { name, open, redraws, icon }
 const gaveUp = new Set();
 let host, root, paused = false, timer = null;
@@ -69,12 +72,13 @@ function shrink(el, name) {
   const icon = document.createElement('button');
   icon.textContent = name.charAt(0).toUpperCase();
   icon.title = 'Open ' + name + ' (shrunk by Kartaan Click)';
-  const rec = { name, open: false, redraws: 0, icon, shown: el.style.display, rect: r };
+  const rec = { name, open: false, redraws: 0, last: 0, icon, shown: el.style.display, rect: r };
   place(icon, r, false);
   icon.onclick = () => {
     rec.open = !rec.open;
     paused = true;
-    el.style.display = rec.open ? rec.shown : 'none';
+    if (rec.open) { el.style.removeProperty('display'); if (rec.shown) el.style.display = rec.shown; }
+    else el.style.setProperty('display', 'none', 'important');
     icon.textContent = rec.open ? '−' : name.charAt(0).toUpperCase();
     icon.title = (rec.open ? 'Fold ' : 'Open ') + name;
     icon.style.left = icon.style.right = '';
@@ -83,12 +87,13 @@ function shrink(el, name) {
   };
   root.appendChild(icon);
   tracked.set(el, rec);
-  new MutationObserver(later).observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
+  rec.watcher = new MutationObserver(later);
+  rec.watcher.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
   el.style.setProperty('display', 'none', 'important');
 }
 
 function scan() {
-  if (paused) return;
+  if (paused) { later(); return; }
   paused = true;
   const found = [];
   for (const el of document.body ? Array.from(document.body.children).concat(Array.from(document.documentElement.children)) : []) {
@@ -97,15 +102,18 @@ function scan() {
   }
   // A box that came back by itself: hide it again, but only a few times.
   for (const [el, rec] of tracked) {
-    if (!el.isConnected) { rec.icon.remove(); tracked.delete(el); continue; }
-    if (!rec.open && el.style.display !== 'none') {
+    if (!el.isConnected) { rec.icon.remove(); rec.watcher.disconnect(); tracked.delete(el); continue; }
+    if (!rec.open && getComputedStyle(el).display !== 'none') {
+      const now = Date.now();
+      if (now - rec.last > REDRAW_WINDOW_MS) rec.redraws = 0;
+      rec.last = now;
       if (++rec.redraws > MAX_REDRAWS) {
-        rec.icon.remove(); tracked.delete(el); gaveUp.add(el);
-        el.style.display = rec.shown;
+        rec.icon.remove(); rec.watcher.disconnect(); tracked.delete(el); gaveUp.add(el);
+        el.style.removeProperty('display'); if (rec.shown) el.style.display = rec.shown;
       } else el.style.setProperty('display', 'none', 'important');
     }
   }
-  report();
+  noteInPanel(Array.from(gaveUp).filter(e => e.isConnected).map(e => (e.id || e.tagName.toLowerCase()).slice(0, 24)).slice(0, 5));
   setTimeout(() => { paused = false; }, 50);
 }
 
@@ -120,15 +128,6 @@ function noteInPanel(left) {
   const head = panel.querySelector('h4');
   if (head) head.after(note); else panel.appendChild(note);
   panel.setAttribute('data-kcnote', '1');      // lights the dot on the folded icon
-}
-
-function report() {
-  const out = {
-    host: location.hostname, shrunk: tracked.size,
-    left: Array.from(gaveUp).map(e => (e.id || e.tagName.toLowerCase())).slice(0, 5),
-  };
-  noteInPanel(out.left);
-  try { chrome.storage.local.set({ [REPORT_KEY]: out }); } catch (e) { /* tab outlived a reload */ }
 }
 
 function later() { clearTimeout(timer); timer = setTimeout(scan, 400); }   // one look per burst, no busy loop

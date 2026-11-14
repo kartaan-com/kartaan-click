@@ -99,7 +99,9 @@ const CHECK_EVERY_MS = 24 * 60 * 60 * 1000;
 function safeLink(raw) {
   try {
     const u = new URL(String(raw || ''));
-    return u.protocol === 'https:' ? u.href : '';
+    // Only this extension's own release page on github.com (SEC2 row 49).
+    return (u.protocol === 'https:' && u.hostname === 'github.com'
+      && u.pathname.startsWith('/kartaan-com/kartaan-click/')) ? u.href : '';
   } catch (e) {
     return '';
   }
