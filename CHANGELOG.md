@@ -3,6 +3,10 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.6.9 — 14 November 2026
+
+**Every overlay is now a small round icon.** Click's own panel on the Meesho and Flipkart seller pages folds to a round KC icon, and other add-ons' boxes on Meesho, Flipkart and Amazon seller pages are shrunk to a round icon that opens with one click. If a box cannot be kept small, the panel says so in plain words and the icon shows a dot. Sign-in pages are left alone. The privacy page now explains this, and kartaan.com/click has download and privacy help. The GitHub host permission is removed (the version check still works), the download link is accepted only from Kartaan Click's own GitHub page, and a content policy is added.
+
 ## 1.6.8 — 16 October 2026
 
 **New: Copy product details.** Open a product page on Amazon.in, Meesho or Flipkart, open
