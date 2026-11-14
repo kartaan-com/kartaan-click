@@ -109,11 +109,25 @@ function scan() {
   setTimeout(() => { paused = false; }, 50);
 }
 
+// Say it in plain words inside Click's own order panel (Golden Rule 29). Text only, never markup.
+function noteInPanel(left) {
+  const panel = document.getElementById('__kcPanel') || document.getElementById('__kcMeeshoPanel');
+  if (!panel || !left.length || panel.querySelector('.kcShrinkNote')) return;
+  const note = document.createElement('div');
+  note.className = 'kcShrinkNote';
+  note.style.cssText = 'margin:0 10px 8px;padding:7px 9px;border-radius:6px;background:#2e2400;color:#f0d68a;font-size:11px';
+  note.textContent = 'Kartaan Click could not keep this add-on box small: ' + left.join(', ') + '. It left it as it was.';
+  const head = panel.querySelector('h4');
+  if (head) head.after(note); else panel.appendChild(note);
+  panel.setAttribute('data-kcnote', '1');      // lights the dot on the folded icon
+}
+
 function report() {
   const out = {
     host: location.hostname, shrunk: tracked.size,
     left: Array.from(gaveUp).map(e => (e.id || e.tagName.toLowerCase())).slice(0, 5),
   };
+  noteInPanel(out.left);
   try { chrome.storage.local.set({ [REPORT_KEY]: out }); } catch (e) { /* tab outlived a reload */ }
 }
 

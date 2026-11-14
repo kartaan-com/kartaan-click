@@ -1109,6 +1109,8 @@ function buildPanel() {
     '#__kcMeeshoPanel.kcI h4{padding:0;height:40px;justify-content:center;cursor:pointer}',
     '#__kcMeeshoPanel.kcI h4 span{display:none}',
     '#__kcMeeshoPanel.kcI #__kcmToggle{width:40px;height:40px;padding:0;background:transparent;font-size:13px;font-weight:700}',
+    '#__kcMeeshoPanel.kcI[data-kcnote]::after{content:"";position:absolute;top:3px;right:3px;width:10px;height:10px;',
+    'border-radius:50%;background:#f0b429}',
     '#__kcMeeshoPanel .bd{padding:10px 12px}',
     '#__kcMeeshoPanel .row{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}',
     '#__kcMeeshoPanel button{flex:1;padding:7px 8px;border:0;border-radius:6px;cursor:pointer;',

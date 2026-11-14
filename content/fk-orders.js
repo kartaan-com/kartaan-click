@@ -554,6 +554,9 @@ function buildPanel(mode) {
     '#__kcPanel.kcI h4{padding:0;height:40px;justify-content:center;cursor:pointer}',
     '#__kcPanel.kcI h4 span{display:none}',
     '#__kcPanel.kcI #__kcToggle{width:40px;height:40px;padding:0;background:transparent;font-size:13px;font-weight:700}',
+    // a dot on the folded icon while a notice, a new-version strip or a shrink note is hidden inside
+    '#__kcPanel.kcI:has(.upd[style*="block"])::after,#__kcPanel.kcI:has(.notice[style*="block"])::after,#__kcPanel.kcI[data-kcnote]::after{',
+    'content:"";position:absolute;top:3px;right:3px;width:10px;height:10px;border-radius:50%;background:#f0b429}',
     '#__kcPanel .bd{padding:10px 12px}',
     '#__kcPanel .row{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}',
     '#__kcPanel button{flex:1;padding:7px 8px;border:0;border-radius:6px;cursor:pointer;',
