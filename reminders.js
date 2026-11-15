@@ -31,7 +31,7 @@ function cutoffClean(raw) {
 // The next moment (ms) this reminder is due, strictly after `now`, in the
 // computer's own local time. A reminder time already past today means tomorrow.
 function cutoffNextDue(clean, now) {
-  for (let day = -1; day <= 2; day++) {
+  for (let day = 0; day <= 2; day++) {
     const d = new Date(now);
     d.setDate(d.getDate() + day);
     d.setHours(clean.hour, clean.minute, 0, 0);
@@ -70,7 +70,6 @@ async function cutoffSchedule() {
 
 async function cutoffFired(alarm) {
   const site = alarm.name.slice(CUTOFF_PREFIX.length);
-  if (!CUTOFF_SITES[site]) return;
   const saved = (await chrome.storage.local.get([CUTOFF_KEY, CUTOFF_SHOWN]));
   const clean = cutoffClean((saved[CUTOFF_KEY] || {})[site]);
   const shown = saved[CUTOFF_SHOWN] || {};
@@ -100,4 +99,4 @@ if (typeof chrome !== 'undefined' && chrome.alarms) {
   Promise.resolve(cutoffSchedule()).catch(e => console.log('[Kartaan Click] cutoff schedule: ' + e));
 }
 
-if (typeof module !== 'undefined') module.exports = { cutoffClean, cutoffNextDue };
+if (typeof module !== 'undefined') module.exports = { cutoffClean, cutoffNextDue, cutoffFired, cutoffSchedule };
