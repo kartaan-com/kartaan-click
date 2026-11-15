@@ -15,6 +15,7 @@ global.chrome = {
   },
   alarms: {
     clear: async name => { delete alarms[name]; },
+    get: async name => (alarms[name] ? { scheduledTime: alarms[name].when } : undefined),
     create: (name, info) => { alarms[name] = info; },
     onAlarm: { addListener: () => {} },
   },
@@ -91,5 +92,15 @@ console.log('reminder timing: all passed');
   // An alarm that is not ours, or an unknown platform, is ignored.
   await cutoffFired({ name: 'kcCutoff_other', scheduledTime: Date.now() });
   assert.strictEqual(shown.length, 3);
+  // A wake-up must not replace an alarm already set for the right moment (it may be
+  // due but not yet delivered).
+  store.kcCutoff = { meesho: { time: '17:30', remindMin: 10 } };
+  await cutoffSchedule();
+  const first = alarms.kcCutoff_meesho;
+  await cutoffSchedule();
+  assert.strictEqual(alarms.kcCutoff_meesho, first, 'an alarm already set is left alone');
+  store.kcCutoff = { meesho: { time: '17:31', remindMin: 10 } };
+  await cutoffSchedule();
+  assert.notStrictEqual(alarms.kcCutoff_meesho, first, 'a changed setting replaces the alarm');
   console.log('reminder firing: all passed');
 })().catch(e => { console.error(e); process.exit(1); });

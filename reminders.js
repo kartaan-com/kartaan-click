@@ -61,10 +61,12 @@ async function cutoffSchedule() {
   for (const site of Object.keys(CUTOFF_SITES)) {
     const clean = cutoffClean(saved[site]);
     const name = CUTOFF_PREFIX + site;
-    await chrome.alarms.clear(name);
-    if (!clean) continue;
+    if (!clean) { await chrome.alarms.clear(name); continue; }
     const due = cutoffNextDue(clean, Date.now());
-    if (due != null) chrome.alarms.create(name, { when: due });
+    // Left alone when it is already set for that moment: clearing it on every
+    // wake-up could throw away a reminder that is due but not yet delivered.
+    const existing = await chrome.alarms.get(name);
+    if (due != null && !(existing && existing.scheduledTime === due)) chrome.alarms.create(name, { when: due });
   }
 }
 

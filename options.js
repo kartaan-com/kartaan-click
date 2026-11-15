@@ -535,7 +535,7 @@ $('cutSave').addEventListener('click', async () => {
   // make a reminder silently vanish, so say so here.
   const level = await chrome.notifications.getPermissionLevel();
   $('cutSaved').textContent = !Object.keys(out).length ? 'Saved — no reminders.'
-    : level === 'granted' ? 'Saved.'
+    : level === 'granted' ? 'Saved. If no notice ever appears, check the computer’s own notification settings for your browser.'
     : 'Saved, but the browser is not allowed to show notices — switch them on in the computer’s settings or no reminder will appear.';
   setTimeout(() => { $('cutSaved').textContent = ''; }, 6000);
 });
