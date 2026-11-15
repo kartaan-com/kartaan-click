@@ -9,7 +9,7 @@ unless you want to reword it.
    your Microsoft account, and choose the **Microsoft Edge** program.
    There is no fee for Edge — unlike Chrome, which charges $5.
 2. Build the upload file: `node tools/make-zip.js`, which produces
-   `kartaan-click-1.6.9.zip` with `manifest.json` at the top level.
+   `kartaan-click-1.7.0.zip` with `manifest.json` at the top level.
 
 ## Listing fields
 
@@ -94,6 +94,9 @@ folder inside the user's own Downloads folder and to report whether it saved
 successfully. It is armed by the extension only in the seconds after the user
 presses Print Labels, and is completely inert at all other times: downloads the
 user starts themselves are never touched, renamed, moved, or cancelled.
+
+*notifications* — shows the cutoff reminder you set on the settings page, one small
+notice at the time you chose. It reads no page, and the times stay on your computer.
 
 *alarms* — the portal check-in feature has to know when the next round is due. A
 browser alarm is the only timer that survives a Manifest V3 service worker being
