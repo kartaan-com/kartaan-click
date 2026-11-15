@@ -1,5 +1,5 @@
 {
-  "version": "1.6.9",
+  "version": "1.7.0",
   "url": "https://github.com/kartaan-com/kartaan-click/releases/latest/download/kartaan-click.zip",
-  "notes": "Every overlay is now a small round icon."
+  "notes": "Cutoff reminders: set a cutoff time per platform and get one notice before it."
 }

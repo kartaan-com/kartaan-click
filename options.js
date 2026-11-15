@@ -497,6 +497,49 @@ $('clearAcceptLog').addEventListener('click', async () => {
   showAcceptLog();
 });
 
+// ── cutoff reminders ──────────────────────────────────────────────────────
+// Settings only; the timing and the notice live in reminders.js.
+const CUTOFF_KEY = 'kcCutoff';
+const CUT_SITES  = { flipkart: 'Flipkart', meesho: 'Meesho', amazon: 'Amazon' };
+const cutId = site => site.charAt(0).toUpperCase() + site.slice(1);
+
+chrome.storage.local.get(CUTOFF_KEY).then(res => {
+  const saved = res[CUTOFF_KEY] || {};
+  for (const site of Object.keys(CUT_SITES)) {
+    const s = saved[site] || {};
+    $('cut' + cutId(site) + 'Time').value = s.time || '';
+    $('cut' + cutId(site) + 'Min').value  = s.remindMin == null ? '' : s.remindMin;
+  }
+});
+
+$('cutSave').addEventListener('click', async () => {
+  const out = {};
+  const problems = [];
+  for (const site of Object.keys(CUT_SITES)) {
+    const time = $('cut' + cutId(site) + 'Time').value;
+    const min  = $('cut' + cutId(site) + 'Min').value.trim();
+    if (!time && !min) continue;
+    if (!time || !/^[0-9]+$/.test(min) || Number(min) > 1439) {
+      problems.push(CUT_SITES[site]);
+      continue;
+    }
+    out[site] = { time, remindMin: Number(min) };
+  }
+  if (problems.length) {
+    $('cutSaved').textContent = 'Not saved: ' + problems.join(', ')
+      + ' needs both a time and the minutes before it (0 to 1439).';
+    return;
+  }
+  await chrome.storage.local.set({ [CUTOFF_KEY]: out });
+  // Notices switched off for the browser (in the computer's own settings) would
+  // make a reminder silently vanish, so say so here.
+  const level = await chrome.notifications.getPermissionLevel();
+  $('cutSaved').textContent = !Object.keys(out).length ? 'Saved — no reminders.'
+    : level === 'granted' ? 'Saved.'
+    : 'Saved, but the browser is not allowed to show notices — switch them on in the computer’s settings or no reminder will appear.';
+  setTimeout(() => { $('cutSaved').textContent = ''; }, 6000);
+});
+
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes[ACCEPT_LOG]) showAcceptLog();
 });

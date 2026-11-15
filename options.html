@@ -262,6 +262,30 @@
 </div>
 
 <div class="card">
+  <h2>Cutoff reminders</h2>
+  <p>Set the time orders must be ready by on each portal, and how many minutes before
+     it you want a reminder. Every day, at that moment, one small notice appears on this
+     computer. It opens no portal page. If the computer was off or asleep at that time,
+     the notice is skipped, never shown late. Leave a time empty for no reminder.</p>
+  <div class="row"><label for="cutFlipkartTime">Flipkart cutoff</label>
+    <input type="time" id="cutFlipkartTime">
+    <label for="cutFlipkartMin">remind me</label>
+    <input type="number" id="cutFlipkartMin" min="0" max="1439" placeholder="minutes before"></div>
+  <div class="row"><label for="cutMeeshoTime">Meesho cutoff</label>
+    <input type="time" id="cutMeeshoTime">
+    <label for="cutMeeshoMin">remind me</label>
+    <input type="number" id="cutMeeshoMin" min="0" max="1439" placeholder="minutes before"></div>
+  <div class="row"><label for="cutAmazonTime">Amazon cutoff</label>
+    <input type="time" id="cutAmazonTime">
+    <label for="cutAmazonMin">remind me</label>
+    <input type="number" id="cutAmazonMin" min="0" max="1439" placeholder="minutes before"></div>
+  <div class="actions" style="margin-top:16px">
+    <button class="primary" id="cutSave" type="button">Save</button>
+    <span class="saved" id="cutSaved"></span>
+  </div>
+</div>
+
+<div class="card">
   <h2>What it accepted for you</h2>
   <p>Every order accepted on a round over the last 15 days, newest first. This is the
      list to check if you want to know what you have been committed to while you

@@ -3,6 +3,10 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.7.0 — 15 November 2026
+
+**New: cutoff reminders.** On the settings page, set the time orders must be ready by on each of Flipkart, Meesho and Amazon, and how many minutes before it you want a reminder. Every day at that moment one small notice appears on your computer. It opens no portal page, and if the computer was off or asleep at that time the notice is skipped rather than shown late. This needs the browser's `notifications` permission; the times stay on your computer.
+
 ## 1.6.9 — 14 November 2026
 
 **Every overlay is now a small round icon.** Click's own panel on the Meesho and Flipkart seller pages folds to a round KC icon, and other add-ons' boxes on Meesho, Flipkart and Amazon seller pages are shrunk to a round icon that opens with one click. If a box cannot be kept small, the panel says so in plain words and the icon shows a dot. Sign-in pages are left alone. The privacy page now explains this, and kartaan.com/click has download and privacy help. The GitHub host permission is removed (the version check still works), the download link is accepted only from Kartaan Click's own GitHub page, and a content policy is added.

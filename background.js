@@ -1637,3 +1637,6 @@ chrome.tabs.onRemoved.addListener(tabId => {
     if (changed) await chrome.storage.local.set({ [ACCEPT_TABS]: all });
   });
 });
+
+// Cutoff reminders (their own file; nothing above depends on it).
+importScripts('reminders.js');

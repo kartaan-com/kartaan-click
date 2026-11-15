@@ -20,6 +20,7 @@ const include = [
   'options.html',
   'options.js',
   'background.js',
+  'reminders.js',
   'content',
   'icons/icon16.png',
   'icons/icon48.png',

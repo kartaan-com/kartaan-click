@@ -716,6 +716,7 @@ Nothing leaves your computer, with one exception, described below.
   Downloads folder in the seconds after you press Print Labels — files you
   download yourself are never touched, renamed, moved, or read; and `alarms`,
   which holds the time the next portal check-in is due and nothing else; and
+  `notifications`, which shows the cutoff reminder you set, on your own computer only; and
   `idle`, which only answers whether the computer was used in the last 3 minutes; and
   `activeTab` with `scripting`, used only when you press Copy product details, to read the
   one product page you are looking at.
