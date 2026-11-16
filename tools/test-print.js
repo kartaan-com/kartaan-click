@@ -225,6 +225,16 @@ const reset = () => { for (const k of Object.keys(store)) delete store[k]; for (
   store.kcPrintOffer = { meesho: Date.now() }; store.kcCutoff = {};
   await clickGo('meesho'); assert.ok(/no cutoff set for Meesho/.test(said[0].message) && !bridgeCalls.length);
 
+  // ── a print started while a wait alarm is set takes the wait away; an error in a listener is said, not only logged ──
+  reset(); store.kcCutoff = { meesho: cut }; alarms.kcPrintWait_meesho = { delayInMinutes: 1 };
+  await P.printRun('meesho'); assert.ok(!alarms.kcPrintWait_meesho);
+  reset(); store.kcCutoff = { meesho: cut }; store.kcPrintPending = { meesho: Date.now() };
+  global.computerInUse = async () => { throw new Error('idle broke'); };
+  const realLog = console.log; let logged = ''; console.log = m => { logged += m; };
+  handlers.alarm({ name: 'kcPrintWait_meesho' }); await new Promise(r => setTimeout(r, 15)); console.log = realLog;
+  global.computerInUse = async () => idleActive;
+  assert.ok(/print time: Error: idle broke/.test(logged)); assert.ok(said.some(s => /nothing was printed: idle broke/.test(s.message)));
+
   // the worker's own listeners reach the same code
   reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } };
   handlers.changed({ kcPrintTimes: {} }, 'sync'); await new Promise(r => setTimeout(r, 5)); assert.ok(!alarms.kcPrint_meesho, 'only local changes count');
