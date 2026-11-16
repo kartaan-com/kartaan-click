@@ -67,12 +67,12 @@ function printNextTime(times, now) {
   return best;
 }
 
-// D675: the next cutoff after `now` — everything that must ship by it is printed now.
+// D675: the next cutoff — everything that must ship by it is printed now. A print time exactly on a cutoff is for THIS cutoff (R480C).
 function printShipBy(cutoff, now) {
   const clean = printCutoffClean(cutoff);
   if (!clean) return null;
   const d = new Date(now); d.setHours(clean.hour, clean.minute, 0, 0);
-  if (d.getTime() <= now) { d.setDate(d.getDate() + 1); d.setHours(clean.hour, clean.minute, 0, 0); }
+  if (d.getTime() < now) { d.setDate(d.getDate() + 1); d.setHours(clean.hour, clean.minute, 0, 0); }
   return d.getTime();
 }
 
@@ -83,6 +83,9 @@ const printSay = (title, message, buttons, id) => chrome.notifications.create(id
 const printName = platform => platform.charAt(0).toUpperCase() + platform.slice(1);
 const goId = (p, at) => 'kcPrintGo_' + p + '_' + at;      // "Print now?"
 const askId = (p, at) => 'kcPrintAsk_' + p + '_' + at;    // "got N?"
+
+// A run's pop-up, put on screen from its record (the record keeps the words, so it can be shown again after a restart).
+const printShow = (p, rec) => printSay(printName(p), rec.msg, rec.state === 'asked' ? ['Yes, got them', 'No'] : ['Print now'], (rec.state === 'asked' ? askId : goId)(p, rec.at));
 
 // Everything that changes the print records runs one after another, never two at once.
 let printChain = Promise.resolve();
@@ -97,7 +100,10 @@ async function runClean(p, at) {
 // The platform's one record. A different print time replaces the old run (its question expires).
 async function runPut(p, rec) {
   const old = await runGet(p);
-  if (old && old.at !== rec.at) await runClean(p, old.at);
+  if (old && old.at !== rec.at) {
+    await runClean(p, old.at);
+    if (old.state === 'asked') printSay(printName(p), 'The earlier question "did you get ' + old.orderIds.length + '?" expired. Those labels are not marked as printed.');
+  }
   if (rec.state !== 'waiting') await chrome.alarms.clear(PRINT_WAIT + p);
   await chrome.storage.local.set({ [PRINT_RUN + p]: rec });
 }
@@ -112,8 +118,8 @@ async function runEnd(p) {
 async function printOffer(p, at, message) {
   const old = await runGet(p);
   if (old && old.at === at && old.state === 'offer') return;
-  await runPut(p, { at, state: 'offer' });
-  printSay(printName(p), message, ['Print now'], goId(p, at));
+  const rec = { at, state: 'offer', msg: message };
+  await runPut(p, rec); printShow(p, rec);
 }
 
 // The platform's print times, and its next print time; null when it has no times or no cutoff to print for.
@@ -143,19 +149,21 @@ async function printSchedule() {
   await chrome.storage.local.set({ [PRINT_NEXT]: next });
 }
 
-// The print step, behind one switch: how the finished PDFs reach paper. 'box' opens each in a tab for the
-// seller to press Print once. A silent mode would be one more entry here, and nothing else would change.
-const PRINT_MODES = {
-  async box(key, outputs) {
-    await chrome.storage.session.set({ [key]: outputs.map(o => o.base64) });
-    for (let i = 0; i < outputs.length; i++) await chrome.tabs.create({ url: chrome.runtime.getURL('print.html?k=' + key + '&i=' + i) });
-  },
+// The print step, behind one switch: how the finished PDFs reach paper. Both open each PDF in a tab (print.html).
+// 'silent' (the default, his R480 ruling) also asks the page to print by itself: with Chrome started with the
+// kiosk-printing setting that goes straight to the default printer; without it Chrome shows its own print box, so
+// the labels are always in front of him and a print is never lost. 'box' only shows them and waits for him to press Print.
+const printTabs = suffix => async (key, outputs) => {
+  await chrome.storage.session.set({ [key]: outputs.map(o => o.base64) });
+  for (let i = 0; i < outputs.length; i++) await chrome.tabs.create({ url: chrome.runtime.getURL('print.html?k=' + key + '&i=' + i + suffix) });
 };
+const PRINT_MODES = { silent: printTabs('&s=1'), box: printTabs('') };
 
 // One print for the platform's print time `at`: labels for everything due by the cutoff that print time looks at, put in front of the
 // seller, then the count question. `since` is when it first had to wait. Callers hold the print chain.
 async function printStart(p, at, since = Date.now()) {
   await runPut(p, { at, state: 'printing', since });
+  chrome.notifications.clear(goId(p, at));   // a "Print now?" for this time is spent
   const name = printName(p);
   const stop = async message => { await runEnd(p); return printSay(name, message); };
   try {
@@ -174,10 +182,11 @@ async function printStart(p, at, since = Date.now()) {
     }
     if (!r.ok) return await stop('Labels were not made: ' + r.reason + ' Nothing was printed.');
     const mode = ((saved[PRINT_KEY] || {})[p] || {}).mode;
-    await (Object.prototype.hasOwnProperty.call(PRINT_MODES, mode) ? PRINT_MODES[mode] : PRINT_MODES.box)(PRINT_PDFS + p + '_' + at, r.outputs);
+    await (Object.prototype.hasOwnProperty.call(PRINT_MODES, mode) ? PRINT_MODES[mode] : PRINT_MODES.silent)(PRINT_PDFS + p + '_' + at, r.outputs);
     const orderIds = r.rows.filter(o => o && typeof o.orderId === 'string' && !r.alreadyPrinted.includes(o.orderId)).map(o => o.orderId);
-    await runPut(p, { at, state: 'asked', orderIds });
-    return printSay(name, 'Printed ' + r.count.ordersOut + ' — did you get ' + r.count.ordersOut + '? ' + r.count.text, ['Yes, got them', 'No'], askId(p, at));
+    const rec = { at, state: 'asked', orderIds, msg: 'Printed ' + r.count.ordersOut + ' — did you get ' + r.count.ordersOut + '? ' + r.count.text };
+    await runPut(p, rec);
+    return printShow(p, rec);
   } catch (e) {
     return stop('Something went wrong and nothing was printed: ' + (e && e.message || e));
   }
@@ -192,8 +201,8 @@ async function printWait(p, at, since) {
   }
   const old = await runGet(p);
   if (!(old && old.at === at && old.state === 'waiting')) {
-    await runPut(p, { at, state: 'waiting', since });
-    printSay(printName(p), 'Time to print. Print now? Otherwise it waits for a quiet moment.', ['Print now'], goId(p, at));
+    const rec = { at, state: 'waiting', since, msg: 'Time to print. Print now? Otherwise it waits for a quiet moment.' };
+    await runPut(p, rec); printShow(p, rec);
   }
   chrome.alarms.create(PRINT_WAIT + p, { delayInMinutes: 1 });
 }
@@ -209,15 +218,11 @@ const printFired = (alarm, firedAt) => printSerial(async () => {
     if (!rec || rec.state !== 'waiting') return;
     return late ? printOffer(p, rec.at, lateMsg) : printWait(p, rec.at, rec.since);
   }
-  try {
-    const next = (await chrome.storage.local.get(PRINT_NEXT))[PRINT_NEXT] || {};
-    delete next[p];   // this time is handled
-    await chrome.storage.local.set({ [PRINT_NEXT]: next });
-    if (printPlan(await chrome.storage.local.get([PRINT_KEY, 'kcCutoff']), p).due === null) return;   // switched off meanwhile
-    await (late ? printOffer(p, alarm.scheduledTime, lateMsg) : printWait(p, alarm.scheduledTime, firedAt));
-  } finally {
-    await printSchedule();   // the next print time is set even when this one went wrong
-  }
+  if (printPlan(await chrome.storage.local.get([PRINT_KEY, 'kcCutoff']), p).due === null) return;   // switched off meanwhile
+  const cur = await runGet(p);
+  if (cur && cur.at === alarm.scheduledTime && (cur.state === 'printing' || cur.state === 'asked')) return;   // this very time arrived twice
+  await printSchedule();   // the next time is set BEFORE this print, which can take minutes: one that comes round meanwhile queues behind it
+  await (late ? printOffer(p, alarm.scheduledTime, lateMsg) : printWait(p, alarm.scheduledTime, firedAt));
 });
 
 // The seller's tap on a pop-up. It acts only on the run whose print time is in its id, and only in the state that pop-up is for.
@@ -239,11 +244,13 @@ const printClick = (id, button) => printSerial(async () => {
 
 // At every worker start: a print that was cut off, or a wait whose alarm is gone, is asked about, never printed by itself (D664).
 async function printRecover() {
+  const shown = (await chrome.notifications.getAll()) || {};   // closing the browser takes its pop-ups away; the record brings them back
   for (const p of PRINT_PLATFORMS) {
     const rec = await runGet(p);
     if (!rec) continue;
     if (rec.state === 'printing') await printOffer(p, rec.at, 'A print at ' + new Date(rec.at).toTimeString().slice(0, 5) + ' did not finish. Print now?');
     else if (rec.state === 'waiting' && !(await chrome.alarms.get(PRINT_WAIT + p))) await printOffer(p, rec.at, 'The computer was off at the print time. Print now?');
+    else if (!shown[(rec.state === 'asked' ? askId : goId)(p, rec.at)]) printShow(p, rec);
   }
 }
 

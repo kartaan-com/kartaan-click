@@ -33,6 +33,7 @@ global.chrome = {
   },
   notifications: {
     clear: id => { delete live[id]; },
+    getAll: async () => Object.fromEntries(Object.keys(live).map(k => [k, true])),
     create: async (id, o) => { const k = id || 'plain' + said.length; said.push({ id: k, ...o }); live[k] = o; },
     onButtonClicked: { addListener: f => { handlers.button = f; } },
   },
@@ -98,7 +99,8 @@ async function check(name, fn) {
   await check('next cutoff (D675)', async () => {
     assert.strictEqual(P.printShipBy(cut, T(15, 19, 0)), T(16, 12, 0));
     assert.strictEqual(P.printShipBy(cut, T(15, 9, 0)), T(15, 12, 0));
-    assert.strictEqual(P.printShipBy(cut, T(15, 12, 0)), T(16, 12, 0));
+    assert.strictEqual(P.printShipBy(cut, T(15, 12, 0)), T(15, 12, 0), 'a print time exactly on the cutoff prints for THIS cutoff (R480C)');
+    assert.strictEqual(P.printShipBy(cut, T(15, 12, 1)), T(16, 12, 0));
     assert.strictEqual(P.printShipBy({ time: 'x' }, T(15, 9, 0)), null);
   });
 
@@ -239,7 +241,7 @@ async function check(name, fn) {
   });
   await check('a good run: PDFs in front of him, count asked, nothing marked until Yes; No marks nothing', async () => {
     await setup(); await main('meesho', T(15, 18, 0));
-    assert.strictEqual(tabs.length, 1); assert.ok(/^chrome-extension:\/\/self\/print\.html\?k=kcPrintPdfs_meesho_\d+&i=0$/.test(tabs[0]));
+    assert.strictEqual(tabs.length, 1); assert.ok(/^chrome-extension:\/\/self\/print\.html\?k=kcPrintPdfs_meesho_\d+&i=0&s=1$/.test(tabs[0]), 'silent print is the default (R480)');
     const ask = said[said.length - 1]; assert.ok(/did you get 2/.test(ask.message) && ask.requireInteraction);
     assert.deepStrictEqual(ask.buttons, [{ title: 'Yes, got them' }, { title: 'No' }]);
     assert.deepStrictEqual(await marked('meesho', ['A', 'B']), []); assert.deepStrictEqual(store.kcPrintRun_meesho.orderIds, ['A', 'B']);
@@ -257,7 +259,10 @@ async function check(name, fn) {
     await setup(); bridgeImpl = async () => ({ ok: false, reason: 'the cropper tab was closed.' }); await main('meesho', T(15, 18, 0));
     assert.ok(/not made: the cropper tab was closed/.test(said[0].message) && !tabs.length && !store.kcPrintRun_meesho);
   });
-  await check('an unknown print mode falls back to the box', async () => {
+  await check('the print box is still one setting away: mode box opens the tab without the silent flag', async () => {
+    await setup(); store.kcPrintTimes.meesho.mode = 'box'; await main('meesho', T(15, 18, 0)); assert.ok(/&i=0$/.test(tabs[0]));
+  });
+  await check('an unknown print mode falls back to silent print', async () => {
     await setup(); store.kcPrintTimes.meesho.mode = 'constructor'; await main('meesho', T(15, 18, 0)); assert.strictEqual(tabs.length, 1);
   });
   await check('a source that throws: said, record gone, next time still set', async () => {
@@ -332,6 +337,40 @@ async function check(name, fn) {
     await setup(); idleActive = true; await main('meesho', T(15, 18, 0)); store.kcCutoff = {};
     await click(idOf('meesho'), 0); assert.ok(/no cutoff set for Meesho/.test(said[said.length - 1].message) && !bridgeCalls.length);
     const n = said.length; await click('somethingElse', 0); await click('kcPrintGo_meesho_x', 0); assert.strictEqual(said.length, n);
+  });
+
+  // ── the second Opus read (N1-N4, N8, N10) ──
+  await check('N1 a "got N?" question is shown again after the browser was closed', async () => {
+    await setup(); await main('meesho', T(15, 18, 0)); for (const k of Object.keys(live)) delete live[k];
+    await load(); const id = idOf('meesho'); assert.ok(id && /did you get 2/.test(live[id].message) && live[id].buttons.length === 2);
+    await click(id, 0); assert.deepStrictEqual(await marked('meesho', ['A', 'B']), ['A', 'B']);
+  });
+  await check('N2 a "Print now?" is shown again after the browser was closed, and not twice while it is up', async () => {
+    await setup(); await main('meesho', T(15, 18, 0), T(15, 18, 20)); for (const k of Object.keys(live)) delete live[k];
+    await load(); assert.ok(idOf('meesho') && /Print now/.test(live[idOf('meesho')].buttons[0].title)); const n = said.length;
+    await load(); assert.strictEqual(said.length, n, 'a restart with the pop-up still up says nothing');
+  });
+  await check('N3 an open "got N?" that a new print time replaces says it expired', async () => {
+    await setup(['09:00', '18:00']); await main('meesho', T(15, 9, 0)); idleActive = true; await main('meesho', T(15, 18, 0));
+    assert.ok(said.some(s => /expired/.test(s.message)));
+  });
+  await check('N4 the next print time is set before a long print, so a time that comes meanwhile is not lost', async () => {
+    await setup(['18:00', '18:03']); const g = gate(); bridgeImpl = async () => { await g.wait; return answer(['A']); };
+    await main('meesho', T(15, 18, 0), T(15, 18, 0)); assert.strictEqual(alarms.kcPrint_meesho.when, T(15, 18, 3), 'still printing, next time already set');
+    g.go(); await settle();
+  });
+  await check('N4 two platforms at one time, 6-minute prints: the second is not called missed', async () => {
+    await setup(['18:00'], ['meesho', 'flipkart']); bridgeImpl = async () => { setNow(Date.now() + 6 * 60000); return answer(['A']); };
+    setNow(T(15, 18, 0) + 500);
+    for (const p of ['meesho', 'flipkart']) { delete alarms['kcPrint_' + p]; handlers.alarm({ name: 'kcPrint_' + p, scheduledTime: T(15, 18, 0) }); }
+    await settle(80); assert.strictEqual(bridgeCalls.length, 2); assert.ok(!said.some(s => /computer was off/.test(s.message)));
+  });
+  await check('N8 the same print time arriving twice prints once', async () => {
+    await setup(); await main('meesho', T(15, 18, 0)); await main('meesho', T(15, 18, 0)); assert.strictEqual(bridgeCalls.length, 1);
+  });
+  await check('N10 a waiting print that starts by itself takes its Print now down', async () => {
+    await setup(); idleActive = true; await main('meesho', T(15, 18, 0)); const id = idOf('meesho'); assert.ok(/^kcPrintGo/.test(id));
+    idleActive = false; await ring('kcPrintWait_meesho', T(15, 18, 1)); assert.ok(!live[id]);
   });
 
   if (failed) { console.log(failed + ' check(s) failed'); process.exit(1); }
