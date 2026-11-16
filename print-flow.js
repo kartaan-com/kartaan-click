@@ -30,6 +30,8 @@ const PRINT_NEXT    = 'kcPrintNext';       // { platform: the print time its ala
 const PRINT_PDFS    = 'kcPrintPdfs_';      // session storage, + platform_at: the finished PDFs print.html shows
 const PRINT_LATE_MS = 5 * 60 * 1000;       // later than this after its time = the computer was off: ask, never print (D664)
 const PRINT_WAIT_MS = 2 * 60 * 60 * 1000;  // a print waiting for a free computer gives up after this
+const PRINT_WAIT_MSG = 'Time to print. Print now? Otherwise it waits for a quiet moment.';
+const PRINT_SHOWN   = 'kcPrintShown';       // session storage: set once per browser run; gone when the browser closes
 const PRINT_PLATFORMS = ['meesho', 'flipkart', 'amazon'];
 const printSources  = {};                  // platform -> async (shipBy) => [{ name, base64 }]
 
@@ -119,7 +121,7 @@ async function printOffer(p, at, message) {
   const old = await runGet(p);
   if (old && old.at === at && old.state === 'offer') return;
   const rec = { at, state: 'offer', msg: message };
-  await runPut(p, rec); printShow(p, rec);
+  await runPut(p, rec); await printShow(p, rec);
 }
 
 // The platform's print times, and its next print time; null when it has no times or no cutoff to print for.
@@ -177,7 +179,7 @@ async function printStart(p, at, since = Date.now()) {
     if (!files || files.length === 0) return await stop('Nothing to print.');
     const r = await bridgeRun({ platform: p, files });
     if (!r.ok && r.reason === printBusy) {   // something else is using the cropper: try again in a minute, same record
-      await runPut(p, { at, state: 'waiting', since });
+      await runPut(p, { at, state: 'waiting', since, msg: PRINT_WAIT_MSG });
       return chrome.alarms.create(PRINT_WAIT + p, { delayInMinutes: 1 });
     }
     if (!r.ok) return await stop('Labels were not made: ' + r.reason + ' Nothing was printed.');
@@ -201,8 +203,8 @@ async function printWait(p, at, since) {
   }
   const old = await runGet(p);
   if (!(old && old.at === at && old.state === 'waiting')) {
-    const rec = { at, state: 'waiting', since, msg: 'Time to print. Print now? Otherwise it waits for a quiet moment.' };
-    await runPut(p, rec); printShow(p, rec);
+    const rec = { at, state: 'waiting', since, msg: PRINT_WAIT_MSG };
+    await runPut(p, rec); await printShow(p, rec);
   }
   chrome.alarms.create(PRINT_WAIT + p, { delayInMinutes: 1 });
 }
@@ -221,6 +223,9 @@ const printFired = (alarm, firedAt) => printSerial(async () => {
   if (printPlan(await chrome.storage.local.get([PRINT_KEY, 'kcCutoff']), p).due === null) return;   // switched off meanwhile
   const cur = await runGet(p);
   if (cur && cur.at === alarm.scheduledTime && (cur.state === 'printing' || cur.state === 'asked')) return;   // this very time arrived twice
+  if (cur && cur.state === 'asked') {   // D652: the last labels are not confirmed yet; printing again by itself could print the same orders twice
+    return printOffer(p, alarm.scheduledTime, 'Time to print, but you have not answered "did you get ' + cur.orderIds.length + '?" for the last labels. Print now? Those labels are then not marked as printed.');
+  }
   await printSchedule();   // the next time is set BEFORE this print, which can take minutes: one that comes round meanwhile queues behind it
   await (late ? printOffer(p, alarm.scheduledTime, lateMsg) : printWait(p, alarm.scheduledTime, firedAt));
 });
@@ -244,13 +249,17 @@ const printClick = (id, button) => printSerial(async () => {
 
 // At every worker start: a print that was cut off, or a wait whose alarm is gone, is asked about, never printed by itself (D664).
 async function printRecover() {
-  const shown = (await chrome.notifications.getAll()) || {};   // closing the browser takes its pop-ups away; the record brings them back
+  // Closing the browser takes its pop-ups away; the record brings them back, once per browser run (not at every worker wake-up, which would
+  // bring back a pop-up he closed on purpose). The mark in session storage goes with the browser.
+  const again = !(await chrome.storage.session.get(PRINT_SHOWN))[PRINT_SHOWN];
+  await chrome.storage.session.set({ [PRINT_SHOWN]: true });
+  const shown = (await chrome.notifications.getAll()) || {};
   for (const p of PRINT_PLATFORMS) {
     const rec = await runGet(p);
     if (!rec) continue;
     if (rec.state === 'printing') await printOffer(p, rec.at, 'A print at ' + new Date(rec.at).toTimeString().slice(0, 5) + ' did not finish. Print now?');
     else if (rec.state === 'waiting' && !(await chrome.alarms.get(PRINT_WAIT + p))) await printOffer(p, rec.at, 'The computer was off at the print time. Print now?');
-    else if (!shown[(rec.state === 'asked' ? askId : goId)(p, rec.at)]) printShow(p, rec);
+    else if (again && !shown[(rec.state === 'asked' ? askId : goId)(p, rec.at)]) await printShow(p, rec);
   }
 }
 

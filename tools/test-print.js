@@ -34,7 +34,7 @@ global.chrome = {
   notifications: {
     clear: id => { delete live[id]; },
     getAll: async () => Object.fromEntries(Object.keys(live).map(k => [k, true])),
-    create: async (id, o) => { const k = id || 'plain' + said.length; said.push({ id: k, ...o }); live[k] = o; },
+    create: async (id, o) => { if (!o.message) throw new Error('a notification needs a message'); const k = id || 'plain' + said.length; said.push({ id: k, ...o }); live[k] = o; },
     onButtonClicked: { addListener: f => { handlers.button = f; } },
   },
   tabs: { create: async o => { tabs.push(o.url); }, remove: async () => {}, onRemoved: { addListener() {}, removeListener() {} } },
@@ -108,18 +108,20 @@ async function check(name, fn) {
   await check('T1 old Yes, queued while a later run is in the cropper, marks nothing', async () => {
     await setup(['09:00', '18:00']);
     await main('meesho', T(15, 9, 0)); const id1 = idOf('meesho'); assert.ok(id1, 'run 1 asked');
+    await main('meesho', T(15, 18, 0)); assert.strictEqual(bridgeCalls.length, 1, 'the open question holds the next print back: it asks');
+    const go = idOf('meesho'); assert.ok(/^kcPrintGo_/.test(go) && !live[id1]);
     const g = gate(); bridgeImpl = async () => { await g.wait; return answer(['A', 'B', 'C']); };
-    await main('meesho', T(15, 18, 0));                       // run 2 is in the cropper
-    handlers.button(id1, 0); await settle();                  // he answers the 09:00 pop-up now
+    handlers.button(go, 0); await settle();                   // he says Print now: run 2 is in the cropper
+    handlers.button(id1, 0); await settle();                  // and answers the 09:00 pop-up now
     g.go(); await settle();
     assert.deepStrictEqual(await marked('meesho', ['A', 'B', 'C']), [], 'nothing marked by an answer to another print');
-    const id2 = idOf('meesho'); assert.ok(id2 && id2 !== id1 && !live[id1], 'only the new question is on screen');
+    const id2 = idOf('meesho'); assert.ok(/^kcPrintAsk_/.test(id2) && id2 !== id1, 'only the new question is on screen');
     await click(id2, 0); assert.deepStrictEqual(await marked('meesho', ['A', 'B', 'C']), ['A', 'B', 'C'], 'its own Yes still works');
   });
   await check('T1 old No does not wipe the later question', async () => {
     await setup(['09:00', '18:00']);
     await main('meesho', T(15, 9, 0)); const id1 = idOf('meesho');
-    bridgeImpl = async () => answer(['A', 'B', 'C']); await main('meesho', T(15, 18, 0)); const id2 = idOf('meesho');
+    await main('meesho', T(15, 18, 0)); bridgeImpl = async () => answer(['A', 'B', 'C']); await click(idOf('meesho'), 0); const id2 = idOf('meesho');
     await click(id1, 1); await click(id2, 0);
     assert.deepStrictEqual(await marked('meesho', ['A', 'B', 'C']), ['A', 'B', 'C']);
   });
@@ -341,12 +343,12 @@ async function check(name, fn) {
 
   // ── the second Opus read (N1-N4, N8, N10) ──
   await check('N1 a "got N?" question is shown again after the browser was closed', async () => {
-    await setup(); await main('meesho', T(15, 18, 0)); for (const k of Object.keys(live)) delete live[k];
+    await setup(); await main('meesho', T(15, 18, 0)); for (const k of Object.keys(live)) delete live[k]; delete sess.kcPrintShown;   // the browser was closed
     await load(); const id = idOf('meesho'); assert.ok(id && /did you get 2/.test(live[id].message) && live[id].buttons.length === 2);
     await click(id, 0); assert.deepStrictEqual(await marked('meesho', ['A', 'B']), ['A', 'B']);
   });
   await check('N2 a "Print now?" is shown again after the browser was closed, and not twice while it is up', async () => {
-    await setup(); await main('meesho', T(15, 18, 0), T(15, 18, 20)); for (const k of Object.keys(live)) delete live[k];
+    await setup(); await main('meesho', T(15, 18, 0), T(15, 18, 20)); for (const k of Object.keys(live)) delete live[k]; delete sess.kcPrintShown;
     await load(); assert.ok(idOf('meesho') && /Print now/.test(live[idOf('meesho')].buttons[0].title)); const n = said.length;
     await load(); assert.strictEqual(said.length, n, 'a restart with the pop-up still up says nothing');
   });
@@ -371,6 +373,27 @@ async function check(name, fn) {
   await check('N10 a waiting print that starts by itself takes its Print now down', async () => {
     await setup(); idleActive = true; await main('meesho', T(15, 18, 0)); const id = idOf('meesho'); assert.ok(/^kcPrintGo/.test(id));
     idleActive = false; await ring('kcPrintWait_meesho', T(15, 18, 1)); assert.ok(!live[id]);
+  });
+
+  // ── the second Opus read of the fixes (M1-M3) ──
+  await check('M1 a print time that comes while the last question is open asks, and prints nothing', async () => {
+    await setup(['18:00', '18:03']); const g = gate(); bridgeImpl = async () => { await g.wait; return answer(['A']); };
+    handlers.alarm({ name: 'kcPrint_meesho', scheduledTime: T(15, 18, 0) }); delete alarms.kcPrint_meesho; setNow(T(15, 18, 0) + 500); await settle();
+    handlers.alarm({ name: 'kcPrint_meesho', scheduledTime: T(15, 18, 3) }); setNow(T(15, 18, 3) + 500); await settle();   // 18:03 arrives while 18:00 is in the cropper
+    bridgeImpl = async () => answer(['A']); g.go(); await settle(80);
+    assert.strictEqual(bridgeCalls.length, 1, 'one cropper run, the same orders are not made twice');
+    assert.ok(Object.values(live).some(o => /not answered/.test(o.message)), 'asked instead');
+  });
+  await check('M2 a pop-up he closed is not brought back by every worker wake-up, only after the browser was closed', async () => {
+    await setup(); idleActive = true; await main('meesho', T(15, 18, 0));
+    for (const k of Object.keys(live)) delete live[k];
+    await load(); await load(); await load(); assert.strictEqual(Object.keys(live).length, 0, 'worker restarts alone bring nothing back');
+    delete sess.kcPrintShown; await load(); assert.strictEqual(Object.keys(live).length, 1, 'a closed browser does');
+  });
+  await check('M3 a waiting print started by a busy cropper still has words after a restart', async () => {
+    await setup(); bridgeImpl = async () => ({ ok: false, reason: B.BRIDGE_BUSY }); await main('meesho', T(15, 18, 0));
+    delete sess.kcPrintShown; await load();   // its wait alarm is still there
+    assert.ok(idOf('meesho') && live[idOf('meesho')].message);
   });
 
   if (failed) { console.log(failed + ' check(s) failed'); process.exit(1); }

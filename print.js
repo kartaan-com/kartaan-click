@@ -13,5 +13,5 @@
     frame.hidden = false; document.getElementById('note').hidden = true; frame.src = url;
     document.getElementById('again').onclick = () => { frame.contentWindow.focus(); frame.contentWindow.print(); };
     if (q.get('s') === '1') frame.onload = () => { try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { /* the Print button is there */ } };
-  } catch (e) { document.getElementById('note').textContent = 'These labels are no longer here. Run the print again.'; }
+  } catch (e) { document.getElementById('again').hidden = true; document.getElementById('note').textContent = 'These labels are no longer here. Run the print again.'; }
 })();
