@@ -3,16 +3,17 @@
 const assert = require('assert');
 
 const store = {};
+let connectHandler = null, messageHandler = null, pings = 0, createFails = false;
 let nextTab = 10, removedTabs = [], removedListeners = [];
 global.chrome = {
-  runtime: { id: 'self', getPlatformInfo: cb => cb && cb({}), lastError: undefined, onConnectExternal: { addListener: () => {} }, onMessage: { addListener: () => {} } },
+  runtime: { id: 'self', getPlatformInfo: cb => { pings++; if (cb) cb({}); }, lastError: undefined, onConnectExternal: { addListener: f => { connectHandler = f; } }, onMessage: { addListener: f => { messageHandler = f; } } },
   storage: { local: {
     get: async keys => { const o = {}; for (const k of [].concat(keys)) if (k in store) o[k] = store[k]; return o; },
     set: async obj => { Object.assign(store, obj); },
     remove: async keys => { for (const k of [].concat(keys)) delete store[k]; },
   } },
   tabs: {
-    create: async () => ({ id: nextTab++ }),
+    create: async () => { if (createFails) throw new Error('no tabs'); return { id: nextTab++ }; },
     remove: async id => { removedTabs.push(id); },
     onRemoved: { addListener: f => removedListeners.push(f), removeListener: f => { removedListeners = removedListeners.filter(x => x !== f); } },
   },
@@ -20,6 +21,8 @@ global.chrome = {
 // Shorten every wait so the time-out cases run at once.
 const realSetTimeout = global.setTimeout;
 global.setTimeout = (f, ms) => realSetTimeout(f, Math.min(ms, 50));
+const realSetInterval = global.setInterval;
+global.setInterval = (f, ms) => realSetInterval(f, Math.min(ms, 10));
 const B = require('../cropper-bridge.js');
 
 const goodSender = tab => ({ tab: { id: tab }, frameId: 0, url: 'https://kartaan.com/label-cropper/#from-click' });
@@ -38,6 +41,9 @@ const result = (id, over = {}) => ({ v: 1, id, type: 'result', outputs: [{ name:
 (async () => {
   // ── the count (D782) ──
   assert.strictEqual(B.bridgeCount(result('i')).matches, true);
+  const c3 = B.bridgeCount(result('i', { report: { ordersIn: 5, ordersOut: 3, unread: [{}, {}] } }));
+  assert.deepStrictEqual([c3.ordersIn, c3.ordersOut, c3.unread, c3.filesLeftOut], [5, 3, 2, 0]);
+  assert.ok(/3 of 5 orders; 2 could not be read/.test(c3.text));
   assert.strictEqual(B.bridgeCount(result('i', { report: { ordersIn: 3, ordersOut: 2, unread: [{}] } })).matches, false);
   const left = B.bridgeCount(result('i', { leftOut: [{ file: 'b.pdf', reason: 'is empty' }] }));
   assert.strictEqual(left.matches, false); assert.ok(/1 file\(s\) left out/.test(left.text));   // a file left out is never lost from the count
@@ -76,13 +82,53 @@ const result = (id, over = {}) => ({ v: 1, id, type: 'result', outputs: [{ name:
   const id = port.sent[0].id;
   // a second run while one is going is refused
   assert.strictEqual((await B.bridgeRun({ platform: 'meesho', files })).reason, 'a print run is already going');
+  await new Promise(r => realSetTimeout(r, 40));                    // the crop takes a while: the worker must be pinged meanwhile
   port.handlers[0](result('someone-elses-id'));                     // a wrong id is ignored
   port.handlers[0](result(id, { rows: [{ orderId: 'A' }, { orderId: 'N' }] }));
   const r = await p;
   assert.strictEqual(r.ok, true); assert.deepStrictEqual(r.alreadyPrinted, ['A']);
+  assert.strictEqual(r.count.matches, true); assert.strictEqual(r.count.ordersOut, 3);
+  assert.ok(port.disconnected, 'port closed after'); assert.strictEqual(removedListeners.length, 0, 'tab listener removed');
+  assert.ok(pings > 0, 'worker kept alive while the run was out');
   assert.ok(removedTabs.includes(10), 'cropper tab closed after');
   assert.strictEqual(store.kcBridgeLock, undefined, 'lock released');
   assert.strictEqual((await B.printedAmong('meesho', ['N'])).length, 0, 'the run itself marks nothing printed');
+
+  let f;
+  // ── settings pass through; a message that is not a result is ignored; a fresh lock refuses ──
+  p = B.bridgeRun({ platform: 'meesho', files, settings: { a: 1 } });
+  await tick();
+  const ps = fakePort(goodSender(nextTab - 1)); B.bridgeOnConnect(ps);
+  assert.deepStrictEqual(ps.sent[0].settings, { a: 1 });
+  ps.handlers[0]({ v: 1, id: ps.sent[0].id, type: 'progress' });
+  ps.handlers[0](result(ps.sent[0].id));
+  assert.strictEqual((await p).ok, true);
+  store.kcBridgeLock = Date.now();
+  assert.strictEqual((await B.bridgeRun({ platform: 'meesho', files })).reason, 'a print run is already going');
+  delete store.kcBridgeLock;
+
+  // ── connected but never answers = the answer time-out, not the connect one ──
+  p = B.bridgeRun({ platform: 'meesho', files });
+  await tick();
+  B.bridgeOnConnect(fakePort(goodSender(nextTab - 1)));
+  f = await p; assert.ok(/did not answer/.test(f.reason));
+
+  // ── Chrome cannot open the tab ──
+  createFails = true;
+  f = await B.bridgeRun({ platform: 'meesho', files });
+  assert.ok(!f.ok && /no tabs/.test(f.reason)); createFails = false;
+  assert.strictEqual(store.kcBridgeLock, undefined);
+
+  // ── Click's own message handler: only Click's own pages ──
+  assert.strictEqual(connectHandler, B.bridgeOnConnect);
+  let answered = null;
+  assert.strictEqual(messageHandler({ type: 'KC_MARK_PRINTED', platform: 'meesho', orderIds: ['Z9'] }, { id: 'other' }, () => {}), undefined);
+  assert.deepStrictEqual(await B.printedAmong('meesho', ['Z9']), []);
+  assert.strictEqual(messageHandler({ type: 'KC_MARK_PRINTED', platform: 'meesho', orderIds: ['Z9'] }, { id: 'self' }, r => { answered = r; }), true);
+  await tick(); assert.deepStrictEqual(answered, { ok: true, marked: 1 });
+  let crop = null;
+  assert.strictEqual(messageHandler({ type: 'KC_CROP', platform: 'meesho', files: [] }, { id: 'self' }, r => { crop = r; }), true);
+  await tick(); assert.strictEqual(crop.reason, 'nothing to print');
 
   // ── a port from the wrong tab is cut and the run goes on waiting ──
   p = B.bridgeRun({ platform: 'meesho', files });
@@ -97,7 +143,7 @@ const result = (id, over = {}) => ({ v: 1, id, type: 'result', outputs: [{ name:
   await tick();
   const pm = fakePort(goodSender(nextTab - 1)); B.bridgeOnConnect(pm);
   removedListeners.forEach(f => f(nextTab - 1));
-  let f = await p; assert.strictEqual(f.ok, false); assert.ok(/tab was closed/.test(f.reason));
+  f = await p; assert.strictEqual(f.ok, false); assert.ok(/tab was closed/.test(f.reason));
 
   // ── page closes the port without an answer = failed ──
   p = B.bridgeRun({ platform: 'meesho', files });
