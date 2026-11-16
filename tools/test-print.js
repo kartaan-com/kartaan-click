@@ -70,7 +70,8 @@ async function setup(times = ['18:00'], platforms = ['meesho'], now = T(15, 8, 0
 async function ring(name, scheduledTime, at = scheduledTime + 1000, ms) { delete alarms[name]; setNow(at); handlers.alarm({ name, scheduledTime }); await settle(ms); }
 const main = (p, t, at, ms) => ring('kcPrint_' + p, t, at, ms);
 const click = async (id, b) => { handlers.button(id, b); await settle(); };
-const idOf = p => Object.keys(live).find(i => i.startsWith('kcPrintAsk_' + p + '_'));
+const idsOf = p => Object.keys(live).filter(i => new RegExp('^kcPrint(Ask|Go)_' + p + '_\\d+$').test(i));
+const idOf = p => idsOf(p)[0];
 const marked = (p, ids) => B.printedAmong(p, ids);
 const gate = () => { let go; const wait = new Promise(r => { go = r; }); return { wait, go }; };
 
@@ -136,7 +137,7 @@ async function check(name, fn) {
     const t1 = T(16, 19, 0);
     await ring('kcPrintWait_meesho', T(15, 18, 1), t1); await main('meesho', T(16, 18, 0), t1);
     assert.strictEqual(bridgeCalls.length, 0);
-    const ids = Object.keys(live).filter(i => i.startsWith('kcPrintAsk_meesho_'));
+    const ids = idsOf('meesho');
     assert.strictEqual(ids.length, 1, 'one question for the platform');
     await click(ids[0], 0); assert.strictEqual(bridgeCalls.length, 1);
     await click(ids[0], 0); assert.strictEqual(bridgeCalls.length, 1, 'a second click prints nothing');
@@ -159,7 +160,7 @@ async function check(name, fn) {
     bridgeImpl = () => new Promise(() => {});                 // the cropper never answers: the browser closes
     await main('meesho', T(15, 18, 0));
     bridgeImpl = async () => answer(['A', 'B']); await load();   // the next start
-    const id = Object.keys(live).find(i => i.startsWith('kcPrintAsk_meesho_'));
+    const id = idOf('meesho');
     assert.ok(id && /did not finish/.test(live[id].message), 'asked, with a message');
     assert.strictEqual(bridgeCalls.length, 1, 'nothing printed by itself');
     await click(id, 0); assert.strictEqual(bridgeCalls.length, 2); assert.strictEqual(tabs.length, 1);
@@ -222,6 +223,88 @@ async function check(name, fn) {
   // ── T11 (Low): no dead code ──
   await check('T11 printRun is gone (only alarms and clicks start a print)', async () => {
     assert.strictEqual(P.printRun, undefined); assert.strictEqual(P.printRunNow, undefined);
+  });
+
+  // ── the run, step by step (kept from the earlier design, now on one record) ──
+  await check('schedule needs times AND a cutoff; times removed clears the alarm; changes are heard', async () => {
+    await setup(['18:00'], ['meesho', 'flipkart']); delete store.kcCutoff.flipkart;
+    handlers.changed({ kcCutoff: {} }, 'local'); await settle();
+    assert.ok(alarms.kcPrint_meesho && !alarms.kcPrint_flipkart, 'no cutoff, no print alarm');
+    store.kcPrintTimes = {}; handlers.changed({ kcPrintTimes: {} }, 'sync'); await settle(); assert.ok(alarms.kcPrint_meesho, 'only local changes count');
+    handlers.changed({ kcPrintTimes: {} }, 'local'); await settle(); assert.ok(!alarms.kcPrint_meesho);
+  });
+  await check('no source yet: said, nothing asked', async () => {
+    await setup(); delete P.printSources.meesho; await main('meesho', T(15, 18, 0));
+    assert.ok(/cannot fetch Meesho labels/.test(said[0].message) && !bridgeCalls.length && !store.kcPrintRun_meesho);
+  });
+  await check('a good run: PDFs in front of him, count asked, nothing marked until Yes; No marks nothing', async () => {
+    await setup(); await main('meesho', T(15, 18, 0));
+    assert.strictEqual(tabs.length, 1); assert.ok(/^chrome-extension:\/\/self\/print\.html\?k=kcPrintPdfs_meesho_\d+&i=0$/.test(tabs[0]));
+    const ask = said[said.length - 1]; assert.ok(/did you get 2/.test(ask.message) && ask.requireInteraction);
+    assert.deepStrictEqual(ask.buttons, [{ title: 'Yes, got them' }, { title: 'No' }]);
+    assert.deepStrictEqual(await marked('meesho', ['A', 'B']), []); assert.deepStrictEqual(store.kcPrintRun_meesho.orderIds, ['A', 'B']);
+    await click(idOf('meesho'), 1); assert.deepStrictEqual(await marked('meesho', ['A', 'B']), []);
+    assert.ok(/Not marked as printed/.test(said[said.length - 1].message) && !store.kcPrintRun_meesho);
+    await main('meesho', T(16, 18, 0)); await click(idOf('meesho'), 0); assert.deepStrictEqual(await marked('meesho', ['A', 'B']), ['A', 'B']);
+  });
+  await check('an order already printed is not asked about again', async () => {
+    await setup(); bridgeImpl = async () => ({ ...answer(['A', 'B']), alreadyPrinted: ['A'] }); await main('meesho', T(15, 18, 0));
+    assert.deepStrictEqual(store.kcPrintRun_meesho.orderIds, ['B']);
+  });
+  await check('nothing to print / cropper failed: said, nothing opened, nothing asked', async () => {
+    await setup(); P.printSources.meesho = async () => []; await main('meesho', T(15, 18, 0));
+    assert.ok(/Nothing to print/.test(said[0].message) && !bridgeCalls.length && !store.kcPrintRun_meesho);
+    await setup(); bridgeImpl = async () => ({ ok: false, reason: 'the cropper tab was closed.' }); await main('meesho', T(15, 18, 0));
+    assert.ok(/not made: the cropper tab was closed/.test(said[0].message) && !tabs.length && !store.kcPrintRun_meesho);
+  });
+  await check('an unknown print mode falls back to the box', async () => {
+    await setup(); store.kcPrintTimes.meesho.mode = 'constructor'; await main('meesho', T(15, 18, 0)); assert.strictEqual(tabs.length, 1);
+  });
+  await check('a source that throws: said, record gone, next time still set', async () => {
+    await setup(); P.printSources.meesho = async () => { throw new Error('page changed'); }; await main('meesho', T(15, 18, 0));
+    assert.ok(/nothing was printed: page changed/.test(said[0].message) && !store.kcPrintRun_meesho && alarms.kcPrint_meesho);
+  });
+  await check('computer in use: asks once, waits; quiet = prints once; a stray wait prints nothing', async () => {
+    await setup(); idleActive = true; await main('meesho', T(15, 18, 0));
+    assert.strictEqual(store.kcPrintRun_meesho.state, 'waiting'); assert.ok(alarms.kcPrintWait_meesho); const n = said.length;
+    await ring('kcPrintWait_meesho', T(15, 18, 1)); assert.strictEqual(said.length, n, 'still busy: nothing new said');
+    idleActive = false; await ring('kcPrintWait_meesho', T(15, 18, 2)); assert.strictEqual(bridgeCalls.length, 1);
+    assert.strictEqual(store.kcPrintRun_meesho.state, 'asked'); assert.ok(!alarms.kcPrintWait_meesho);
+    await ring('kcPrintWait_meesho', T(15, 18, 3)); assert.strictEqual(bridgeCalls.length, 1);
+  });
+  await check('Print now while waiting prints once; the wait cannot print it again; a double click never marks', async () => {
+    await setup(); idleActive = true; await main('meesho', T(15, 18, 0)); const id = idOf('meesho');
+    handlers.button(id, 0); handlers.button(id, 0); await settle();
+    assert.strictEqual(bridgeCalls.length, 1); assert.deepStrictEqual(await marked('meesho', ['A', 'B']), [], 'the second click is not a Yes');
+    idleActive = false; await ring('kcPrintWait_meesho', T(15, 18, 2)); assert.strictEqual(bridgeCalls.length, 1);
+  });
+  await check('busy for over 2 hours: gives up, says so, no record', async () => {
+    await setup(); idleActive = true; await main('meesho', T(15, 18, 0));
+    await ring('kcPrintWait_meesho', T(15, 20, 59), T(15, 20, 59));
+    assert.ok(/Nothing was printed/.test(said[said.length - 1].message) && !store.kcPrintRun_meesho && !live[Object.keys(live).find(i => /^kcPrintGo_/.test(i))]);
+  });
+  await check('computer was off: asks, never prints, and the next time is set again', async () => {
+    await setup(); await main('meesho', T(15, 18, 0), T(15, 18, 20));
+    assert.strictEqual(bridgeCalls.length, 0); assert.ok(/computer was off/.test(said[0].message) && /^kcPrintGo_meesho_/.test(said[0].id)); assert.ok(alarms.kcPrint_meesho);
+  });
+  await check('another platform is in the cropper: waits a minute on the same record, says nothing', async () => {
+    await setup(); bridgeImpl = async () => ({ ok: false, reason: B.BRIDGE_BUSY }); await main('meesho', T(15, 18, 0));
+    assert.ok(alarms.kcPrintWait_meesho && store.kcPrintRun_meesho.state === 'waiting' && !tabs.length && !said.length);
+    bridgeImpl = async () => answer(['A']); await ring('kcPrintWait_meesho', T(15, 18, 1)); assert.strictEqual(store.kcPrintRun_meesho.state, 'asked');
+  });
+  await check('a later print time replaces an unanswered question (it expires)', async () => {
+    await setup(['09:00', '18:00']); await main('meesho', T(15, 9, 0)); const id1 = idOf('meesho');
+    await main('meesho', T(15, 18, 0)); assert.ok(!live[id1] && store.kcPrintRun_meesho.at === T(15, 18, 0));
+  });
+  await check('a print time with a worker restart in the middle of waiting asks instead of printing', async () => {
+    await setup(); idleActive = true; await main('meesho', T(15, 18, 0)); delete alarms.kcPrintWait_meesho; idleActive = false;
+    await load(); assert.strictEqual(bridgeCalls.length, 0); assert.ok(idOf('meesho') && /computer was off/.test(live[idOf('meesho')].message));
+  });
+  await check('a listener error is said and logged', async () => {
+    await setup(); const real = console.log; let logged = ''; console.log = m => { logged += m; };
+    global.computerInUse = async () => { throw new Error('idle broke'); };
+    await main('meesho', T(15, 18, 0)); console.log = real; global.computerInUse = async () => idleActive;
+    assert.ok(/print time: Error: idle broke/.test(logged) && said.some(s => /idle broke/.test(s.message)));
   });
 
   if (failed) { console.log(failed + ' check(s) failed'); process.exit(1); }
