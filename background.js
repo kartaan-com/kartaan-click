@@ -1651,3 +1651,10 @@ try {
 } catch (e) {
   console.log('[Kartaan Click] cropper bridge did not load: ' + e);   // must never stop the rest of this file
 }
+
+// Print times, the next-cutoff rule and the print step (its own file; nothing above depends on it).
+try {
+  importScripts('print-flow.js');
+} catch (e) {
+  console.log('[Kartaan Click] print flow did not load: ' + e);   // must never stop the rest of this file
+}
