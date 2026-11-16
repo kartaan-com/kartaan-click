@@ -369,6 +369,7 @@ async function check(name, fn) {
   });
   await check('N8 the same print time arriving twice prints once', async () => {
     await setup(); await main('meesho', T(15, 18, 0)); await main('meesho', T(15, 18, 0)); assert.strictEqual(bridgeCalls.length, 1);
+    assert.strictEqual(store.kcPrintRun_meesho.state, 'asked', 'its question is left as it was'); assert.ok(/^kcPrintAsk_/.test(idOf('meesho')));
   });
   await check('N10 a waiting print that starts by itself takes its Print now down', async () => {
     await setup(); idleActive = true; await main('meesho', T(15, 18, 0)); const id = idOf('meesho'); assert.ok(/^kcPrintGo/.test(id));
