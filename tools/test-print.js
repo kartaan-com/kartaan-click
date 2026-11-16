@@ -307,6 +307,33 @@ async function check(name, fn) {
     assert.ok(/print time: Error: idle broke/.test(logged) && said.some(s => /idle broke/.test(s.message)));
   });
 
+  // ── what the proving run found nothing to stop (each of these goes red when its line is taken out) ──
+  await check('Print now uses today\'s cutoff, counting a print time later today as yesterday\'s', async () => {
+    await setup(['09:00', '18:00']); await main('meesho', T(14, 18, 0), T(16, 10, 0));
+    await click(idOf('meesho'), 0); assert.deepStrictEqual(seenBy, [['meesho', T(16, 12, 0)]]);
+  });
+  await check('ending a run takes its wait alarm away (Print now, and switched off)', async () => {
+    await setup(); idleActive = true; await main('meesho', T(15, 18, 0)); assert.ok(alarms.kcPrintWait_meesho);
+    store.kcPrintTimes = {}; handlers.changed({ kcPrintTimes: {} }, 'local'); await settle(); assert.ok(!alarms.kcPrintWait_meesho);
+    await setup(); idleActive = true; await main('meesho', T(15, 18, 0)); await click(idOf('meesho'), 0); assert.ok(!alarms.kcPrintWait_meesho);
+  });
+  await check('a lost alarm is asked about once, at start; the next time is written down; an overdue alarm is left alone', async () => {
+    await setup(); assert.strictEqual(store.kcPrintNext.meesho, alarms.kcPrint_meesho.when);
+    setNow(T(15, 18, 30)); delete alarms.kcPrint_meesho; store.kcPrintNext = { meesho: T(15, 18, 0) }; await load();
+    assert.strictEqual(said.filter(s => /computer was off/.test(s.message)).length, 1);
+    await ring('kcPrint_meesho', T(15, 18, 0), T(15, 18, 30)); assert.strictEqual(said.filter(s => /computer was off/.test(s.message)).length, 1, 'its late alarm adds no second question');
+    await setup(); alarms.kcPrint_meesho = { when: T(15, 7, 0) }; await load(); assert.strictEqual(alarms.kcPrint_meesho.when, T(15, 7, 0)); assert.ok(!said.length);
+  });
+  await check('a slow print does not make the next schedule think its time was missed', async () => {
+    await setup(); bridgeImpl = async () => { setNow(Date.now() + 6 * 60000); return answer(['A']); };
+    await main('meesho', T(15, 18, 0), T(15, 18, 0), 60); assert.ok(!said.some(s => /computer was off/.test(s.message)));
+  });
+  await check('Print now with the cutoff gone says so; a pop-up id that is not ours does nothing', async () => {
+    await setup(); idleActive = true; await main('meesho', T(15, 18, 0)); store.kcCutoff = {};
+    await click(idOf('meesho'), 0); assert.ok(/no cutoff set for Meesho/.test(said[said.length - 1].message) && !bridgeCalls.length);
+    const n = said.length; await click('somethingElse', 0); await click('kcPrintGo_meesho_x', 0); assert.strictEqual(said.length, n);
+  });
+
   if (failed) { console.log(failed + ' check(s) failed'); process.exit(1); }
   console.log('print checks: all passed');
 })().catch(e => { console.error(e); process.exit(1); });
