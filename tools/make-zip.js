@@ -21,6 +21,7 @@ const include = [
   'options.js',
   'background.js',
   'reminders.js',
+  'cropper-bridge.js',
   'content',
   'icons/icon16.png',
   'icons/icon48.png',

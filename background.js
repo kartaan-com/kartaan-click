@@ -1644,3 +1644,10 @@ try {
 } catch (e) {
   console.log('[Kartaan Click] cutoff reminders did not load: ' + e);   // must never stop the rest of this file
 }
+
+// The Label Cropper bridge (its own file; nothing above depends on it).
+try {
+  importScripts('cropper-bridge.js');
+} catch (e) {
+  console.log('[Kartaan Click] cropper bridge did not load: ' + e);   // must never stop the rest of this file
+}

@@ -3,6 +3,10 @@
 Newest first. Every released version has an entry here — the repository refuses a
 change whose version is not listed.
 
+## 1.8.0 — 16 November 2026
+
+**Groundwork: Click can now hand label files to the Kartaan Label Cropper and take the cropped labels back.** Nothing new appears on screen yet. Click opens kartaan.com/label-cropper in a background tab, passes the label PDFs to it over Chrome's own connection between a page and an extension, receives the finished PDFs and the counts, and closes the tab. Only that page, in the tab Click opened, can answer. It remembers which orders were printed so none is sent twice, and says plainly if the number of labels out does not match the number in. New: the manifest names the cropper page as allowed to connect ("externally_connectable"); no new permission.
+
 ## 1.7.0 — 15 November 2026
 
 **New: cutoff reminders.** On the settings page, set the time orders must be ready by on each of Flipkart, Meesho and Amazon, and how many minutes before it you want a reminder. Every day at that moment one small notice appears on your computer. It opens no portal page, and if the computer was off or asleep at that time the notice is skipped rather than shown late. This needs the browser's `notifications` permission; the times stay on your computer.
