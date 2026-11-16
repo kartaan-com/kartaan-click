@@ -387,6 +387,16 @@ async function check(name, fn) {
     await click(id1, 0); assert.deepStrictEqual(await marked('meesho', ['A', 'B']), ['A', 'B'], 'Yes still marks the orders (F2)');
     assert.ok(/^kcPrintGo_/.test(idOf('meesho')), 'Print now offered after the answer');
   });
+  await check('a late time, and a lost alarm, while a question is open: held too, said once', async () => {
+    await setup(['09:00', '18:00']); await main('meesho', T(15, 9, 0)); const id1 = idOf('meesho');
+    await main('meesho', T(15, 18, 0), T(15, 18, 30));
+    assert.ok(live[id1] && store.kcPrintRun_meesho.state === 'asked' && store.kcPrintRun_meesho.pendingAt === T(15, 18, 0), 'late: held');
+    await setup(['09:00', '18:00']); await main('meesho', T(15, 9, 0)); delete alarms.kcPrint_meesho; store.kcPrintNext = { meesho: T(15, 8, 0) }; setNow(T(15, 18, 0));
+    handlers.changed({ kcCutoff: {} }, 'local'); await settle(); store.kcPrintNext = { meesho: T(15, 8, 0) }; delete alarms.kcPrint_meesho;
+    handlers.changed({ kcCutoff: {} }, 'local'); await settle();
+    assert.strictEqual(said.filter(s => /have not answered/.test(s.message)).length, 1, 'said once');
+    assert.strictEqual(store.kcPrintRun_meesho.state, 'asked');
+  });
   await check('F3 the same time arriving twice after an offer does not print by itself', async () => {
     await setup(); await main('meesho', T(15, 18, 0), T(15, 18, 20)); assert.strictEqual(bridgeCalls.length, 0);
     await main('meesho', T(15, 18, 0), T(15, 18, 21)); assert.strictEqual(bridgeCalls.length, 0);
