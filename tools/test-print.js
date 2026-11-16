@@ -29,6 +29,8 @@ global.printedMark = B.printedMark;
 global.computerInUse = async () => idleActive;
 let bridgeCalls = [], bridgeAnswer;
 global.bridgeRun = async req => { bridgeCalls.push(req); return bridgeAnswer; };
+// Set before the file loads: it must put the alarms back from the saved settings by itself when the worker starts.
+store.kcPrintTimes = { amazon: { times: ['07:00'] } }; store.kcCutoff = { amazon: { time: '12:00', remindMin: 0 } };
 const P = require('../print-flow.js');
 
 const at = (d, h, m) => new Date(2026, 10, d, h, m).getTime();   // 2026-11-<d> h:m local
@@ -37,6 +39,8 @@ const answer = (over = {}) => ({ ok: true, outputs: [{ name: 'o', count: 2, base
 const reset = () => { for (const k of Object.keys(store)) delete store[k]; for (const k of Object.keys(alarms)) delete alarms[k]; said.length = 0; tabs.length = 0; bridgeCalls = []; idleActive = false; bridgeAnswer = answer(); };
 
 (async () => {
+  await new Promise(r => setTimeout(r, 5));
+  assert.ok(alarms.kcPrint_amazon, 'alarms are put back at start');
   // ── times ──
   assert.deepStrictEqual(P.printTimesClean(['18:00', '09:00', '18:00', '25:00', 'x', 5, '9:00']), ['09:00', '18:00']);
   assert.deepStrictEqual(P.printTimesClean('nope'), []);
@@ -77,10 +81,12 @@ const reset = () => { for (const k of Object.keys(store)) delete store[k]; for (
   assert.deepStrictEqual(tabs, ['chrome-extension://self/print.html?i=0']); assert.deepStrictEqual(sess.kcPrintPdfs, ['AA==']);
   assert.deepStrictEqual(store.kcPrintAsk, { platform: 'meesho', orderIds: ['A', 'B'], n: 2 });
   const ask = said[said.length - 1]; assert.strictEqual(ask.id, 'kcPrintAsk'); assert.ok(/did you get 2/.test(ask.message));
+  assert.deepStrictEqual(ask.buttons, [{ title: 'Yes, got them' }, { title: 'No' }]); assert.strictEqual(ask.requireInteraction, true);
   assert.deepStrictEqual(await B.printedAmong('meesho', ['A', 'B']), []);
   handlers.button('kcPrintAsk', 1);                                   // No
   await new Promise(r => setTimeout(r, 5));
   assert.strictEqual(store.kcPrintAsk, undefined); assert.deepStrictEqual(await B.printedAmong('meesho', ['A']), []);
+  assert.ok(/Not marked as printed/.test(said[said.length - 1].message));
   await P.printRun('meesho'); handlers.button('kcPrintAsk', 0);        // Yes
   await new Promise(r => setTimeout(r, 5));
   assert.deepStrictEqual(await B.printedAmong('meesho', ['A', 'B']), ['A', 'B']);
@@ -110,7 +116,9 @@ const reset = () => { for (const k of Object.keys(store)) delete store[k]; for (
   await P.printFired({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 1000 });
   assert.strictEqual(bridgeCalls.length, 0); assert.ok(alarms.kcPrintWait_meesho && store.kcPrintPending.meesho);
   assert.strictEqual(said.filter(s => s.id === 'kcPrintGo_meesho').length, 1);
+  const nSaid = said.length;
   await P.printFired({ name: 'kcPrintWait_meesho' });                       // still busy: waits again, no second question
+  assert.strictEqual(said.length, nSaid, 'a wait alarm says nothing new');
   assert.strictEqual(said.filter(s => s.id === 'kcPrintGo_meesho').length, 1);
   idleActive = false; await P.printFired({ name: 'kcPrintWait_meesho' });   // quiet now: prints, nothing left waiting
   assert.strictEqual(bridgeCalls.length, 1); assert.ok(!store.kcPrintPending.meesho && !alarms.kcPrintWait_meesho);
@@ -130,6 +138,15 @@ const reset = () => { for (const k of Object.keys(store)) delete store[k]; for (
   await P.printFired({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 20 * 60 * 1000 });
   assert.strictEqual(bridgeCalls.length, 0); assert.ok(/computer was off/.test(said[0].message) && said[0].id === 'kcPrintGo_meesho');
   assert.ok(alarms.kcPrint_meesho, 'the next print time is set again');
+
+  // the worker's own listeners reach the same code
+  reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } };
+  handlers.changed({ kcPrintTimes: {} }, 'sync'); await new Promise(r => setTimeout(r, 5)); assert.ok(!alarms.kcPrint_meesho, 'only local changes count');
+  handlers.changed({ kcPrintTimes: {} }, 'local'); await new Promise(r => setTimeout(r, 5)); assert.ok(alarms.kcPrint_meesho);
+  handlers.alarm({ name: 'kcPrint_other' }); handlers.alarm({ name: 'kcCutoff_meesho' });
+  P.printSources.meesho = async () => [{ name: 'l.pdf', base64: 'JVBERg==' }];
+  handlers.alarm({ name: 'kcPrint_meesho', scheduledTime: Date.now() }); await new Promise(r => setTimeout(r, 10));
+  assert.strictEqual(bridgeCalls.length, 1);
 
   console.log('print checks: all passed');
 })().catch(e => { console.error(e); process.exit(1); });

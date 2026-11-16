@@ -49,11 +49,9 @@ function printNextTime(times, now) {
 function printShipBy(cutoff, now) {
   const clean = printCutoffClean(cutoff);
   if (!clean) return null;
-  for (let day = 0; day <= 1; day++) {
-    const d = new Date(now); d.setDate(d.getDate() + day); d.setHours(clean.hour, clean.minute, 0, 0);
-    if (d.getTime() > now) return d.getTime();
-  }
-  return null;
+  const d = new Date(now); d.setHours(clean.hour, clean.minute, 0, 0);
+  if (d.getTime() <= now) { d.setDate(d.getDate() + 1); d.setHours(clean.hour, clean.minute, 0, 0); }
+  return d.getTime();
 }
 
 const printSay = (title, message, buttons, id) => chrome.notifications.create(id || '', {
