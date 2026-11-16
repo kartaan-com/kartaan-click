@@ -2,14 +2,17 @@
 'use strict';
 const assert = require('assert');
 
-const store = {};
-let connectHandler = null, messageHandler = null, pings = 0, createFails = false;
+const store = {}, sess = { kcBridgeTab: 77 };
+let connectHandler = null, messageHandler = null, pings = 0, createFails = false, failSet = false;
 let nextTab = 10, removedTabs = [], removedListeners = [];
 global.chrome = {
-  runtime: { id: 'self', getPlatformInfo: cb => { pings++; if (cb) cb({}); }, lastError: undefined, onConnectExternal: { addListener: f => { connectHandler = f; } }, onMessage: { addListener: f => { messageHandler = f; } } },
-  storage: { local: {
-    get: async keys => { const o = {}; for (const k of [].concat(keys)) if (k in store) o[k] = store[k]; return o; },
-    set: async obj => { Object.assign(store, obj); },
+  runtime: { id: 'self', getURL: p => 'chrome-extension://self/' + p, getPlatformInfo: cb => { pings++; if (cb) cb({}); }, lastError: undefined, onConnectExternal: { addListener: f => { connectHandler = f; } }, onMessage: { addListener: f => { messageHandler = f; } } },
+  storage: { session: {
+    set: async o => { Object.assign(sess, o); }, remove: async k => { delete sess[k]; },
+    get: async k => (k in sess ? { [k]: sess[k] } : {}),
+  }, local: {
+    get: async keys => { const o = {}; for (const k of [].concat(keys)) if (k in store) o[k] = JSON.parse(JSON.stringify(store[k])); await new Promise(r => realSetTimeout(r, 1)); return o; },
+    set: async obj => { if (failSet) { failSet = false; throw new Error('disk full'); } Object.assign(store, obj); },
     remove: async keys => { for (const k of [].concat(keys)) delete store[k]; },
   } },
   tabs: {
@@ -20,7 +23,7 @@ global.chrome = {
 };
 // Shorten every wait so the time-out cases run at once.
 const realSetTimeout = global.setTimeout;
-global.setTimeout = (f, ms) => realSetTimeout(f, Math.min(ms, 50));
+global.setTimeout = (f, ms) => realSetTimeout(f, Math.min(ms, 150));
 const realSetInterval = global.setInterval;
 global.setInterval = (f, ms) => realSetInterval(f, Math.min(ms, 10));
 const B = require('../cropper-bridge.js');
@@ -82,16 +85,16 @@ const result = (id, over = {}) => ({ v: 1, id, type: 'result', outputs: [{ name:
   const id = port.sent[0].id;
   // a second run while one is going is refused
   assert.strictEqual((await B.bridgeRun({ platform: 'meesho', files })).reason, 'a print run is already going');
-  await new Promise(r => realSetTimeout(r, 40));                    // the crop takes a while: the worker must be pinged meanwhile
+  await new Promise(r => realSetTimeout(r, 25));                    // the crop takes a while: the worker must be pinged meanwhile
   port.handlers[0](result('someone-elses-id'));                     // a wrong id is ignored
   port.handlers[0](result(id, { rows: [{ orderId: 'A' }, { orderId: 'N' }] }));
   const r = await p;
-  assert.strictEqual(r.ok, true); assert.deepStrictEqual(r.alreadyPrinted, ['A']);
+  assert.strictEqual(r.ok, true, JSON.stringify(r)); assert.deepStrictEqual(r.alreadyPrinted, ['A']);
   assert.strictEqual(r.count.matches, true); assert.strictEqual(r.count.ordersOut, 3);
   assert.ok(port.disconnected, 'port closed after'); assert.strictEqual(removedListeners.length, 0, 'tab listener removed');
   assert.ok(pings > 0, 'worker kept alive while the run was out');
   assert.ok(removedTabs.includes(10), 'cropper tab closed after');
-  assert.strictEqual(store.kcBridgeLock, undefined, 'lock released');
+  assert.strictEqual(sess.kcBridgeTab, undefined, 'tab record cleared');
   assert.strictEqual((await B.printedAmong('meesho', ['N'])).length, 0, 'the run itself marks nothing printed');
 
   let f;
@@ -101,11 +104,9 @@ const result = (id, over = {}) => ({ v: 1, id, type: 'result', outputs: [{ name:
   const ps = fakePort(goodSender(nextTab - 1)); B.bridgeOnConnect(ps);
   assert.deepStrictEqual(ps.sent[0].settings, { a: 1 });
   ps.handlers[0]({ v: 1, id: ps.sent[0].id, type: 'progress' });
+  assert.ok(sess.kcBridgeTab >= 10, 'the run records its tab');
   ps.handlers[0](result(ps.sent[0].id));
-  assert.strictEqual((await p).ok, true);
-  store.kcBridgeLock = Date.now();
-  assert.strictEqual((await B.bridgeRun({ platform: 'meesho', files })).reason, 'a print run is already going');
-  delete store.kcBridgeLock;
+  const psr = await p; assert.strictEqual(psr.ok, true); assert.strictEqual(psr.outputs.length, 1, 'the progress message was not taken for the answer');
 
   // ── connected but never answers = the answer time-out, not the connect one ──
   p = B.bridgeRun({ platform: 'meesho', files });
@@ -117,18 +118,60 @@ const result = (id, over = {}) => ({ v: 1, id, type: 'result', outputs: [{ name:
   createFails = true;
   f = await B.bridgeRun({ platform: 'meesho', files });
   assert.ok(!f.ok && /no tabs/.test(f.reason)); createFails = false;
-  assert.strictEqual(store.kcBridgeLock, undefined);
+  assert.strictEqual(sess.kcBridgeTab, undefined);
 
   // ── Click's own message handler: only Click's own pages ──
   assert.strictEqual(connectHandler, B.bridgeOnConnect);
   let answered = null;
-  assert.strictEqual(messageHandler({ type: 'KC_MARK_PRINTED', platform: 'meesho', orderIds: ['Z9'] }, { id: 'other' }, () => {}), undefined);
+  assert.strictEqual(messageHandler({ type: 'KC_MARK_PRINTED', platform: 'meesho', orderIds: ['Z9'] }, { id: 'other', url: 'chrome-extension://other/x.html' }, () => {}), undefined);
   assert.deepStrictEqual(await B.printedAmong('meesho', ['Z9']), []);
-  assert.strictEqual(messageHandler({ type: 'KC_MARK_PRINTED', platform: 'meesho', orderIds: ['Z9'] }, { id: 'self' }, r => { answered = r; }), true);
+  assert.strictEqual(messageHandler({ type: 'KC_MARK_PRINTED', platform: 'meesho', orderIds: ['Z9'] }, { id: 'self', url: 'chrome-extension://self/options.html' }, r => { answered = r; }), true);
   await tick(); assert.deepStrictEqual(answered, { ok: true, marked: 1 });
   let crop = null;
-  assert.strictEqual(messageHandler({ type: 'KC_CROP', platform: 'meesho', files: [] }, { id: 'self' }, r => { crop = r; }), true);
+  assert.strictEqual(messageHandler({ type: 'KC_CROP', platform: 'meesho', files: [] }, { id: 'self', url: 'chrome-extension://self/options.html' }, r => { crop = r; }), true);
   await tick(); assert.strictEqual(crop.reason, 'nothing to print');
+
+  // Click's own script inside a seller page (same extension id, the page's address) is not let in
+  assert.strictEqual(messageHandler({ type: 'KC_CROP', platform: 'meesho', files }, { id: 'self', url: 'https://supplier.meesho.com/x' }, () => {}), undefined);
+  assert.strictEqual(B.bridgeSenderOk(null), false);
+
+  // ── two requests at once: only one opens a tab; the other's end does not free the first ──
+  const tabsBefore = nextTab;
+  const first = B.bridgeRun({ platform: 'meesho', files });
+  const second = await B.bridgeRun({ platform: 'meesho', files });
+  assert.strictEqual(second.reason, 'a print run is already going');
+  await tick();
+  assert.strictEqual(nextTab, tabsBefore + 1, 'one tab only');
+  // a second port from the same tab is cut; the first stays
+  const one = fakePort(goodSender(nextTab - 1)); B.bridgeOnConnect(one);
+  const two = fakePort(goodSender(nextTab - 1)); B.bridgeOnConnect(two);
+  assert.ok(two.disconnected && two.sent.length === 0 && !one.disconnected);
+  one.handlers[0](result(one.sent[0].id, { report: { ordersIn: 3, ordersOut: 3, unread: [], problems: [{}] }, ignored: ['x'], outputs: 'not a list' }));
+  const fr = await first;
+  assert.strictEqual(fr.count.matches, false); assert.ok(/1 need a look/.test(fr.count.text));   // the page's own "problems" count
+  assert.deepStrictEqual(fr.ignored, ['x']); assert.deepStrictEqual(fr.outputs, []);
+
+  // ── printed record: other platform on the row, odd ids, two marks at once ──
+  await B.printedMark('flipkart', ['F1']);
+  p = B.bridgeRun({ platform: 'meesho', files });
+  await tick();
+  const pf = fakePort(goodSender(nextTab - 1)); B.bridgeOnConnect(pf);
+  pf.handlers[0](result(pf.sent[0].id, { rows: [{ orderId: 'F1', platform: 'flipkart' }, { orderId: 'F1', platform: 'meesho' }, { orderId: 'constructor' }, { orderId: '__proto__' }] }));
+  assert.deepStrictEqual((await p).alreadyPrinted, ['F1']);
+  assert.deepStrictEqual(await B.printedAmong('meesho', ['constructor', 'toString', '__proto__']), []);
+  assert.strictEqual(await B.printedMark('meesho', ['__proto__', 'constructor']), 1);
+  await Promise.all([B.printedMark('amazon', ['M1']), B.printedMark('amazon', ['M2'])]);
+  assert.deepStrictEqual(await B.printedAmong('amazon', ['M1', 'M2']), ['M1', 'M2']);
+
+  // ── a worker that restarted mid-run: its leftover cropper tab was closed at load; nothing left = nothing closed ──
+  assert.ok(removedTabs.includes(77) && sess.kcBridgeTab === undefined);
+  const nRemoved = removedTabs.length;
+  await B.bridgeCloseLeftover(); assert.strictEqual(removedTabs.length, nRemoved);
+  sess.kcBridgeTab = 55; await B.bridgeCloseLeftover();
+  assert.ok(removedTabs.includes(55) && sess.kcBridgeTab === undefined);
+  // a failed save does not stop the next mark
+  failSet = true; await assert.rejects(B.printedMark('amazon', ['Q1']));
+  assert.strictEqual(await B.printedMark('amazon', ['Q2']), 1);
 
   // ── a port from the wrong tab is cut and the run goes on waiting ──
   p = B.bridgeRun({ platform: 'meesho', files });
@@ -162,7 +205,7 @@ const result = (id, over = {}) => ({ v: 1, id, type: 'result', outputs: [{ name:
   // ── never connects ──
   f = await B.bridgeRun({ platform: 'meesho', files });
   assert.ok(!f.ok && /did not connect/.test(f.reason));
-  assert.strictEqual(store.kcBridgeLock, undefined);
+  assert.strictEqual(sess.kcBridgeTab, undefined);
 
   console.log('bridge checks: all passed');
 })().catch(e => { console.error(e); process.exit(1); });
