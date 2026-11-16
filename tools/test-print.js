@@ -3,7 +3,7 @@
 'use strict';
 const assert = require('assert');
 
-const store = {}, sess = {}, alarms = {}, said = [], tabs = [];
+const store = {}, sess = {}, alarms = {}, said = [], tabs = [], cleared = [];
 let idleActive = false, handlers = {};
 global.chrome = {
   runtime: { getURL: p => 'chrome-extension://self/' + p, onConnectExternal: { addListener: () => {} }, onMessage: { addListener: () => {} } },
@@ -20,12 +20,13 @@ global.chrome = {
     clear: async n => { delete alarms[n]; }, get: async n => (alarms[n] ? { scheduledTime: alarms[n].when } : undefined),
     create: (n, i) => { alarms[n] = i; }, onAlarm: { addListener: f => { handlers.alarm = f; } },
   },
-  notifications: { create: async (id, o) => { said.push({ id, ...o }); }, onButtonClicked: { addListener: f => { handlers.button = f; } } },
+  notifications: { clear: id => { cleared.push(id); }, create: async (id, o) => { said.push({ id, ...o }); }, onButtonClicked: { addListener: f => { handlers.button = f; } } },
   tabs: { create: async o => { tabs.push(o.url); }, remove: async () => {}, onRemoved: { addListener() {}, removeListener() {} } },
 };
 // The pieces print-flow.js finds in the worker's shared scope.
 const B = require('../cropper-bridge.js');
 global.printedMark = B.printedMark;
+global.BRIDGE_BUSY = B.BRIDGE_BUSY;
 global.computerInUse = async () => idleActive;
 let bridgeCalls = [], bridgeAnswer;
 global.bridgeRun = async req => { bridgeCalls.push(req); return bridgeAnswer; };
@@ -36,7 +37,7 @@ const P = require('../print-flow.js');
 const at = (d, h, m) => new Date(2026, 10, d, h, m).getTime();   // 2026-11-<d> h:m local
 const answer = (over = {}) => ({ ok: true, outputs: [{ name: 'o', count: 2, base64: 'AA==' }], rows: [{ orderId: 'A' }, { orderId: 'B' }],
   report: {}, leftOut: [], count: { ordersOut: 2, text: 'Labels made for 2 of 2 orders.' }, alreadyPrinted: [], ...over });
-const reset = () => { for (const k of Object.keys(store)) delete store[k]; for (const k of Object.keys(alarms)) delete alarms[k]; said.length = 0; tabs.length = 0; bridgeCalls = []; idleActive = false; bridgeAnswer = answer(); };
+const reset = () => { for (const k of Object.keys(store)) delete store[k]; for (const k of Object.keys(alarms)) delete alarms[k]; said.length = 0; tabs.length = 0; cleared.length = 0; bridgeCalls = []; idleActive = false; bridgeAnswer = answer(); };
 
 (async () => {
   await new Promise(r => setTimeout(r, 5));
@@ -63,7 +64,7 @@ const reset = () => { for (const k of Object.keys(store)) delete store[k]; for (
   store.kcCutoff = { meesho: cut };
   await P.printSchedule();
   assert.ok(alarms.kcPrint_meesho && !alarms.kcPrint_flipkart, 'no cutoff, no print alarm');
-  const due = alarms.kcPrint_meesho.when;
+  const due = alarms.kcPrint_meesho.when; assert.strictEqual(store.kcPrintNext.meesho, due, 'the next time is written down');
   await P.printSchedule(); assert.strictEqual(alarms.kcPrint_meesho.when, due);
   delete store.kcPrintTimes; await P.printSchedule(); assert.ok(!alarms.kcPrint_meesho, 'times removed clears the alarm');
 
@@ -79,22 +80,22 @@ const reset = () => { for (const k of Object.keys(store)) delete store[k]; for (
   await P.printRun('meesho');
   assert.ok(shipBySeen > Date.now(), 'the source is told the next cutoff');
   assert.deepStrictEqual(tabs, ['chrome-extension://self/print.html?i=0']); assert.deepStrictEqual(sess.kcPrintPdfs, ['AA==']);
-  assert.deepStrictEqual(store.kcPrintAsk, { platform: 'meesho', orderIds: ['A', 'B'], n: 2 });
-  const ask = said[said.length - 1]; assert.strictEqual(ask.id, 'kcPrintAsk'); assert.ok(/did you get 2/.test(ask.message));
+  assert.deepStrictEqual(store.kcPrintAsk, { meesho: { orderIds: ['A', 'B'] } });
+  const ask = said[said.length - 1]; assert.strictEqual(ask.id, 'kcPrintAsk_meesho'); assert.ok(/did you get 2/.test(ask.message));
   assert.deepStrictEqual(ask.buttons, [{ title: 'Yes, got them' }, { title: 'No' }]); assert.strictEqual(ask.requireInteraction, true);
   assert.deepStrictEqual(await B.printedAmong('meesho', ['A', 'B']), []);
-  handlers.button('kcPrintAsk', 1);                                   // No
+  handlers.button('kcPrintAsk_meesho', 1);                                   // No
   await new Promise(r => setTimeout(r, 5));
-  assert.strictEqual(store.kcPrintAsk, undefined); assert.deepStrictEqual(await B.printedAmong('meesho', ['A']), []);
+  assert.deepStrictEqual(store.kcPrintAsk, {}); assert.deepStrictEqual(await B.printedAmong('meesho', ['A']), []);
   assert.ok(/Not marked as printed/.test(said[said.length - 1].message));
-  await P.printRun('meesho'); handlers.button('kcPrintAsk', 0);        // Yes
+  await P.printRun('meesho'); handlers.button('kcPrintAsk_meesho', 0);        // Yes
   await new Promise(r => setTimeout(r, 5));
   assert.deepStrictEqual(await B.printedAmong('meesho', ['A', 'B']), ['A', 'B']);
   // an already printed order is not asked about again
   bridgeAnswer = answer({ alreadyPrinted: ['A'] }); await P.printRun('meesho');
-  assert.deepStrictEqual(store.kcPrintAsk.orderIds, ['B']);
-  await P.printAnswer(true);                                           // answering with nothing waiting does nothing
-  await P.printAnswer(true);
+  assert.deepStrictEqual(store.kcPrintAsk.meesho.orderIds, ['B']);
+  await P.printAnswer('meesho', true);                                 // answering with nothing waiting does nothing
+  await P.printAnswer('meesho', true);
 
   // ── nothing to print / cropper failed: said, nothing opened, nothing asked ──
   reset(); store.kcCutoff = { meesho: cut };
@@ -138,6 +139,46 @@ const reset = () => { for (const k of Object.keys(store)) delete store[k]; for (
   await P.printFired({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 20 * 60 * 1000 });
   assert.strictEqual(bridgeCalls.length, 0); assert.ok(/computer was off/.test(said[0].message) && said[0].id === 'kcPrintGo_meesho');
   assert.ok(alarms.kcPrint_meesho, 'the next print time is set again');
+
+  // ── C1: starting a print takes down an old "Print now?" pop-up ──
+  reset(); store.kcCutoff = { meesho: cut }; P.printSources.meesho = async () => [{ name: 'l.pdf', base64: 'JVBERg==' }];
+  await P.printRun('meesho'); assert.deepStrictEqual(cleared, ['kcPrintGo_meesho']);
+  // ── C2: two platforms, two questions; one yes marks only its own ──
+  reset(); store.kcCutoff = { meesho: cut, flipkart: cut };
+  P.printSources.flipkart = P.printSources.meesho;
+  bridgeAnswer = answer({ rows: [{ orderId: 'M1' }] }); await P.printRun('meesho');
+  bridgeAnswer = answer({ rows: [{ orderId: 'F9' }] }); await P.printRun('flipkart');
+  handlers.button('kcPrintAsk_meesho', 0); await new Promise(r => setTimeout(r, 5));
+  assert.deepStrictEqual(await B.printedAmong('meesho', ['M1']), ['M1']); assert.deepStrictEqual(await B.printedAmong('flipkart', ['F9']), []);
+  assert.deepStrictEqual(Object.keys(store.kcPrintAsk), ['flipkart']);
+  // ── C3: another platform's print is going: try again in a minute, say nothing ──
+  reset(); store.kcCutoff = { meesho: cut }; bridgeAnswer = { ok: false, reason: B.BRIDGE_BUSY };
+  await P.printRun('meesho', at(15, 18, 0));
+  assert.ok(alarms.kcPrintWait_meesho && store.kcPrintPending.meesho === at(15, 18, 0) && !tabs.length && !said.length);
+  // ── C4: an overdue alarm is not replaced; a lost one is asked about, once ──
+  reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } };
+  alarms.kcPrint_meesho = { when: Date.now() - 1000 }; await P.printSchedule();
+  assert.ok(alarms.kcPrint_meesho.when < Date.now(), 'overdue alarm left to fire');
+  delete alarms.kcPrint_meesho; store.kcPrintNext = { meesho: Date.now() - 60000 }; await P.printSchedule();
+  assert.ok(said.some(s => s.id === 'kcPrintGo_meesho' && /computer was off/.test(s.message))); assert.ok(alarms.kcPrint_meesho.when > Date.now());
+  // ── C6: any error after the start is said ──
+  reset(); store.kcCutoff = { meesho: cut }; P.printSources.meesho = async () => { throw new Error('page changed'); };
+  await P.printRun('meesho'); assert.ok(/nothing was printed: page changed/.test(said[0].message));
+  P.printSources.meesho = async () => [{ name: 'l.pdf', base64: 'JVBERg==' }];
+  // ── C7/C8: a failed print still sets the next time; an old waiting mark does not hide the question ──
+  reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } }; idleActive = true;
+  store.kcPrintPending = { meesho: Date.now() - 1000 };
+  await P.printFired({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 1000 });
+  assert.strictEqual(said.filter(s => s.id === 'kcPrintGo_meesho').length, 1); assert.ok(alarms.kcPrint_meesho);
+  reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } };
+  global.computerInUse = async () => { throw new Error('boom'); };
+  await assert.rejects(P.printFired({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 1000 })); assert.ok(alarms.kcPrint_meesho);
+  global.computerInUse = async () => idleActive;
+  // ── C9: the cutoff is the one after the PRINT TIME, not after the moment it actually ran ──
+  reset(); store.kcCutoff = { meesho: cut }; let seen = null;
+  P.printSources.meesho = async by => { seen = by; return []; };
+  await P.printRun('meesho', new Date(2026, 5, 1, 9, 0).getTime()); assert.strictEqual(seen, new Date(2026, 5, 1, 12, 0).getTime());
+  P.printSources.meesho = async () => [{ name: 'l.pdf', base64: 'JVBERg==' }];
 
   // the worker's own listeners reach the same code
   reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } };

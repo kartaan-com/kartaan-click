@@ -21,6 +21,7 @@ const BRIDGE_PRINTED  = 'kcPrinted';        // { platform: { orderId: time } }  
 const BRIDGE_CONNECT_MS = 20 * 1000;        // the page must connect within this
 const BRIDGE_RUN_MS   = 10 * 60 * 1000;     // and answer within this
 const BRIDGE_PLATFORMS = ['meesho', 'flipkart', 'amazon'];
+const BRIDGE_BUSY     = 'a print run is already going';
 
 let bridgeRunning = null;   // { tabId, port, finish }  one run at a time, in memory (the worker is kept alive meanwhile)
 
@@ -46,8 +47,8 @@ function printedMark(platform, orderIds) {
   markChain = job.catch(() => {});
   return job;
 }
-// Of these order ids, the ones already printed. Kept for the round that downloads labels (C1b), which must
-// leave an already printed order out BEFORE it fetches its label.
+// Of these order ids, the ones already printed. Kept for the label download (C1b-walk), which must leave
+// an already printed order out BEFORE it fetches its label; nothing calls it until that exists.
 async function printedAmong(platform, orderIds) {
   const all = await printedLoad();
   return (orderIds || []).filter(id => typeof id === 'string' && has(all[platform], id));
@@ -91,7 +92,7 @@ async function bridgeRun(req) {
   if (!BRIDGE_PLATFORMS.includes(platform)) return { ok: false, reason: 'no platform named' };
   if (files.length === 0) return { ok: false, reason: 'nothing to print' };
   // Taken before the first wait, so two requests at once cannot both pass.
-  if (bridgeRunning) return { ok: false, reason: 'a print run is already going' };
+  if (bridgeRunning) return { ok: false, reason: BRIDGE_BUSY };
   const run = bridgeRunning = { tabId: null, port: null };
 
   const id = 'kc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
@@ -186,5 +187,5 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onConnectE
 }
 
 if (typeof module !== 'undefined') module.exports = {
-  bridgeRun, bridgeCount, bridgePortAllowed, bridgeOnConnect, bridgeSenderOk, bridgeCloseLeftover, printedMark, printedAmong,
+  BRIDGE_BUSY, bridgeRun, bridgeCount, bridgePortAllowed, bridgeOnConnect, bridgeSenderOk, bridgeCloseLeftover, printedMark, printedAmong,
 };
