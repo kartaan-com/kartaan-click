@@ -34,6 +34,9 @@ global.bridgeRun = async req => { bridgeCalls.push(req); return bridgeAnswer; };
 store.kcPrintTimes = { amazon: { times: ['07:00'] } }; store.kcCutoff = { amazon: { time: '12:00', remindMin: 0 } };
 const P = require('../print-flow.js');
 
+// Chrome removes a one-time alarm when it fires.
+const fire = a => { delete alarms[a.name]; return P.printFired(a); };
+const clickGo = async p => { handlers.button('kcPrintGo_' + p, 0); await new Promise(r => setTimeout(r, 15)); };
 const at = (d, h, m) => new Date(2026, 10, d, h, m).getTime();   // 2026-11-<d> h:m local
 const answer = (over = {}) => ({ ok: true, outputs: [{ name: 'o', count: 2, base64: 'AA==' }], rows: [{ orderId: 'A' }, { orderId: 'B' }],
   report: {}, leftOut: [], count: { ordersOut: 2, text: 'Labels made for 2 of 2 orders.' }, alreadyPrinted: [], ...over });
@@ -111,32 +114,32 @@ const reset = () => { for (const k of Object.keys(store)) delete store[k]; for (
 
   // ── on time + computer free = prints; busy = waits and asks once; asleep = asks, never prints ──
   reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } };
-  await P.printFired({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 1000 });
+  await fire({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 1000 });
   assert.strictEqual(bridgeCalls.length, 1, 'on time and free: printed');
   reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } }; idleActive = true;
-  await P.printFired({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 1000 });
+  await fire({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 1000 });
   assert.strictEqual(bridgeCalls.length, 0); assert.ok(alarms.kcPrintWait_meesho && store.kcPrintPending.meesho);
   assert.strictEqual(said.filter(s => s.id === 'kcPrintGo_meesho').length, 1);
   const nSaid = said.length;
-  await P.printFired({ name: 'kcPrintWait_meesho' });                       // still busy: waits again, no second question
+  await fire({ name: 'kcPrintWait_meesho' });                       // still busy: waits again, no second question
   assert.strictEqual(said.length, nSaid, 'a wait alarm says nothing new');
   assert.strictEqual(said.filter(s => s.id === 'kcPrintGo_meesho').length, 1);
-  idleActive = false; await P.printFired({ name: 'kcPrintWait_meesho' });   // quiet now: prints, nothing left waiting
+  idleActive = false; await fire({ name: 'kcPrintWait_meesho' });   // quiet now: prints, nothing left waiting
   assert.strictEqual(bridgeCalls.length, 1); assert.ok(!store.kcPrintPending.meesho && !alarms.kcPrintWait_meesho);
-  await P.printFired({ name: 'kcPrintWait_meesho' }); assert.strictEqual(bridgeCalls.length, 1, 'a stray wait alarm prints nothing');
+  await fire({ name: 'kcPrintWait_meesho' }); assert.strictEqual(bridgeCalls.length, 1, 'a stray wait alarm prints nothing');
   // "Print now" while waiting prints at once and the wait cannot print it a second time
   reset(); store.kcCutoff = { meesho: cut }; idleActive = true;
-  await P.printFired({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 1000 });
-  handlers.button('kcPrintGo_meesho', 0); await new Promise(r => setTimeout(r, 10));
+  await fire({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 1000 });
+  await clickGo('meesho');
   assert.strictEqual(bridgeCalls.length, 1); idleActive = false;
-  await P.printFired({ name: 'kcPrintWait_meesho' }); assert.strictEqual(bridgeCalls.length, 1);
+  await fire({ name: 'kcPrintWait_meesho' }); assert.strictEqual(bridgeCalls.length, 1);
   // busy for over 2 hours: gives up, says so
   reset(); store.kcCutoff = { meesho: cut }; idleActive = true; store.kcPrintPending = { meesho: Date.now() - 3 * 3600 * 1000 };
-  await P.printFired({ name: 'kcPrintWait_meesho' });
+  await fire({ name: 'kcPrintWait_meesho' });
   assert.ok(/Nothing was printed/.test(said[0].message) && !store.kcPrintPending.meesho && !bridgeCalls.length);
   // asleep
   reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } };
-  await P.printFired({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 20 * 60 * 1000 });
+  await fire({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 20 * 60 * 1000 });
   assert.strictEqual(bridgeCalls.length, 0); assert.ok(/computer was off/.test(said[0].message) && said[0].id === 'kcPrintGo_meesho');
   assert.ok(alarms.kcPrint_meesho, 'the next print time is set again');
 
@@ -159,7 +162,7 @@ const reset = () => { for (const k of Object.keys(store)) delete store[k]; for (
   reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } };
   alarms.kcPrint_meesho = { when: Date.now() - 1000 }; await P.printSchedule();
   assert.ok(alarms.kcPrint_meesho.when < Date.now(), 'overdue alarm left to fire');
-  delete alarms.kcPrint_meesho; store.kcPrintNext = { meesho: Date.now() - 60000 }; await P.printSchedule();
+  delete alarms.kcPrint_meesho; store.kcPrintNext = { meesho: Date.now() - 10 * 60000 }; await P.printSchedule();
   assert.ok(said.some(s => s.id === 'kcPrintGo_meesho' && /computer was off/.test(s.message))); assert.ok(alarms.kcPrint_meesho.when > Date.now());
   // ── C6: any error after the start is said ──
   reset(); store.kcCutoff = { meesho: cut }; P.printSources.meesho = async () => { throw new Error('page changed'); };
@@ -168,17 +171,59 @@ const reset = () => { for (const k of Object.keys(store)) delete store[k]; for (
   // ── C7/C8: a failed print still sets the next time; an old waiting mark does not hide the question ──
   reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } }; idleActive = true;
   store.kcPrintPending = { meesho: Date.now() - 1000 };
-  await P.printFired({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 1000 });
+  await fire({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 1000 });
   assert.strictEqual(said.filter(s => s.id === 'kcPrintGo_meesho').length, 1); assert.ok(alarms.kcPrint_meesho);
   reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } };
   global.computerInUse = async () => { throw new Error('boom'); };
-  await assert.rejects(P.printFired({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 1000 })); assert.ok(alarms.kcPrint_meesho);
+  await assert.rejects(fire({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 1000 })); assert.ok(alarms.kcPrint_meesho);
   global.computerInUse = async () => idleActive;
   // ── C9: the cutoff is the one after the PRINT TIME, not after the moment it actually ran ──
   reset(); store.kcCutoff = { meesho: cut }; let seen = null;
   P.printSources.meesho = async by => { seen = by; return []; };
   await P.printRun('meesho', new Date(2026, 5, 1, 9, 0).getTime()); assert.strictEqual(seen, new Date(2026, 5, 1, 12, 0).getTime());
   P.printSources.meesho = async () => [{ name: 'l.pdf', base64: 'JVBERg==' }];
+
+  // ── N1: a normal print time leaves no false "computer was off" question behind ──
+  reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } };
+  await P.printSchedule();                                              // writes kcPrintNext like a real day
+  const t0 = alarms.kcPrint_meesho.when; store.kcPrintNext.meesho = t0;
+  await fire({ name: 'kcPrint_meesho', scheduledTime: t0 + 1000 });
+  assert.strictEqual(bridgeCalls.length, 1); assert.ok(!said.some(s => /computer was off/.test(s.message)), 'no false ask');
+  assert.ok(alarms.kcPrint_meesho, 'the next time is set again');
+  // a start-up while the overdue alarm is still waiting to fire asks nothing
+  reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } };
+  alarms.kcPrint_meesho = { when: Date.now() - 1000 }; store.kcPrintNext = { meesho: Date.now() - 1000 };
+  await P.printSchedule(); assert.ok(!said.length);
+  // ── C1: a "Print now?" pop-up starts a print once; a second click, or none was shown, starts nothing ──
+  reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } };
+  await fire({ name: 'kcPrint_meesho', scheduledTime: Date.now() - 20 * 60 * 1000 });
+  assert.strictEqual(store.kcPrintOffer.meesho > 0, true);
+  await Promise.all([clickGo('meesho'), clickGo('meesho')]); await clickGo('meesho');
+  assert.strictEqual(bridgeCalls.length, 1, 'two quick clicks, one print');
+  assert.deepStrictEqual(store.kcPrintOffer, {});
+  reset(); await clickGo('meesho'); assert.strictEqual(bridgeCalls.length, 0, 'no pop-up was shown, no print');
+  // the cutoff for a late "Print now" is the one after the PRINT TIME, not after the click
+  reset(); store.kcCutoff = { meesho: cut }; let by = null;
+  P.printSources.meesho = async x => { by = x; return []; };
+  store.kcPrintOffer = { meesho: new Date(2026, 5, 1, 9, 0).getTime() }; await clickGo('meesho');
+  assert.strictEqual(by, new Date(2026, 5, 1, 12, 0).getTime());
+  P.printSources.meesho = async () => [{ name: 'l.pdf', base64: 'JVBERg==' }];
+  // giving up on a busy computer takes the offer down too
+  reset(); store.kcCutoff = { meesho: cut }; idleActive = true; store.kcPrintPending = { meesho: Date.now() - 3 * 3600 * 1000 }; store.kcPrintOffer = { meesho: 1 };
+  await fire({ name: 'kcPrintWait_meesho' }); assert.deepStrictEqual(store.kcPrintOffer, {}); assert.ok(cleared.includes('kcPrintGo_meesho'));
+  // ── N3: two platforms waiting at once are both kept, and both print in turn ──
+  reset(); store.kcCutoff = { meesho: cut, flipkart: cut, amazon: cut }; P.printSources.flipkart = P.printSources.amazon = P.printSources.meesho;
+  idleActive = true;
+  await Promise.all(['meesho', 'flipkart', 'amazon'].map(p => fire({ name: 'kcPrint_' + p, scheduledTime: Date.now() - 1000 })));
+  assert.deepStrictEqual(Object.keys(store.kcPrintPending).sort(), ['amazon', 'flipkart', 'meesho']);
+  idleActive = false;
+  await Promise.all(['meesho', 'flipkart', 'amazon'].map(p => fire({ name: 'kcPrintWait_' + p })));
+  assert.deepStrictEqual(bridgeCalls.map(c => c.platform).sort(), ['amazon', 'flipkart', 'meesho']);
+  // ── N4: a lost time is not asked about for a platform whose times were removed; no cutoff = said, not run ──
+  reset(); store.kcCutoff = { meesho: cut }; store.kcPrintNext = { meesho: Date.now() - 10 * 60000 };
+  await P.printSchedule(); assert.ok(!said.length, 'no times set, no question');
+  store.kcPrintOffer = { meesho: Date.now() }; store.kcCutoff = {};
+  await clickGo('meesho'); assert.ok(/no cutoff set for Meesho/.test(said[0].message) && !bridgeCalls.length);
 
   // the worker's own listeners reach the same code
   reset(); store.kcCutoff = { meesho: cut }; store.kcPrintTimes = { meesho: { times: ['18:00'] } };

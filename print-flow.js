@@ -19,6 +19,7 @@ const PRINT_PREFIX  = 'kcPrint_';          // one alarm per platform: its next p
 const PRINT_WAIT    = 'kcPrintWait_';      // checks once a minute while the seller is using the computer
 const PRINT_PENDING = 'kcPrintPending';    // { platform: time it started waiting }
 const PRINT_ASK     = 'kcPrintAsk';        // { platform: { orderIds } }: "printed N — got N?" not yet answered, one per platform
+const PRINT_OFFER   = 'kcPrintOffer';      // { platform: print time }: a "Print now?" pop-up that is still live
 const PRINT_NEXT    = 'kcPrintNext';       // { platform: the print time its alarm is set for }
 const PRINT_PDFS    = 'kcPrintPdfs';       // session storage: the finished PDFs print.html shows
 const PRINT_LATE_MS = 5 * 60 * 1000;       // later than this after its time = the computer was off: ask, never print (D664)
@@ -62,6 +63,18 @@ const printSay = (title, message, buttons, id) => chrome.notifications.create(id
 });
 const printName = platform => platform.charAt(0).toUpperCase() + platform.slice(1);
 
+// Everything that changes the print records runs one after another, never two at once.
+let printChain = Promise.resolve();
+const printSerial = fn => { const job = printChain.then(fn); printChain = job.catch(() => {}); return job; };
+
+// A "Print now?" pop-up, written down as live with the print time it stands for. Only a live one can start a print, once.
+async function printOffer(platform, at, message) {
+  const offers = (await chrome.storage.local.get(PRINT_OFFER))[PRINT_OFFER] || {};
+  offers[platform] = at;
+  await chrome.storage.local.set({ [PRINT_OFFER]: offers });
+  printSay(printName(platform), message, ['Print now'], 'kcPrintGo_' + platform);
+}
+
 // Set (or clear) each platform's next print alarm. A platform with no cutoff set has no next cutoff to print for, so none.
 // The time is also written down: if Chrome lost the alarm while the browser was shut, the missed time is asked about (D664).
 async function printSchedule() {
@@ -71,11 +84,13 @@ async function printSchedule() {
     const name = PRINT_PREFIX + platform;
     const existing = await chrome.alarms.get(name);
     if (existing && existing.scheduledTime <= Date.now()) continue;   // overdue and not fired yet: it fires and is handled, never replaced
-    if (!existing && next[platform] && next[platform] <= Date.now()) printSay(printName(platform), 'The computer was off at the print time. Print now?', ['Print now'], 'kcPrintGo_' + platform);
     const times = printTimesClean(((saved[PRINT_KEY] || {})[platform] || {}).times);
     const due = printCutoffClean((saved.kcCutoff || {})[platform]) ? printNextTime(times, Date.now()) : null;
-    if (due === null) { await chrome.alarms.clear(name); delete next[platform]; }
-    else { next[platform] = due; if (!(existing && existing.scheduledTime === due)) chrome.alarms.create(name, { when: due }); }
+    if (due === null) { await chrome.alarms.clear(name); delete next[platform]; continue; }
+    // A time whose alarm is gone and was never handled (printFired takes it out of the record) was missed with the browser shut.
+    if (!existing && next[platform] && Date.now() - next[platform] > PRINT_LATE_MS) await printOffer(platform, next[platform], 'The computer was off at the print time. Print now?');
+    next[platform] = due;
+    if (!(existing && existing.scheduledTime === due)) chrome.alarms.create(name, { when: due });
   }
   await chrome.storage.local.set({ [PRINT_NEXT]: next });
 }
@@ -90,12 +105,14 @@ const PRINT_MODES = {
 };
 
 // One print: labels for everything due by the cutoff after `at` (the print time), put in front of the seller, then the count question.
-async function printRun(platform, at = Date.now()) {
+// Callers hold the print chain (printSerial); nothing else calls this.
+async function printRunNow(platform, at) {
   // Whatever way it started (time, "Print now", the quiet-moment wait), nothing is left waiting to print it again,
   // and an older "Print now?" pop-up must not be able to print the same labels a second time.
-  const waiting = (await chrome.storage.local.get(PRINT_PENDING))[PRINT_PENDING] || {};
-  delete waiting[platform];
-  await chrome.storage.local.set({ [PRINT_PENDING]: waiting });
+  const waiting = (await chrome.storage.local.get([PRINT_PENDING, PRINT_OFFER]));
+  const pending = waiting[PRINT_PENDING] || {}, offers = waiting[PRINT_OFFER] || {};
+  delete pending[platform]; delete offers[platform];
+  await chrome.storage.local.set({ [PRINT_PENDING]: pending, [PRINT_OFFER]: offers });
   await chrome.alarms.clear(PRINT_WAIT + platform);
   chrome.notifications.clear('kcPrintGo_' + platform);
   const name = printName(platform);
@@ -103,11 +120,13 @@ async function printRun(platform, at = Date.now()) {
     const saved = await chrome.storage.local.get([PRINT_KEY, 'kcCutoff']);
     const source = printSources[platform];
     if (!source) return printSay(name, 'Print time reached, but Click cannot fetch ' + name + ' labels yet. Nothing was printed.');
-    const files = await source(printShipBy((saved.kcCutoff || {})[platform], at));
+    const shipBy = printShipBy((saved.kcCutoff || {})[platform], at);
+    if (shipBy === null) return printSay(name, 'There is no cutoff set for ' + name + ', so Click cannot tell what to print. Nothing was printed.');
+    const files = await source(shipBy);
     if (!files || files.length === 0) return printSay(name, 'Nothing to print.');
     const r = await bridgeRun({ platform, files });
-    if (!r.ok && r.reason === printBusy) {   // another platform's print is on: try again in a minute, same as a busy computer
-      waiting[platform] = at; await chrome.storage.local.set({ [PRINT_PENDING]: waiting });
+    if (!r.ok && r.reason === printBusy) {   // something else is using the cropper: try again in a minute, same as a busy computer
+      pending[platform] = at; await chrome.storage.local.set({ [PRINT_PENDING]: pending });
       return chrome.alarms.create(PRINT_WAIT + platform, { delayInMinutes: 1 });
     }
     if (!r.ok) return printSay(name, 'Labels were not made: ' + r.reason + ' Nothing was printed.');
@@ -121,6 +140,13 @@ async function printRun(platform, at = Date.now()) {
     return printSay(name, 'Something went wrong and nothing was printed: ' + (e && e.message || e));
   }
 }
+const printRun = (platform, at = Date.now()) => printSerial(() => printRunNow(platform, at));
+
+// "Print now" on a pop-up: starts the print for the time that pop-up stood for, but only while the pop-up is live, and only once.
+const printTake = platform => printSerial(async () => {
+  const at = ((await chrome.storage.local.get(PRINT_OFFER))[PRINT_OFFER] || {})[platform];
+  if (at !== undefined) await printRunNow(platform, at);
+});
 
 // The seller's answer to one platform's count question (D652: printed means downloaded AND printed, on his word).
 async function printAnswer(platform, yes) {
@@ -138,18 +164,21 @@ async function printWhenFree(platform, startedAt) {
   const pending = (await chrome.storage.local.get(PRINT_PENDING))[PRINT_PENDING] || {};
   if (await computerInUse()) {
     if (Date.now() - startedAt > PRINT_WAIT_MS) {
-      delete pending[platform]; await chrome.storage.local.set({ [PRINT_PENDING]: pending });
+      const offers = (await chrome.storage.local.get(PRINT_OFFER))[PRINT_OFFER] || {};   // its "Print now?" is no longer good
+      delete pending[platform]; delete offers[platform];
+      await chrome.storage.local.set({ [PRINT_PENDING]: pending, [PRINT_OFFER]: offers });
+      chrome.notifications.clear('kcPrintGo_' + platform);
       return printSay(printName(platform), 'Print time passed while the computer was in use. Nothing was printed.');
     }
-    if (!pending[platform]) printSay(printName(platform), 'Time to print. Print now? Otherwise it waits for a quiet moment.', ['Print now'], 'kcPrintGo_' + platform);
+    if (!pending[platform]) await printOffer(platform, startedAt, 'Time to print. Print now? Otherwise it waits for a quiet moment.');
     pending[platform] = startedAt; await chrome.storage.local.set({ [PRINT_PENDING]: pending });
     chrome.alarms.create(PRINT_WAIT + platform, { delayInMinutes: 1 });
     return;
   }
-  return printRun(platform, startedAt);
+  return printRunNow(platform, startedAt);
 }
 
-async function printFired(alarm) {
+const printFired = alarm => printSerial(async () => {
   if (alarm.name.startsWith(PRINT_WAIT)) {
     const platform = alarm.name.slice(PRINT_WAIT.length);
     const since = ((await chrome.storage.local.get(PRINT_PENDING))[PRINT_PENDING] || {})[platform];
@@ -158,31 +187,37 @@ async function printFired(alarm) {
   }
   const platform = alarm.name.slice(PRINT_PREFIX.length);
   try {
-    const waiting = (await chrome.storage.local.get(PRINT_PENDING))[PRINT_PENDING] || {};   // one left by an earlier time must not hide this one's question
-    delete waiting[platform]; await chrome.storage.local.set({ [PRINT_PENDING]: waiting });
+    const saved = await chrome.storage.local.get([PRINT_PENDING, PRINT_NEXT]);
+    const pending = saved[PRINT_PENDING] || {}, next = saved[PRINT_NEXT] || {};
+    delete pending[platform]; delete next[platform];   // one left by an earlier time must not hide this one's question; this time is handled
+    await chrome.storage.local.set({ [PRINT_PENDING]: pending, [PRINT_NEXT]: next });
     if (Date.now() - alarm.scheduledTime > PRINT_LATE_MS) {
-      printSay(printName(platform), 'The computer was off at the print time. Print now?', ['Print now'], 'kcPrintGo_' + platform);   // D664: asks, never prints by itself
+      await printOffer(platform, alarm.scheduledTime, 'The computer was off at the print time. Print now?');   // D664: asks, never prints by itself
     } else {
       await printWhenFree(platform, alarm.scheduledTime);
     }
   } finally {
     await printSchedule();   // the next print time is set even when this one went wrong
   }
-}
+});
 
-const printLog = what => e => console.log('[Kartaan Click] print ' + what + ': ' + e);
+// Anything that goes wrong outside a print itself is said to the seller too, and written to the console.
+const printLog = what => e => {
+  console.log('[Kartaan Click] print ' + what + ': ' + e);
+  printSay('print', 'Something went wrong and nothing was printed: ' + (e && e.message || e));
+};
 if (typeof chrome !== 'undefined' && chrome.alarms) {
   chrome.alarms.onAlarm.addListener(alarm => {
-    if (alarm.name.startsWith(PRINT_PREFIX) || alarm.name.startsWith(PRINT_WAIT)) Promise.resolve(printFired(alarm)).catch(printLog('time'));
+    if (alarm.name.startsWith(PRINT_PREFIX) || alarm.name.startsWith(PRINT_WAIT)) printFired(alarm).catch(printLog('time'));
   });
   chrome.notifications.onButtonClicked.addListener((id, button) => {
-    if (id.startsWith('kcPrintAsk_')) Promise.resolve(printAnswer(id.slice('kcPrintAsk_'.length), button === 0)).catch(printLog('answer'));
-    else if (id.startsWith('kcPrintGo_') && button === 0) Promise.resolve(printRun(id.slice('kcPrintGo_'.length))).catch(printLog('now'));
+    if (id.startsWith('kcPrintAsk_')) printSerial(() => printAnswer(id.slice('kcPrintAsk_'.length), button === 0)).catch(printLog('answer'));
+    else if (id.startsWith('kcPrintGo_') && button === 0) printTake(id.slice('kcPrintGo_'.length)).catch(printLog('now'));
   });
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && (changes[PRINT_KEY] || changes.kcCutoff)) Promise.resolve(printSchedule()).catch(printLog('schedule'));
+    if (area === 'local' && (changes[PRINT_KEY] || changes.kcCutoff)) printSerial(printSchedule).catch(printLog('schedule'));
   });
-  Promise.resolve(printSchedule()).catch(printLog('schedule'));
+  printSerial(printSchedule).catch(printLog('schedule'));
 }
 
-if (typeof module !== 'undefined') module.exports = { printTimesClean, printNextTime, printShipBy, printSchedule, printRun, printAnswer, printFired, printSources };
+if (typeof module !== 'undefined') module.exports = { printTimesClean, printNextTime, printShipBy, printSchedule, printRun, printAnswer, printFired, printTake, printSources };
