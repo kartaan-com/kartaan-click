@@ -99,13 +99,10 @@ async function runClean(p, at) {
   chrome.notifications.clear(goId(p, at)); chrome.notifications.clear(askId(p, at));
   await chrome.storage.session.remove(PRINT_PDFS + p + '_' + at);
 }
-// The platform's one record. A different print time replaces the old run (its question expires).
+// The platform's one record. A different print time replaces the old run (a "got N?" is never replaced: see printHold).
 async function runPut(p, rec) {
   const old = await runGet(p);
-  if (old && old.at !== rec.at) {
-    await runClean(p, old.at);
-    if (old.state === 'asked') printSay(printName(p), 'The earlier question "did you get ' + old.orderIds.length + '?" expired. Those labels are not marked as printed.');
-  }
+  if (old && old.at !== rec.at) await runClean(p, old.at);
   if (rec.state !== 'waiting') await chrome.alarms.clear(PRINT_WAIT + p);
   await chrome.storage.local.set({ [PRINT_RUN + p]: rec });
 }
@@ -116,9 +113,18 @@ async function runEnd(p) {
   await chrome.storage.local.remove(PRINT_RUN + p);
 }
 
+// D652: while the last labels' "did you get N?" is open, a new print time never replaces it and never prints (the same orders could
+// print twice): it is held on that record and offered the moment he answers.
+async function printHold(p, old, at) {
+  if (old.pendingAt === at) return;
+  await chrome.storage.local.set({ [PRINT_RUN + p]: { ...old, pendingAt: at } });
+  return printSay(printName(p), 'Time to print, but you have not answered "did you get ' + old.orderIds.length + '?" yet. Answer it and Click offers to print.');
+}
+
 // A "Print now?" pop-up for this print time. Asked once: the same time again changes nothing.
 async function printOffer(p, at, message) {
   const old = await runGet(p);
+  if (old && old.state === 'asked' && old.at !== at) return printHold(p, old, at);
   if (old && old.at === at && old.state === 'offer') return;
   const rec = { at, state: 'offer', msg: message };
   await runPut(p, rec); await printShow(p, rec);
@@ -196,12 +202,13 @@ async function printStart(p, at, since = Date.now()) {
 
 // At a print time. Computer in use: wait for 3 idle minutes (N063), asking once if he wants it now (D793).
 async function printWait(p, at, since) {
+  const old = await runGet(p);
+  if (old && old.state === 'asked' && old.at !== at) return printHold(p, old, at);
   if (!(await computerInUse())) return printStart(p, at, since);
   if (Date.now() - since > PRINT_WAIT_MS) {
     await runEnd(p);
     return printSay(printName(p), 'Print time passed while the computer was in use. Nothing was printed.');
   }
-  const old = await runGet(p);
   if (!(old && old.at === at && old.state === 'waiting')) {
     const rec = { at, state: 'waiting', since, msg: PRINT_WAIT_MSG };
     await runPut(p, rec); await printShow(p, rec);
@@ -222,10 +229,7 @@ const printFired = (alarm, firedAt) => printSerial(async () => {
   }
   if (printPlan(await chrome.storage.local.get([PRINT_KEY, 'kcCutoff']), p).due === null) return;   // switched off meanwhile
   const cur = await runGet(p);
-  if (cur && cur.at === alarm.scheduledTime && (cur.state === 'printing' || cur.state === 'asked')) return;   // this very time arrived twice
-  if (cur && cur.state === 'asked') {   // D652: the last labels are not confirmed yet; printing again by itself could print the same orders twice
-    return printOffer(p, alarm.scheduledTime, 'Time to print, but you have not answered "did you get ' + cur.orderIds.length + '?" for the last labels. Print now? Those labels are then not marked as printed.');
-  }
+  if (cur && (cur.at === alarm.scheduledTime || cur.pendingAt === alarm.scheduledTime)) return;   // this very time arrived twice
   await printSchedule();   // the next time is set BEFORE this print, which can take minutes: one that comes round meanwhile queues behind it
   await (late ? printOffer(p, alarm.scheduledTime, lateMsg) : printWait(p, alarm.scheduledTime, firedAt));
 });
@@ -244,7 +248,8 @@ const printClick = (id, button) => printSerial(async () => {
     }
   }
   await runEnd(p);
-  if (button !== 0) printSay(printName(p), 'Not marked as printed. They will be offered again at the next print time.');
+  if (button !== 0) await printSay(printName(p), 'Not marked as printed. They will be offered again at the next print time.');
+  if (rec.pendingAt) await printOffer(p, rec.pendingAt, 'Time to print. Print now?');   // the print time that came while this question was open
 });
 
 // At every worker start: a print that was cut off, or a wait whose alarm is gone, is asked about, never printed by itself (D664).
@@ -252,15 +257,17 @@ async function printRecover() {
   // Closing the browser takes its pop-ups away; the record brings them back, once per browser run (not at every worker wake-up, which would
   // bring back a pop-up he closed on purpose). The mark in session storage goes with the browser.
   const again = !(await chrome.storage.session.get(PRINT_SHOWN))[PRINT_SHOWN];
-  await chrome.storage.session.set({ [PRINT_SHOWN]: true });
   const shown = (await chrome.notifications.getAll()) || {};
   for (const p of PRINT_PLATFORMS) {
-    const rec = await runGet(p);
-    if (!rec) continue;
-    if (rec.state === 'printing') await printOffer(p, rec.at, 'A print at ' + new Date(rec.at).toTimeString().slice(0, 5) + ' did not finish. Print now?');
-    else if (rec.state === 'waiting' && !(await chrome.alarms.get(PRINT_WAIT + p))) await printOffer(p, rec.at, 'The computer was off at the print time. Print now?');
-    else if (again && !shown[(rec.state === 'asked' ? askId : goId)(p, rec.at)]) await printShow(p, rec);
+    try {   // one platform's trouble does not stop the others
+      const rec = await runGet(p);
+      if (!rec) continue;
+      if (rec.state === 'printing') await printOffer(p, rec.at, 'A print at ' + new Date(rec.at).toTimeString().slice(0, 5) + ' did not finish. Print now?');
+      else if (rec.state === 'waiting' && !(await chrome.alarms.get(PRINT_WAIT + p))) await printOffer(p, rec.at, 'The computer was off at the print time. Print now?');
+      else if (again && !shown[(rec.state === 'asked' ? askId : goId)(p, rec.at)]) await printShow(p, rec);
+    } catch (e) { printLog('recover', 'Something went wrong bringing back a print question: ')(e); }
   }
+  await chrome.storage.session.set({ [PRINT_SHOWN]: true });
 }
 
 // Anything that goes wrong outside a print itself is said to the seller too, and written to the console.
@@ -277,7 +284,8 @@ if (typeof chrome !== 'undefined' && chrome.alarms) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && (changes[PRINT_KEY] || changes.kcCutoff)) printSerial(printSchedule).catch(printLog('schedule', 'Click could not set the next print time: '));
   });
-  printSerial(async () => { await printRecover(); await printSchedule(); }).catch(printLog('schedule', 'Click could not set the next print time: '));
+  printSerial(printRecover).catch(printLog('recover', 'Something went wrong bringing back a print question: '));
+  printSerial(printSchedule).catch(printLog('schedule', 'Click could not set the next print time: '));
 }
 
 if (typeof module !== 'undefined') module.exports = { printTimesClean, printNextTime, printShipBy, printSources };

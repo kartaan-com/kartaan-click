@@ -105,23 +105,26 @@ async function check(name, fn) {
   });
 
   // ── T1 (High): a Yes belongs to ONE print and is never applied to a later one ──
-  await check('T1 old Yes, queued while a later run is in the cropper, marks nothing', async () => {
+  await check('T1 old Yes, queued while a later run is in the cropper, marks nothing of it', async () => {
     await setup(['09:00', '18:00']);
     await main('meesho', T(15, 9, 0)); const id1 = idOf('meesho'); assert.ok(id1, 'run 1 asked');
-    await main('meesho', T(15, 18, 0)); assert.strictEqual(bridgeCalls.length, 1, 'the open question holds the next print back: it asks');
-    const go = idOf('meesho'); assert.ok(/^kcPrintGo_/.test(go) && !live[id1]);
-    const g = gate(); bridgeImpl = async () => { await g.wait; return answer(['A', 'B', 'C']); };
-    handlers.button(go, 0); await settle();                   // he says Print now: run 2 is in the cropper
-    handlers.button(id1, 0); await settle();                  // and answers the 09:00 pop-up now
+    await main('meesho', T(15, 18, 0)); assert.strictEqual(bridgeCalls.length, 1, 'the open question holds the next print back');
+    assert.ok(live[id1], 'and it stays on screen, answerable');
+    await click(id1, 0); assert.deepStrictEqual(await marked('meesho', ['A', 'B']), ['A', 'B']);
+    const go = idOf('meesho'); assert.ok(/^kcPrintGo_/.test(go), 'right after the answer: Print now for the held time');
+    const g = gate(); bridgeImpl = async () => { await g.wait; return answer(['C', 'D']); };
+    handlers.button(go, 0); await settle();                   // Print now: run 2 is in the cropper
+    handlers.button(id1, 0); await settle();                  // the old pop-up tapped again
     g.go(); await settle();
-    assert.deepStrictEqual(await marked('meesho', ['A', 'B', 'C']), [], 'nothing marked by an answer to another print');
-    const id2 = idOf('meesho'); assert.ok(/^kcPrintAsk_/.test(id2) && id2 !== id1, 'only the new question is on screen');
-    await click(id2, 0); assert.deepStrictEqual(await marked('meesho', ['A', 'B', 'C']), ['A', 'B', 'C'], 'its own Yes still works');
+    assert.deepStrictEqual(await marked('meesho', ['C', 'D']), [], 'nothing of run 2 marked by an answer to run 1');
+    const id2 = idOf('meesho'); assert.ok(/^kcPrintAsk_/.test(id2) && id2 !== id1);
+    await click(id2, 0); assert.deepStrictEqual(await marked('meesho', ['C', 'D']), ['C', 'D'], 'its own Yes works');
   });
   await check('T1 old No does not wipe the later question', async () => {
     await setup(['09:00', '18:00']);
     await main('meesho', T(15, 9, 0)); const id1 = idOf('meesho');
-    await main('meesho', T(15, 18, 0)); bridgeImpl = async () => answer(['A', 'B', 'C']); await click(idOf('meesho'), 0); const id2 = idOf('meesho');
+    await main('meesho', T(15, 18, 0)); await click(id1, 1);
+    bridgeImpl = async () => answer(['A', 'B', 'C']); await click(idOf('meesho'), 0); const id2 = idOf('meesho');
     await click(id1, 1); await click(id2, 0);
     assert.deepStrictEqual(await marked('meesho', ['A', 'B', 'C']), ['A', 'B', 'C']);
   });
@@ -299,9 +302,9 @@ async function check(name, fn) {
     assert.ok(alarms.kcPrintWait_meesho && store.kcPrintRun_meesho.state === 'waiting' && !tabs.length && !said.length);
     bridgeImpl = async () => answer(['A']); await ring('kcPrintWait_meesho', T(15, 18, 1)); assert.strictEqual(store.kcPrintRun_meesho.state, 'asked');
   });
-  await check('a later print time replaces an unanswered question (it expires)', async () => {
+  await check('a later print time never replaces an unanswered question', async () => {
     await setup(['09:00', '18:00']); await main('meesho', T(15, 9, 0)); const id1 = idOf('meesho');
-    await main('meesho', T(15, 18, 0)); assert.ok(!live[id1] && store.kcPrintRun_meesho.at === T(15, 18, 0));
+    await main('meesho', T(15, 18, 0)); assert.ok(live[id1] && store.kcPrintRun_meesho.at === T(15, 9, 0) && store.kcPrintRun_meesho.pendingAt === T(15, 18, 0));
   });
   await check('a print time with a worker restart in the middle of waiting asks instead of printing', async () => {
     await setup(); idleActive = true; await main('meesho', T(15, 18, 0)); delete alarms.kcPrintWait_meesho; idleActive = false;
@@ -352,10 +355,6 @@ async function check(name, fn) {
     await load(); assert.ok(idOf('meesho') && /Print now/.test(live[idOf('meesho')].buttons[0].title)); const n = said.length;
     await load(); assert.strictEqual(said.length, n, 'a restart with the pop-up still up says nothing');
   });
-  await check('N3 an open "got N?" that a new print time replaces says it expired', async () => {
-    await setup(['09:00', '18:00']); await main('meesho', T(15, 9, 0)); idleActive = true; await main('meesho', T(15, 18, 0));
-    assert.ok(said.some(s => /expired/.test(s.message)));
-  });
   await check('N4 the next print time is set before a long print, so a time that comes meanwhile is not lost', async () => {
     await setup(['18:00', '18:03']); const g = gate(); bridgeImpl = async () => { await g.wait; return answer(['A']); };
     await main('meesho', T(15, 18, 0), T(15, 18, 0)); assert.strictEqual(alarms.kcPrint_meesho.when, T(15, 18, 3), 'still printing, next time already set');
@@ -377,13 +376,24 @@ async function check(name, fn) {
   });
 
   // ── the second Opus read of the fixes (M1-M3) ──
-  await check('M1 a print time that comes while the last question is open asks, and prints nothing', async () => {
-    await setup(['18:00', '18:03']); const g = gate(); bridgeImpl = async () => { await g.wait; return answer(['A']); };
-    handlers.alarm({ name: 'kcPrint_meesho', scheduledTime: T(15, 18, 0) }); delete alarms.kcPrint_meesho; setNow(T(15, 18, 0) + 500); await settle();
-    handlers.alarm({ name: 'kcPrint_meesho', scheduledTime: T(15, 18, 3) }); setNow(T(15, 18, 3) + 500); await settle();   // 18:03 arrives while 18:00 is in the cropper
-    bridgeImpl = async () => answer(['A']); g.go(); await settle(80);
-    assert.strictEqual(bridgeCalls.length, 1, 'one cropper run, the same orders are not made twice');
-    assert.ok(Object.values(live).some(o => /not answered/.test(o.message)), 'asked instead');
+  await check('M1 a print time that comes while the last question is open holds, keeps the question answerable, sets the next time, and offers after the answer', async () => {
+    await setup(['09:00', '18:00']); await main('meesho', T(15, 9, 0)); const id1 = idOf('meesho');
+    await main('meesho', T(15, 18, 0));
+    assert.strictEqual(bridgeCalls.length, 1); assert.ok(live[id1], 'the question is still there'); assert.ok(alarms.kcPrint_meesho, 'the next time is set (F1)');
+    assert.ok(said.some(s => /not answered|have not answered/.test(s.message)), 'he is told');
+    setNow(T(15, 18, 11)); await load();                      // a worker restart ten minutes later
+    assert.ok(live[id1] && !said.some(s => /computer was off/.test(s.message)), 'no false "computer was off", question intact');
+    await main('meesho', T(15, 18, 0)); assert.strictEqual(bridgeCalls.length, 1, 'the same time again: still nothing started (F3)');
+    await click(id1, 0); assert.deepStrictEqual(await marked('meesho', ['A', 'B']), ['A', 'B'], 'Yes still marks the orders (F2)');
+    assert.ok(/^kcPrintGo_/.test(idOf('meesho')), 'Print now offered after the answer');
+  });
+  await check('F3 the same time arriving twice after an offer does not print by itself', async () => {
+    await setup(); await main('meesho', T(15, 18, 0), T(15, 18, 20)); assert.strictEqual(bridgeCalls.length, 0);
+    await main('meesho', T(15, 18, 0), T(15, 18, 21)); assert.strictEqual(bridgeCalls.length, 0);
+  });
+  await check('F4 one broken record does not stop the next print times being set', async () => {
+    await setup(); store.kcPrintRun_flipkart = { at: 1, state: 'offer' }; delete sess.kcPrintShown; delete alarms.kcPrint_meesho; await load();
+    assert.ok(alarms.kcPrint_meesho);
   });
   await check('M2 a pop-up he closed is not brought back by every worker wake-up, only after the browser was closed', async () => {
     await setup(); idleActive = true; await main('meesho', T(15, 18, 0));
