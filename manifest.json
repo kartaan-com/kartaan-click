@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Kartaan Click",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Free fixes for seller tools: the VMS packing box clears itself, Flipkart orders go one click at a time, orders get accepted.",
   "homepage_url": "https://kartaan.com",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwnwbtME1Du8hUczPU0f/gLcjKiWTlS0pxh4pHkiuvm/VJo9AmvUVjRtESBufngkyG7nEMCYYtxWrMVz/lppURWv4P5v16KDDPXQ6nFKTUgb4l5M1bhONG8QNK5MI8tOmVJAU+Um+UKqJwOrlL2/Pbm029sL1TJolbtgVT3g+KUfw3WOZOhIyLzXh/Qcl9clDQ74FM677DBs9T1DM097d2tTlXv30DevWoZR8SLO3pjpHcMxWHpsvo2KSncL9gVUHNjIGP9ySDVZH9N36uyr6N3x9KNZEjvmrcRfVzUswpMHrbFJ2Qny6F39m2mTKclVgO7jQT/4/BWM2OBh1c3uXEQIDAQAB",
 
   "permissions": ["storage", "downloads", "alarms", "idle", "notifications", "activeTab", "scripting"],
 
@@ -16,6 +17,8 @@
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'none'; frame-ancestors 'none'"
   },
+
+  "externally_connectable": { "matches": ["https://kartaan.com/label-cropper/*"] },
 
   "background": {
     "service_worker": "background.js"
