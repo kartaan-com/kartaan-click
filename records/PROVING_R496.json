@@ -1,0 +1,28 @@
+{
+ "record": "proving",
+ "commit": "3bc680f",
+ "run_at": "2026-11-17T04:50:00Z",
+ "tool": "own line-deletion loop (Click has no prove tool; same method as R474): each added code line taken out in a copy, the file's checks run, red = caught",
+ "invoked_as": "node prove.js D:/Click-r496 (script kept outside the repo; run twice, second on the final code)",
+ "ran_by": "R496 run 1 (Sonnet 5.5)",
+ "files": [
+  "panel-tools.js",
+  "panel-print.js",
+  "print-flow.js (added lines only)"
+ ],
+ "lines_tried": 81,
+ "caught_red": 56,
+ "not_counted_syntax_error": 23,
+ "survivors": [
+  {
+   "line": "print-flow.js:313 printNow(...).then(sendResponse, error answer)",
+   "why": "the error branch of the reply (a print that throws is already caught inside printStart and answered); the node stand-in cannot make printNow itself reject"
+  },
+  {
+   "line": "print-flow.js:314 return true",
+   "why": "keeps Chrome's reply channel open for the async answer; only the real browser needs it, the stand-in calls the handler directly. Seen working in the browser run (Print now answered)"
+  }
+ ],
+ "first_run": "on 52aa8c8: 82 tried, 56 red, 23 syntax, 3 survivors (the two above plus the update-box 'Unzip it over' line, which got a check and is now red)",
+ "not_in_the_loop": "panel.js, panel-print-ui.js, panel-start.js, popup.js are page code with no node checks; they were run in a browser with a stand-in for Chrome's extension calls (add/remove time, repeat, mode, Print now, Settings, Clear) and are NOT line-proved. The real-extension run is Control's."
+}

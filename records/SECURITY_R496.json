@@ -1,0 +1,17 @@
+{
+ "record": "security",
+ "commit": "52aa8c8 (code read); fixes in 3bc680f",
+ "run_at": "2026-11-17T04:40:00Z",
+ "tool": "Claude Opus subagent (separate list in the same fresh read)",
+ "invoked_as": "read-only security read of git diff origin/main...52aa8c8",
+ "ran_by": "R496 run 1 (Sonnet 5.5) for Kartaan Control",
+ "found": [],
+ "checked_and_safe": [
+  "print-flow.js:312 KC_PRINT_NOW is accepted only when sender.url is exactly panel.html: a seller-page script (shares the extension id) is refused; tested; panel.html is not web-accessible so no web page can frame it",
+  "every outside value (cropper reason, update notes, log text) goes on the page as text; no innerHTML in the diff",
+  "no inline script, CSP script-src 'self' holds; copied CSS has no url() or @import",
+  "links: _blank + noopener (update download), own extension page (panel); a javascript: update URL is blocked by CSP",
+  "Print now takes a platform from a fixed list and is refused while that platform's print is printing, asked or waiting"
+ ],
+ "not_checked": "SEC2 section 8 rows were not opened by this worker; Control names them"
+}
