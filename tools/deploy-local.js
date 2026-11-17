@@ -54,6 +54,15 @@ function copy(rel) {
 
 for (const rel of include) copy(rel);
 
+// The stamp goes LAST, and only when every copied file matches the source: Click loads the new build only when it
+// finds a stamp whose files are all whole (self-reload.js), so a copy that stops half way never loads.
+const { packagedFiles, makeStamp } = require('./make-stamp');
+const names = packagedFiles(root);
+const stamp = makeStamp(target, names);
+if (stamp.id !== makeStamp(root, names).id) { console.error('the copy does not match the source -- no stamp written'); process.exit(1); }
+fs.writeFileSync(path.join(target, 'build-stamp.json'), JSON.stringify(stamp, null, 1));
+console.log('stamp written');
+
 const version = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')).version;
 console.log(`copied ${files} files of version ${version} into:\n  ${target}`);
 console.log('Now press the reload arrow on Kartaan Click at chrome://extensions.');

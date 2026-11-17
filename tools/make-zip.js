@@ -25,6 +25,7 @@ const include = [
   'print-flow.js',
   'print.html',
   'print.js',
+  'self-reload.js',
   'content',
   'icons/icon16.png',
   'icons/icon48.png',

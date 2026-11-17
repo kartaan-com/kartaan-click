@@ -41,7 +41,7 @@
   "content_scripts": [
     {
       "matches": ["https://seller.flipkart.com/*", "https://supplier.meesho.com/*", "https://sellercentral.amazon.in/*"],
-      "js": ["content/kc-shrink.js"],
+      "js": ["content/kc-shrink.js", "content/kc-stale.js"],
       "run_at": "document_idle"
     },
     {
