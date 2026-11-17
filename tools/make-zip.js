@@ -31,6 +31,7 @@ const include = [
   'reminders.js',
   'cropper-bridge.js',
   'print-flow.js',
+  'meesho-label-walk.js',
   'print.html',
   'print.js',
   'self-reload.js',

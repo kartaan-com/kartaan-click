@@ -56,7 +56,7 @@
     },
     {
       "matches": ["https://supplier.meesho.com/*"],
-      "js": ["content/kc-accept-rules.js", "content/meesho-orders.js", "content/checkin.js"],
+      "js": ["content/kc-accept-rules.js", "content/meesho-orders.js", "content/meesho-labels.js", "content/checkin.js"],
       "run_at": "document_idle"
     },
     {

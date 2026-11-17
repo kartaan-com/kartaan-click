@@ -258,6 +258,11 @@ async function check(name, fn) {
     await setup(); bridgeImpl = async () => ({ ...answer(['A', 'B']), alreadyPrinted: ['A'] }); await main('meesho', T(15, 18, 0));
     assert.deepStrictEqual(store.kcPrintRun_meesho.orderIds, ['B']);
   });
+  await check('R480W (N9): a source that returns { files, orderIds } decides which orders a Yes marks, not the cropper page', async () => {
+    await setup(); bridgeImpl = async () => answer(['A', 'B', 'Z']);   // the page says it read Z too
+    P.printSources.meesho = async () => ({ files: [{ name: 'l.pdf', base64: 'JVBERg==' }], orderIds: ['A', 'B'] }); await main('meesho', T(15, 18, 0));
+    assert.deepStrictEqual(store.kcPrintRun_meesho.orderIds, ['A', 'B']);
+  });
   await check('nothing to print / cropper failed: said, nothing opened, nothing asked', async () => {
     await setup(); P.printSources.meesho = async () => []; await main('meesho', T(15, 18, 0));
     assert.ok(/Nothing to print/.test(said[0].message) && !bridgeCalls.length && !store.kcPrintRun_meesho);

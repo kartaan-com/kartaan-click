@@ -1659,6 +1659,13 @@ try {
   console.log('[Kartaan Click] print flow did not load: ' + e);   // must never stop the rest of this file
 }
 
+// The Meesho label walk: the source behind Meesho's print (its own file; after print-flow.js, which holds printSources).
+try {
+  importScripts('meesho-label-walk.js');
+} catch (e) {
+  console.log('[Kartaan Click] Meesho label walk did not load: ' + e);   // must never stop the rest of this file
+}
+
 // Loads a new build of itself at a safe moment (its own file; reads what the files above keep, after they loaded).
 try {
   importScripts('self-reload.js');
