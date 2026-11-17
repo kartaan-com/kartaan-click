@@ -1,5 +1,5 @@
 {
-  "version": "1.7.0",
+  "version": "1.8.0",
   "url": "https://github.com/kartaan-com/kartaan-click/releases/latest/download/kartaan-click.zip",
-  "notes": "New: cutoff reminders."
+  "notes": "Groundwork: Click can now hand label files to the Kartaan Label Cropper and take the cropped labels back."
 }
