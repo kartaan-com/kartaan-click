@@ -2,7 +2,7 @@
 // What each box shows comes from panel-print.js; the page helpers (el, button, tile, state, store) are panel.js's.
 'use strict';
 
-const PRINT_KEYS = ['kcPrintTimes', 'kcCutoff', 'kcPrintNext', 'kcPrintLog'];
+const PRINT_KEYS = ['kcPrintTimes', 'kcCutoff', 'kcPrintNext', 'kcPrintLog', 'kcReloadedTo'];
 const nameOf = p => p.charAt(0).toUpperCase() + p.slice(1);
 const when = ms => new Date(ms).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const COLOUR = { meesho: '--meesho', flipkart: '--flipkart', amazon: '--amazon' };
@@ -27,7 +27,7 @@ function platformBox(p, saved, said) {
     now.disabled = true; said.textContent = nameOf(p) + ': starting…';
     chrome.runtime.sendMessage({ type: 'KC_PRINT_NOW', platform: p }, r => {
       void chrome.runtime.lastError; now.disabled = false;
-      said.textContent = r && r.ok ? nameOf(p) + ': print started — see the notice.' : nameOf(p) + ': ' + ((r && r.reason) || 'Click did not answer.');
+      said.textContent = r && r.ok ? nameOf(p) + (r.waiting ? ': the Label Cropper is busy — Click tries again in a minute.' : ': print started — see the notice.') : nameOf(p) + ': ' + ((r && r.reason) || 'Click did not answer.');
     });
   });
   const box = el('div', 'p-platform', null, [el('div', 'p-platform-name', nameOf(p)),
@@ -66,8 +66,9 @@ function runsCard(saved) {
 }
 
 // The three cards, drawn again whenever the saved records change.
-async function printingCards(holder) {
-  const saved = await store(PRINT_KEYS.concat('kcReloadedTo'));
+// `said` is made once by the caller: what a button said back stays on screen when the cards are drawn again.
+async function printingCards(holder, said) {
+  const saved = await store(PRINT_KEYS);
   holder.textContent = '';
-  holder.append(printingCard(saved, el('p', 'p-said')), statusCard(saved, saved), runsCard(saved));
+  holder.append(printingCard(saved, said), statusCard(saved, saved), runsCard(saved));
 }

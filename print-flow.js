@@ -204,7 +204,7 @@ async function printStart(p, at, since = Date.now()) {
     await printNote(p, rec.msg, 'ok');
     return printShow(p, rec);
   } catch (e) {
-    return stop('Something went wrong and nothing was printed: ' + (e && e.message || e));
+    return stop('Something went wrong and nothing was printed: ' + (e && e.message || e), 'error: ' + (e && e.message || e));
   }
 }
 
@@ -304,11 +304,12 @@ const printNow = p => printSerial(async () => {
   const old = await runGet(p);
   if (old && ['printing', 'asked', 'waiting'].includes(old.state)) return { ok: false, reason: 'A print for ' + printName(p) + ' is already open. Answer it first.' };
   await printStart(p, Date.now());
-  return { ok: true };
+  const after = await runGet(p);
+  return { ok: true, waiting: !!after && after.state === 'waiting' };
 });
 if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (sender.id !== chrome.runtime.id || !msg || msg.type !== 'KC_PRINT_NOW') return;
+    if (sender.url !== chrome.runtime.getURL('panel.html') || !msg || msg.type !== 'KC_PRINT_NOW') return;   // only the panel, not a seller page's script
     printNow(msg.platform).then(sendResponse, e => sendResponse({ ok: false, reason: String(e && e.message || e) }));
     return true;
   });

@@ -7,7 +7,8 @@ const printing = el('div', 'p-body');
 printing.style.padding = '0';
 const body = el('div', 'p-body', null, [printing, toolsCard(), el('p', 'p-note', 'More tools coming. kartaan.com')]);
 document.body.appendChild(el('div', 'p-page', null, [bar, body]));
-printingCards(printing);
+const said = el('p', 'p-said');
+printingCards(printing, said);
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && PRINT_KEYS.some(k => changes[k])) printingCards(printing);
+  if (area === 'local' && PRINT_KEYS.some(k => changes[k])) printingCards(printing, said);
 });

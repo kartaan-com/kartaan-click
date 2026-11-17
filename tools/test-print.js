@@ -433,10 +433,10 @@ async function check(name, fn) {
   });
 
   // ── R496: the panel's "Print now" and the list of what the last runs did ──
-  const now = platform => new Promise(r => { handlers.msg({ type: 'KC_PRINT_NOW', platform }, { id: 'self' }, r); });
+  const now = platform => new Promise(r => { handlers.msg({ type: 'KC_PRINT_NOW', platform }, { id: 'self', url: 'chrome-extension://self/panel.html' }, r); });
   await check('R496 Print now prints that platform and is written in the runs list', async () => {
     await setup(['18:00'], ['meesho']); setNow(T(15, 10, 0));
-    const r = await now('meesho'); assert.deepStrictEqual(r, { ok: true });
+    const r = await now('meesho'); assert.deepStrictEqual(r, { ok: true, waiting: false });
     assert.strictEqual(bridgeCalls.length, 1);
     const log = store.kcPrintLog; assert.strictEqual(log[0].p, 'meesho'); assert.strictEqual(log[0].bridge, 'ok'); assert.match(log[0].text, /^Printed 2/);
   });

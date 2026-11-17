@@ -55,7 +55,8 @@ function copyTile() {
     msg.textContent = 'Reading the page…';
     try {
       const tab = (await chrome.tabs.query({ active: true })).find(t => /^https:\/\/(www\.)?(amazon\.in|meesho\.com|flipkart\.com)\//i.test(t.url || ''));
-      if (!tab) { msg.textContent = 'Open a product page on Amazon.in, Meesho or Flipkart first, then press this again.'; return; }
+      // Click has no permission on these product pages, so Chrome hides their address from this panel: this cannot find one yet (KNOWN GAP, R496).
+      if (!tab) { msg.textContent = "This panel cannot read product pages yet. Use the pop-up's Copy product details on the product page until that is decided."; return; }
       const [run] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content/product-reader.js'] });
       const r = run && run.result, said = copyMessage(r);
       if (said) { msg.textContent = said; return; }
