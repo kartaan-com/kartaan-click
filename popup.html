@@ -9,81 +9,27 @@
     background: #ffffff; color: #16233a;
   }
   h1 { margin: 0 0 2px; font-size: 15px; letter-spacing: -0.01em; }
-  .tag { margin: 0 0 14px; font-size: 12px; color: #6b7890; }
-  .tool { border: 1px solid #e2e6ee; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+  .tool { border: 1px solid #e2e6ee; border-radius: 8px; padding: 10px 12px; margin: 12px 0 8px; }
   .tool h2 { margin: 0 0 3px; font-size: 13px; }
   .tool p { margin: 0; font-size: 12px; color: #55617a; }
-  .on { display: inline-block; margin-top: 8px; font-size: 11px; font-weight: 600;
-        color: #0a7d36; background: #e6f5ec; border-radius: 20px; padding: 2px 9px; }
-  .off { display: inline-block; margin-top: 8px; font-size: 11px; font-weight: 600;
-        color: #6b7890; background: #f0f2f7; border-radius: 20px; padding: 2px 9px; }
-  footer { margin-top: 14px; font-size: 12px; color: #6b7890; }
-  .update { margin-top: 12px; font-size: 12px; border-radius: 8px; padding: 9px 11px; }
-  .update.muted { color: #6b7890; background: #f4f6fa; }
-  .update.new { color: #6b4a00; background: #fff5db; border: 1px solid #f0dca6; }
-  .update b { font-weight: 600; }
-  .update .notes { margin-top: 3px; color: #7a6634; }
-  .update a { display: inline-block; margin-top: 6px; }
-  #version { margin-top: 10px; font-size: 11px; color: #98a3b8; }
-  .setting { border: 1px solid #e2e6ee; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
-  .setting h2 { margin: 0 0 3px; font-size: 13px; }
-  .setting p { margin: 0 0 8px; font-size: 12px; color: #55617a; }
-  .keyrow { display: flex; align-items: center; gap: 8px; }
-  kbd { font: 600 12px/1 ui-monospace, Consolas, monospace; background: #eef1f7; border: 1px solid #d3dae6;
-        border-bottom-width: 2px; border-radius: 5px; padding: 5px 9px; color: #16233a; }
-  .tool button, .setting button { font: inherit; font-size: 12px; padding: 5px 10px; border: 1px solid #d3dae6;
+  .tool button { font: inherit; font-size: 12px; padding: 5px 10px; border: 1px solid #d3dae6; margin-top: 8px;
         background: #fff; color: #1e3a8a; border-radius: 6px; cursor: pointer; }
-  .tool button { margin-top: 8px; }
-  .tool button:hover, .setting button:hover { background: #f4f6fa; }
+  .tool button:hover { background: #f4f6fa; }
   .hint { font-size: 11px; color: #6b7890; margin-top: 6px; }
+  footer { margin-top: 14px; font-size: 12px; color: #6b7890; }
   a { color: #1e3a8a; font-weight: 600; text-decoration: none; }
   a:hover { text-decoration: underline; }
   @media (prefers-color-scheme: dark) {
     body { background: #14181f; color: #e8ecf4; }
     .tool { border-color: #2a3140; }
-    .tool p, .tag, footer { color: #98a3b8; }
-    .setting { border-color: #2a3140; }
-    .setting p, .hint { color: #98a3b8; }
-    kbd { background: #232936; border-color: #39415280; color: #e8ecf4; }
-    .tool button, .setting button { background: #1b202a; border-color: #2a3140; color: #8fb0ff; }
-    .tool button:hover, .setting button:hover { background: #232936; }
-    .update.muted { color: #98a3b8; background: #1b202a; }
-    .update.new { color: #f0d68a; background: #2e2400; border-color: #5a4400; }
-    .update .notes { color: #c4ad6e; }
-    .on { color: #6ee7a0; background: #10281a; }
-    .off { color: #98a3b8; background: #232936; }
+    .tool p, footer, .hint { color: #98a3b8; }
+    .tool button { background: #1b202a; border-color: #2a3140; color: #8fb0ff; }
+    .tool button:hover { background: #232936; }
     a { color: #8fb0ff; }
   }
 </style>
 
 <h1>Kartaan Click</h1>
-<p class="tag">Free workflow fixes for seller and warehouse tools.</p>
-
-<div class="tool">
-  <h2>VMS packing — auto-clear AWB</h2>
-  <p>Stop a recording with a key instead of the mouse, and the AWB box empties itself and takes the cursor, so the next parcel scans straight in.</p>
-  <span class="on">Active on VMS screens</span>
-</div>
-
-<div class="tool">
-  <h2>Flipkart orders — one click at a time</h2>
-  <p>For the days when Flipkart's bulk actions don't go through. A panel works down the list for you: mark RTD, print labels, or accept orders. You press Start; it never runs on its own.</p>
-  <span class="on">Active on Flipkart Active Orders</span>
-</div>
-
-<div class="tool">
-  <h2>Portal check-ins</h2>
-  <p>Opens Flipkart, Meesho and Amazon behind whatever you're doing, clicks through the order tabs the way you would, and leaves the tab open — so the portals see you checking in. Off until you switch it on.</p>
-  <span class="off" id="checkinState">Off</span>
-  <div class="hint"><a href="options.html" target="_blank">Settings</a></div>
-</div>
-
-<div class="tool">
-  <h2>Accepting orders</h2>
-  <p>On Flipkart and Meesho, accepts the orders waiting for you — but only the SKUs you have ticked, only ones due soon enough, and only up to the daily number you set per SKU. Off until you switch it on, and it accepts nothing until you tick your SKUs.</p>
-  <span class="off" id="acceptState">Off</span>
-  <div class="hint"><a href="options.html" target="_blank">Settings</a></div>
-</div>
 
 <div class="tool">
   <h2>Copy product details</h2>
@@ -92,18 +38,5 @@
   <div class="hint" id="copyMsg"></div>
 </div>
 
-<div class="setting">
-  <h2>Stop recording with a key</h2>
-  <p>On the VMS packing screen, press this key instead of reaching for the Stop button.</p>
-  <div class="keyrow">
-    <kbd id="stopKey">Enter</kbd>
-    <button id="changeKey" type="button">Change</button>
-  </div>
-  <div class="hint" id="keyHint">It only works while a recording is actually running.</div>
-</div>
-
-<div class="update muted" id="update">Checking for updates…</div>
-<div id="version"></div>
-
-<footer>More tools coming. <a href="https://kartaan.com" target="_blank" rel="noopener">kartaan.com</a></footer>
+<footer>Everything else is in the <a id="openPanel" href="panel.html" target="_blank">panel</a>.</footer>
 <script src="popup.js"></script>

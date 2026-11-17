@@ -12,7 +12,7 @@ const realNow = Date.now; Date.now = () => realNow() + off;
 const setNow = ms => { off = ms - realNow(); };
 const clone = v => JSON.parse(JSON.stringify(v));
 global.chrome = {
-  runtime: { getURL: p => 'chrome-extension://self/' + p, onConnectExternal: { addListener: () => {} }, onMessage: { addListener: () => {} } },
+  runtime: { id: 'self', getURL: p => 'chrome-extension://self/' + p, onConnectExternal: { addListener: () => {} }, onMessage: { addListener: f => { handlers.msg = f; } } },
   storage: {
     local: {
       get: async keys => { const o = {}; for (const k of [].concat(keys)) if (k in store) o[k] = clone(store[k]); return o; },
@@ -430,6 +430,30 @@ async function check(name, fn) {
     await setup(); bridgeImpl = async () => ({ ok: false, reason: B.BRIDGE_BUSY }); await main('meesho', T(15, 18, 0));
     delete sess.kcPrintShown; await load();   // its wait alarm is still there
     assert.ok(idOf('meesho') && live[idOf('meesho')].message);
+  });
+
+  // ── R496: the panel's "Print now" and the list of what the last runs did ──
+  const now = platform => new Promise(r => { handlers.msg({ type: 'KC_PRINT_NOW', platform }, { id: 'self', url: 'chrome-extension://self/panel.html' }, r); });
+  await check('R496 Print now prints that platform and is written in the runs list', async () => {
+    await setup(['18:00'], ['meesho']); setNow(T(15, 10, 0));
+    const r = await now('meesho'); assert.deepStrictEqual(r, { ok: true, waiting: false });
+    assert.strictEqual(bridgeCalls.length, 1);
+    const log = store.kcPrintLog; assert.strictEqual(log[0].p, 'meesho'); assert.strictEqual(log[0].bridge, 'ok'); assert.match(log[0].text, /^Printed 2/);
+  });
+  await check('R496 Print now is refused while that platform has an open print, and from a stranger', async () => {
+    await setup(['18:00'], ['meesho']); setNow(T(15, 10, 0)); await now('meesho');   // now "asked"
+    const again = await now('meesho'); assert.strictEqual(again.ok, false); assert.match(again.reason, /already open/); assert.strictEqual(bridgeCalls.length, 1);
+    let heard = false; handlers.msg({ type: 'KC_PRINT_NOW', platform: 'meesho' }, { id: 'someone-else' }, () => { heard = true; }); await settle();
+    assert.strictEqual(heard, false); assert.strictEqual(bridgeCalls.length, 1);
+    assert.strictEqual((await now('nope')).ok, false);
+  });
+  await check('R496 a refusal and the answer are in the runs list; the list keeps 20, newest first', async () => {
+    await setup(['18:00'], ['meesho']); setNow(T(15, 10, 0)); bridgeImpl = async () => ({ ok: false, reason: 'the page did not answer' });
+    await now('meesho'); assert.strictEqual(store.kcPrintLog[0].bridge, 'the page did not answer');
+    bridgeImpl = async () => answer(['A']); await now('meesho'); await click(idOf('meesho'), 0);
+    assert.match(store.kcPrintLog[0].text, /Answered: got them/); assert.match(store.kcPrintLog[1].text, /^Printed 1/);
+    for (let i = 0; i < 25; i++) { bridgeImpl = async () => answer(['X' + i]); await now('meesho'); await click(idOf('meesho'), 1); }
+    assert.strictEqual(store.kcPrintLog.length, 20);
   });
 
   if (failed) { console.log(failed + ' check(s) failed'); process.exit(1); }
