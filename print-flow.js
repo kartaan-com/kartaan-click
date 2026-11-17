@@ -204,7 +204,7 @@ async function printStart(p, at, since = Date.now()) {
     await printNote(p, rec.msg, 'ok');
     return printShow(p, rec);
   } catch (e) {
-    return stop('Something went wrong and nothing was printed: ' + (e && e.message || e), 'error: ' + (e && e.message || e));
+    return stop('Something went wrong and nothing was printed: ' + (e && e.message || e));
   }
 }
 

@@ -5,7 +5,7 @@ version.style.marginLeft = 'auto';
 const bar = el('div', 'p-bar', null, [el('span', 'p-brand', 'Kartaan Click'), el('span', 'p-what', 'Free workflow fixes for seller and warehouse tools'), version]);
 const printing = el('div', 'p-body');
 printing.style.padding = '0';
-const body = el('div', 'p-body', null, [printing, toolsCard(), el('p', 'p-note', 'More tools coming. kartaan.com')]);
+const body = el('div', 'p-body', null, [printing, toolsCard(), el('p', 'p-note', 'More tools coming. ', [Object.assign(el('a', '', 'kartaan.com'), { href: 'https://kartaan.com', target: '_blank', rel: 'noopener' })])]);
 document.body.appendChild(el('div', 'p-page', null, [bar, body]));
 const said = el('p', 'p-said');
 printingCards(printing, said);

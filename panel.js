@@ -43,7 +43,7 @@ function updateTile() {
     if (v.url) { const a = el('a', '', 'Download it'); a.href = v.url; a.target = '_blank'; a.rel = 'noopener'; box.appendChild(a); }
   };
   store('_updateInfo').then(res => { if (res._updateInfo) show(res._updateInfo); });
-  chrome.runtime.sendMessage({ type: 'CHECK_UPDATE' }, info => { void chrome.runtime.lastError; show(info); });
+  chrome.runtime.sendMessage({ type: 'CHECK_UPDATE' }, info => { void chrome.runtime.lastError; if (info) show(info); });
   return tile('Updates', '', [box]);
 }
 
