@@ -71,6 +71,11 @@ function build(version, extra = {}, perms = RUNNING) {
   assert.strictEqual(await reloadTick(w.deps), 'waiting: new permission'); assert.strictEqual(w.log.reloads, 0);
   w = world(build('1.8.1', {}, { permissions: RUNNING.permissions, host_permissions: ['https://a/*', 'https://b/*'] }));
   assert.strictEqual(await reloadTick(w.deps), 'waiting: new permission');
+  // New page access through a content script, an optional permission or the cropper page: also never by itself.
+  for (const extra of [{ content_scripts: [{ matches: ['https://new/*'] }] }, { optional_permissions: ['tabs'] }, { externally_connectable: { matches: ['https://x/*'] } }]) {
+    w = world(build('1.8.1', extra)); assert.strictEqual(await reloadTick(w.deps), 'waiting: new permission'); assert.strictEqual(w.log.reloads, 0);
+    assert.strictEqual(w.log.told.length, 1, 'told at once');
+  }
   // Fewer permissions is fine.
   w = world(build('1.8.1', {}, { permissions: ['storage'], host_permissions: RUNNING.host_permissions }));
   assert.strictEqual(await reloadTick(w.deps), 'reloaded');
@@ -80,6 +85,18 @@ function build(version, extra = {}, perms = RUNNING) {
   await reloadTick(w.deps); w.advance(59 * 60 * 1000); await reloadTick(w.deps); assert.strictEqual(w.log.told.length, 0);
   w.advance(2 * 60 * 1000); await reloadTick(w.deps); await reloadTick(w.deps);
   assert.strictEqual(w.log.told.length, 1); assert.strictEqual(w.log.reloads, 0);
+
+  // Survivors of the first proving run: a stamp of the wrong shape, an unsafe name whose hash is RIGHT, and the
+  // waiting note being cleared by a reload.
+  for (const bad of ['[]', '{"version":1,"id":"x","files":{}}', '{"version":"1.8.1","id":"x"}', '{"version":"1.8.1","id":"x","files":null}']) {
+    w = world({ ...ok, 'build-stamp.json': bad }); assert.strictEqual(await reloadCandidate(w.deps, null), null, bad);
+  }
+  const trav = build('1.8.1'); const ts = JSON.parse(trav['build-stamp.json']); trav['../x'] = 'outside'; ts.files['../x'] = sha('outside'); trav['build-stamp.json'] = JSON.stringify(ts);
+  assert.strictEqual(await reloadCandidate(world(trav).deps, null), null, 'unsafe name with a right hash');
+  const noMan = { 'a.js': 'x' }; noMan['build-stamp.json'] = JSON.stringify({ version: '1.8.1', id: 'x', files: { 'a.js': sha('x') } });
+  assert.strictEqual(await reloadCandidate(world(noMan).deps, null), null, 'stamp without manifest.json');
+  w = world(build('1.8.1')); w.setBusy('print run'); await reloadTick(w.deps); assert.ok(w.store.kcReloadWaiting);
+  w.setBusy(''); await reloadTick(w.deps); assert.strictEqual(w.store.kcReloadWaiting, undefined);
 
   // A rollback (lower version) reaches Chrome too.
   w = world(build('1.7.9')); assert.strictEqual(await reloadTick(w.deps), 'reloaded');
@@ -106,9 +123,16 @@ function build(version, extra = {}, perms = RUNNING) {
   const real = world({}, { version: '0.0.1', permissions: [], host_permissions: [] });
   real.deps.text = async n => fs.readFileSync(path.join(tmp, n), 'utf8'); real.deps.bytes = async n => fs.readFileSync(path.join(tmp, n));
   const man = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
-  real.deps.running = { version: '0.0.1', permissions: man.permissions, host_permissions: man.host_permissions };
+  real.deps.running = { ...man, version: '0.0.1' };
   const c = await reloadCandidate(real.deps, null);
   assert.deepStrictEqual(c, { version: s.version, id: s.id });
+  // The command line writes the same stamp into the folder; with no folder it refuses.
+  const cli = path.join(root, 'tools', 'make-stamp.js'), cp = require('child_process');
+  assert.notStrictEqual(cp.spawnSync(process.execPath, [cli]).status, 0, 'no folder given');
+  fs.rmSync(path.join(tmp, 'build-stamp.json'));   // so the file read back is the command's own
+  const out = cp.spawnSync(process.execPath, [cli, tmp], { encoding: 'utf8' });
+  assert.strictEqual(out.status, 0); assert.ok(/stamp written: version \d/.test(out.stdout), out.stdout);
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(tmp, 'build-stamp.json'), 'utf8')), s);
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log('stamp: all passed');
 })().catch(e => { console.error(e); process.exit(1); });

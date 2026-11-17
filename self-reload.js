@@ -6,7 +6,7 @@
 // (a copy half done fails that, so nothing half-loaded ever loads), and only then, at a safe moment,
 // calls Chrome's own chrome.runtime.reload(). Nothing is downloaded: it only re-reads files already in
 // its own folder. A build that asks for a new permission is never loaded this way: he is told instead.
-// Safe moment = computer idle 3 min (N063) and no round, accept run, print run, label download or bridge run.
+// Safe moment = computer idle 3 min (N063) and no round, accept run, any print run record, label download or bridge run.
 // Click never refreshes his open seller tabs (content/kc-stale.js only tells him to).
 //
 // Loaded by background.js with importScripts, after print-flow.js.
@@ -19,7 +19,9 @@ const RELOAD_EVERY_MIN = 10;
 const RELOAD_TELL_MS = 60 * 60 * 1000;      // blocked this long: one Chrome notice, never a forced reload
 
 const reloadNameOk = p => typeof p === 'string' && /^[A-Za-z0-9_.\/-]+$/.test(p) && !p.startsWith('/') && !p.split('/').includes('..');
-const reloadNew = (a, b) => (a || []).some(x => !(b || []).includes(x));   // a has something b lacks
+// Everything in a manifest that reaches new pages or powers: a build adding any of it is never loaded by itself.
+const reloadAsks = m => [].concat(m.permissions || [], m.host_permissions || [], m.optional_permissions || [], m.optional_host_permissions || [],
+  (m.content_scripts || []).flatMap(c => c.matches || []), (m.externally_connectable || {}).matches || []);
 
 // The new build in this folder: { version, id } when it is whole and new, { needsYou } when it wants a new
 // permission, null when there is nothing (or not yet a whole copy). deps: text, bytes, sha256, running (manifest).
@@ -38,7 +40,8 @@ async function reloadCandidate(deps, doneId) {
     if (n === 'manifest.json') { try { disk = JSON.parse(new TextDecoder().decode(buf)); } catch (e) { return null; } }
   }
   if (!disk || disk.version !== stamp.version) return null;   // stamp and manifest must agree, or it would loop
-  if (reloadNew(disk.permissions, deps.running.permissions) || reloadNew(disk.host_permissions, deps.running.host_permissions)) return { needsYou: true };
+  const had = reloadAsks(deps.running);
+  if (reloadAsks(disk).some(x => !had.includes(x))) return { needsYou: true };
   return { version: stamp.version, id: stamp.id };
 }
 
@@ -50,7 +53,7 @@ async function reloadTick(deps) {
   const why = cand.needsYou ? 'new permission' : await deps.busy();
   if (why) {
     const w = (await deps.get(RELOAD_SINCE)) || { at: deps.now(), told: false };
-    if (!w.told && deps.now() - w.at >= RELOAD_TELL_MS) {
+    if (!w.told && (cand.needsYou || deps.now() - w.at >= RELOAD_TELL_MS)) {
       w.told = true;
       await deps.tell(cand.needsYou ? 'Click update needs you: it asks for a new Chrome permission, so it will not load by itself.'
                                     : 'Click update waiting. It will load when Click is not busy.');
@@ -76,7 +79,8 @@ else {
     if (_roundInFlight || (lock && Date.now() - lock < LOCK_MAX_MS)) return 'check-in round';
     if ((await flipkartRunInProgress()) || (await meeshoRunInProgress())) return 'accept run';
     if (bridgeRunning || (await chrome.storage.session.get(BRIDGE_TAB))[BRIDGE_TAB] != null) return 'label cropper run';
-    for (const p of PRINT_PLATFORMS) { const r = (await store.get(PRINT_RUN + p))[PRINT_RUN + p]; if (r && r.state === 'printing') return 'print run'; }
+    // Any print run record (printing, asked, waiting, offer): the labels or the question are still on his screen.
+    for (const p of PRINT_PLATFORMS) if ((await store.get(PRINT_RUN + p))[PRINT_RUN + p]) return 'print run';
     if (isArmed() || Date.now() <= _folderUntil) return 'label download';
     return '';
   }
@@ -90,5 +94,4 @@ else {
   const look = () => reloadTick(deps).catch(e => console.log('[Kartaan Click] self-reload: ' + e));
   chrome.alarms.get(RELOAD_ALARM, a => { void chrome.runtime.lastError; if (!a) chrome.alarms.create(RELOAD_ALARM, { delayInMinutes: 1, periodInMinutes: RELOAD_EVERY_MIN }); });
   chrome.alarms.onAlarm.addListener(a => { if (a.name === RELOAD_ALARM) look(); });
-  look();
 }
