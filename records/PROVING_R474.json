@@ -1,0 +1,17 @@
+{
+  "tool": "line-deletion run (own script, run on a copy; the Click project has no prove_checks)",
+  "files": ["self-reload.js (logic part, before the browser wiring)", "tools/make-stamp.js"],
+  "code_commits": "ee3d0f7, tests added after it; fixes 6660247",
+  "lines_taken_out_and_run": 63,
+  "caught_red": 48,
+  "not_counted_syntax_error": 11,
+  "survivors": [
+    {"line": "self-reload.js:15 const RELOAD_ALARM", "why": "used only by the browser wiring, which node tests cannot run; covered by the real Chrome run where the alarm fired and the build reloaded"},
+    {"line": "self-reload.js:18 const RELOAD_EVERY_MIN", "why": "same: only the alarm period in the browser wiring; not testable in node"},
+    {"line": "tools/make-stamp.js:29 no-folder guard", "why": "without it the command still exits non-zero (it fails on the missing folder instead of printing usage); same outcome"},
+    {"line": "tools/make-stamp.js:31 write build-stamp.json", "why": "a test file left the stamp in place so the read-back still matched; fixed by removing it first, rerun killed it"}
+  ],
+  "first_run": "63 tried, 42 red, 11 syntax, 10 survivors (stamp shape guard, unsafe name with a right hash, stamp without manifest, waiting note cleared by a reload, command-line lines); each got a check in tools/test-reload.js",
+  "final_run": "63 tried, 48 red, 11 syntax, 4 survivors (the four above; the last one fixed afterwards and re-checked by the test, not re-run in the loop)",
+  "run_after_review_fixes": "not re-run: the loop ran on ee3d0f7 plus tests; 6660247 added checks (any print record busy, wider permission check, told at once) that the test file exercises (node tools/test-reload.js passes)"
+}

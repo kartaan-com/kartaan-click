@@ -11,6 +11,14 @@ const version = document.getElementById('version');
 
 version.textContent = 'Version ' + chrome.runtime.getManifest().version;
 
+// After Click loaded a new build by itself (self-reload.js): "Updated to X at T". Text only, one line.
+chrome.storage.local.get('kcReloadedTo').then(res => {
+  const r = res.kcReloadedTo;
+  if (r && r.version === chrome.runtime.getManifest().version && r.at) {
+    version.textContent += ' — updated by itself at ' + new Date(r.at).toLocaleString();
+  }
+});
+
 function render(info) {
   if (!info) return;
 

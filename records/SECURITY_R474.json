@@ -1,0 +1,26 @@
+{
+  "record": "security read",
+  "commit": "ee3d0f7 (code read); fixes in 6660247",
+  "run_at": "2026-11-17T02:20:00Z",
+  "tool": "Claude Opus subagent (same pass as REVIEW_R474.json)",
+  "invoked_as": "Fresh read-only security read of the same diff: stamp parsing, path handling, remote code, new permissions, content script on seller pages; looked for abuse from a web page or a crafted stamp file",
+  "ran_by": "R474 run 1 (Sonnet 5.5) for Kartaan Control local_34a7618e",
+  "found": [
+    {
+      "severity": "Low-Medium",
+      "file:line": "self-reload.js:40",
+      "what": "The new-permission check compared only permissions and host_permissions; a new content-script host, optional permission, externally_connectable host or web-accessible resource would load silently (Chrome grants them without asking on an unpacked reload).",
+      "why": "Widened in 6660247: permissions, host_permissions, optional_permissions, optional_host_permissions, content_scripts matches and externally_connectable matches; any new one = no reload, notice at once; tests for each. web_accessible_resources is not in the list (the manifest has none; a build adding one is a release-check line).",
+      "outcome": "fixed (web_accessible_resources left, named)"
+    },
+    {
+      "severity": "Low",
+      "file:line": "self-reload.js:31",
+      "what": "The stamp's file list is trusted as complete (a stamp listing only manifest.json passes).",
+      "why": "Only deploy-local.js / make-stamp.js write stamps from the one packaged-file list; anyone who can write Click's folder already controls the code, so it is a whole-copy check, not a signature (said in the plan, section 4).",
+      "outcome": "left, low, by design"
+    }
+  ],
+  "no_abuse_path": "No path from a web page or a crafted stamp: nothing fetched from outside, no eval, no new permission added by this round, file names restricted to plain relative paths (no '..', no leading '/'), version read as text only.",
+  "wording": "none"
+}

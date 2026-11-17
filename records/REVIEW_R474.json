@@ -1,0 +1,39 @@
+{
+  "record": "review",
+  "commit": "ee3d0f7 (code reviewed); fixes in 6660247",
+  "run_at": "2026-11-17T02:20:00Z",
+  "tool": "Claude Opus subagent (higher model than the Sonnet 5.5 that wrote the code, D1120)",
+  "invoked_as": "Fresh read-only review of git diff origin/main...ee3d0f7 against PLAN-R474-CLICK-RELOAD.md sections 3-5; checked the busy-check names against background.js, cropper-bridge.js, print-flow.js; ran node tools/test-reload.js",
+  "ran_by": "R474 run 1 (Sonnet 5.5) for Kartaan Control local_34a7618e",
+  "found": [
+    {
+      "severity": "Medium",
+      "file:line": "self-reload.js:77",
+      "what": "Only a print run in state 'printing' counted as busy; once labels are shown the run is 'asked' and the labels sit in print.html tabs, which a reload closes (session storage is wiped).",
+      "why": "Reload while he is reading printed labels loses them. Fixed in 6660247: any kcPrintRun_<platform> record (printing, asked, waiting, offer) is busy.",
+      "outcome": "fixed"
+    },
+    {
+      "severity": "Medium",
+      "file:line": "self-reload.js:93",
+      "what": "A look at worker start can run before the print or check-in alarm that woke the worker has written its run record, so a reload could land mid-start and skip a print time silently.",
+      "why": "Real window between printSchedule and runPut (print-flow.js:174, 234-235). Fixed in 6660247: no start-up look; only the 10-minute alarm.",
+      "outcome": "fixed"
+    },
+    {
+      "severity": "Low",
+      "file:line": "self-reload.js:RELOAD_TELL_MS",
+      "what": "A build needing a new permission waited an hour before he was told.",
+      "why": "He should be told at once. Fixed in 6660247 with a test.",
+      "outcome": "fixed"
+    },
+    {
+      "severity": "Low",
+      "file:line": "content/kc-stale.js:11",
+      "what": "The 'refresh this tab' bar is fixed at the bottom centre, top z-index, no close button; it can cover a seller-page button.",
+      "why": "Only on the three seller sites, never touches page code, and exists only in an orphaned tab after an update. Left for the Click 1.8 release check (screen wording and look are his to see, D1122).",
+      "outcome": "left, low"
+    }
+  ],
+  "wording": "none"
+}
