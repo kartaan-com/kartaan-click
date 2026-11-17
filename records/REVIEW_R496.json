@@ -1,0 +1,45 @@
+{
+ "record": "review",
+ "commit": "52aa8c8 (code reviewed); fixes in 3bc680f",
+ "run_at": "2026-11-17T04:40:00Z",
+ "tool": "Claude Opus subagent (higher than the Sonnet 5.5 that wrote it, D1120)",
+ "invoked_as": "fresh read-only review of git diff origin/main...52aa8c8; ran test-panel, test-print, check.js",
+ "ran_by": "R496 run 1 (Sonnet 5.5) for Kartaan Control",
+ "earlier_pass": "first pass on 9a75d19 found 4 real faults (copy-details unusable from the panel, Print-now answer on a redrawn box, weak sender check, cropper line stale); all fixed, then verified holding in this pass",
+ "found": [
+  {
+   "severity": "Low",
+   "file:line": "print-flow.js:207",
+   "what": "a label-fetch fault before the cropper was asked was recorded as 'Cropper did not answer'",
+   "outcome": "fixed in 3bc680f"
+  },
+  {
+   "severity": "Low",
+   "file:line": "panel.js:46",
+   "what": "an empty answer to the update check replaced the saved answer with 'Checking for updates'",
+   "outcome": "fixed in 3bc680f"
+  },
+  {
+   "severity": "Low",
+   "file:line": "popup.html:41 / panel-start.js",
+   "what": "unused id; kartaan.com link lost",
+   "outcome": "fixed in 3bc680f"
+  },
+  {
+   "severity": "Low",
+   "file:line": "panel-print-ui.js:44",
+   "what": "the one mode list shows the first platform's saved mode and writes it to all three",
+   "outcome": "kept: the panel always writes all three together, so they differ only if a record is edited by hand"
+  },
+  {
+   "severity": "Low (plausible)",
+   "file:line": "print-flow.js:314-318",
+   "what": "a manual Print now that finds the cropper busy later shows 'Time to print. Print now?' if the seller is on the computer",
+   "outcome": "kept: harmless extra question, recorded for a later round"
+  }
+ ],
+ "wording_not_findings": [
+  "the refusal says 'Answer it first' when the open print is only waiting",
+  "pop-up link has no rel (own extension page)"
+ ]
+}
