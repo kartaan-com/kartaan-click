@@ -32,6 +32,7 @@ const PRINT_LATE_MS = 5 * 60 * 1000;       // later than this after its time = t
 const PRINT_WAIT_MS = 2 * 60 * 60 * 1000;  // a print waiting for a free computer gives up after this
 const PRINT_WAIT_MSG = 'Time to print. Print now? Otherwise it waits for a quiet moment.';
 const PRINT_SHOWN   = 'kcPrintShown';       // session storage: set once per browser run; gone when the browser closes
+const PRINT_LOG     = 'kcPrintLog';        // [{ ts, p, text, bridge? }] newest first, at most 20: what the last runs did (the panel shows it)
 const PRINT_PLATFORMS = ['meesho', 'flipkart', 'amazon'];
 const printSources  = {};                  // platform -> async (shipBy) => [{ name, base64 }]
 
@@ -82,6 +83,11 @@ const printSay = (title, message, buttons, id) => chrome.notifications.create(id
   type: 'basic', iconUrl: 'icons/icon128.png', title: 'Kartaan Click — ' + title, message,
   ...(buttons ? { buttons: buttons.map(t => ({ title: t })), requireInteraction: true } : {}),
 });
+// One line of what a run did, kept for the panel. `bridge` is 'ok' or the cropper's own reason, when the run got as far as asking it.
+async function printNote(p, text, bridge) {
+  const log = (await chrome.storage.local.get(PRINT_LOG))[PRINT_LOG] || [];
+  await chrome.storage.local.set({ [PRINT_LOG]: [{ ts: Date.now(), p, text, ...(bridge ? { bridge } : {}) }, ...log].slice(0, 20) });
+}
 const printName = platform => platform.charAt(0).toUpperCase() + platform.slice(1);
 const goId = (p, at) => 'kcPrintGo_' + p + '_' + at;      // "Print now?"
 const askId = (p, at) => 'kcPrintAsk_' + p + '_' + at;    // "got N?"
@@ -174,7 +180,7 @@ async function printStart(p, at, since = Date.now()) {
   await runPut(p, { at, state: 'printing', since });
   chrome.notifications.clear(goId(p, at));   // a "Print now?" for this time is spent
   const name = printName(p);
-  const stop = async message => { await runEnd(p); return printSay(name, message); };
+  const stop = async (message, bridge) => { await runEnd(p); await printNote(p, message, bridge); return printSay(name, message); };
   try {
     const saved = await chrome.storage.local.get([PRINT_KEY, 'kcCutoff']);
     const source = printSources[p];
@@ -189,12 +195,13 @@ async function printStart(p, at, since = Date.now()) {
       await runPut(p, { at, state: 'waiting', since, msg: PRINT_WAIT_MSG });
       return chrome.alarms.create(PRINT_WAIT + p, { delayInMinutes: 1 });
     }
-    if (!r.ok) return await stop('Labels were not made: ' + r.reason + ' Nothing was printed.');
+    if (!r.ok) return await stop('Labels were not made: ' + r.reason + ' Nothing was printed.', r.reason);
     const mode = ((saved[PRINT_KEY] || {})[p] || {}).mode;
     await (Object.prototype.hasOwnProperty.call(PRINT_MODES, mode) ? PRINT_MODES[mode] : PRINT_MODES.silent)(PRINT_PDFS + p + '_' + at, r.outputs);
     const orderIds = r.rows.filter(o => o && typeof o.orderId === 'string' && !r.alreadyPrinted.includes(o.orderId)).map(o => o.orderId);
     const rec = { at, state: 'asked', orderIds, n: r.count.ordersOut, msg: 'Printed ' + r.count.ordersOut + ' — did you get ' + r.count.ordersOut + '? ' + r.count.text };
     await runPut(p, rec);
+    await printNote(p, rec.msg, 'ok');
     return printShow(p, rec);
   } catch (e) {
     return stop('Something went wrong and nothing was printed: ' + (e && e.message || e));
@@ -250,6 +257,7 @@ const printClick = (id, button) => printSerial(async () => {
     }
   }
   await runEnd(p);
+  await printNote(p, button === 0 ? 'Answered: got them. Marked as printed.' : 'Answered: no. Not marked as printed.');
   if (button !== 0) await printSay(printName(p), 'Not marked as printed. They will be offered again at the next print time.');
   if (rec.pendingAt && printPlan(await chrome.storage.local.get([PRINT_KEY, 'kcCutoff']), p).due !== null) await printOffer(p, rec.pendingAt, 'Time to print. Print now?');   // the print time that came while this question was open
 });
@@ -288,6 +296,22 @@ if (typeof chrome !== 'undefined' && chrome.alarms) {
   });
   printSerial(printRecover).catch(printLog('recover', 'Something went wrong bringing back a print question: '));
   printSerial(printSchedule).catch(printLog('schedule', 'Click could not set the next print time: '));
+}
+
+// The panel's "Print now" for one platform: the same print as at a print time, started by hand. Never while that platform's last labels are still open.
+const printNow = p => printSerial(async () => {
+  if (!PRINT_PLATFORMS.includes(p)) return { ok: false, reason: 'Unknown platform.' };
+  const old = await runGet(p);
+  if (old && ['printing', 'asked', 'waiting'].includes(old.state)) return { ok: false, reason: 'A print for ' + printName(p) + ' is already open. Answer it first.' };
+  await printStart(p, Date.now());
+  return { ok: true };
+});
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (sender.id !== chrome.runtime.id || !msg || msg.type !== 'KC_PRINT_NOW') return;
+    printNow(msg.platform).then(sendResponse, e => sendResponse({ ok: false, reason: String(e && e.message || e) }));
+    return true;
+  });
 }
 
 if (typeof module !== 'undefined') module.exports = { printTimesClean, printNextTime, printShipBy, printSources };
