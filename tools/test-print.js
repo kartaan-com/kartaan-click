@@ -401,6 +401,21 @@ async function check(name, fn) {
     await setup(); await main('meesho', T(15, 18, 0), T(15, 18, 20)); assert.strictEqual(bridgeCalls.length, 0);
     await main('meesho', T(15, 18, 0), T(15, 18, 21)); assert.strictEqual(bridgeCalls.length, 0);
   });
+  await check('R1 a held print time brings back a question he closed, with the same number as the question', async () => {
+    await setup(['09:00', '18:00']); await main('meesho', T(15, 9, 0)); const id1 = idOf('meesho'); delete live[id1];
+    await main('meesho', T(15, 18, 0)); assert.ok(live[id1], 'the question is back');
+    assert.ok(new RegExp('did you get ' + store.kcPrintRun_meesho.n + '\\?').test(said[said.length - 1].message), 'same number');
+  });
+  await check('R2 when the answer cannot be recorded the question comes back', async () => {
+    await setup(); await main('meesho', T(15, 18, 0)); const id2 = idOf('meesho');
+    markImpl = async () => { throw new Error('disk'); }; delete live[id2]; await click(id2, 0);
+    assert.ok(live[id2] && store.kcPrintRun_meesho.state === 'asked', 'still answerable');
+  });
+  await check('R3 a platform switched off while a question was open gets no "Print now?" after the answer', async () => {
+    await setup(['09:00', '18:00']); await main('meesho', T(15, 9, 0)); const id1 = idOf('meesho');
+    await main('meesho', T(15, 18, 0)); store.kcPrintTimes = {}; handlers.changed({ kcPrintTimes: {} }, 'local'); await settle();
+    await click(id1, 0); assert.ok(!store.kcPrintRun_meesho, 'no offer left behind');
+  });
   await check('F4 one broken record does not stop the next print times being set', async () => {
     await setup(); store.kcPrintRun_flipkart = { at: 1, state: 'offer' }; delete sess.kcPrintShown; delete alarms.kcPrint_meesho; await load();
     assert.ok(alarms.kcPrint_meesho);

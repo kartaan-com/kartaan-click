@@ -118,7 +118,8 @@ async function runEnd(p) {
 async function printHold(p, old, at) {
   if (old.pendingAt === at) return;
   await chrome.storage.local.set({ [PRINT_RUN + p]: { ...old, pendingAt: at } });
-  return printSay(printName(p), 'Time to print, but you have not answered "did you get ' + old.orderIds.length + '?" yet. Answer it and Click offers to print.');
+  await printShow(p, old);   // his pop-up may be closed: bring the question back so he can answer it
+  return printSay(printName(p), 'Time to print, but you have not answered "did you get ' + (old.n === undefined ? old.orderIds.length : old.n) + '?" yet. Answer it and Click offers to print.');
 }
 
 // A "Print now?" pop-up for this print time. Asked once: the same time again changes nothing.
@@ -192,7 +193,7 @@ async function printStart(p, at, since = Date.now()) {
     const mode = ((saved[PRINT_KEY] || {})[p] || {}).mode;
     await (Object.prototype.hasOwnProperty.call(PRINT_MODES, mode) ? PRINT_MODES[mode] : PRINT_MODES.silent)(PRINT_PDFS + p + '_' + at, r.outputs);
     const orderIds = r.rows.filter(o => o && typeof o.orderId === 'string' && !r.alreadyPrinted.includes(o.orderId)).map(o => o.orderId);
-    const rec = { at, state: 'asked', orderIds, msg: 'Printed ' + r.count.ordersOut + ' — did you get ' + r.count.ordersOut + '? ' + r.count.text };
+    const rec = { at, state: 'asked', orderIds, n: r.count.ordersOut, msg: 'Printed ' + r.count.ordersOut + ' — did you get ' + r.count.ordersOut + '? ' + r.count.text };
     await runPut(p, rec);
     return printShow(p, rec);
   } catch (e) {
@@ -244,12 +245,13 @@ const printClick = (id, button) => printSerial(async () => {
   // D652: printed means downloaded AND printed, on his word. Marked first; the question goes only once that is recorded.
   if (button === 0) {
     try { await printedMark(p, rec.orderIds); } catch (e) {
+      await printShow(p, rec);   // the tapped pop-up is gone: bring it back so he can answer again
       return printSay(printName(p), 'The labels were printed, but Click could not record it (' + (e && e.message || e) + '). Answer again, or they print again next time.');
     }
   }
   await runEnd(p);
   if (button !== 0) await printSay(printName(p), 'Not marked as printed. They will be offered again at the next print time.');
-  if (rec.pendingAt) await printOffer(p, rec.pendingAt, 'Time to print. Print now?');   // the print time that came while this question was open
+  if (rec.pendingAt && printPlan(await chrome.storage.local.get([PRINT_KEY, 'kcCutoff']), p).due !== null) await printOffer(p, rec.pendingAt, 'Time to print. Print now?');   // the print time that came while this question was open
 });
 
 // At every worker start: a print that was cut off, or a wait whose alarm is gone, is asked about, never printed by itself (D664).
