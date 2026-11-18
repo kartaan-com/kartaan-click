@@ -19,6 +19,10 @@ const rows = [
 ];
 assert.deepStrictEqual(W.mlwPick(rows, day(18, 12), ['E'], day(18)), ['A', 'B']); ok('due by the cutoff day, label not downloaded, not printed, not undated');
 assert.deepStrictEqual(W.mlwPick(rows, day(18, 12), [], day(18)), ['A', 'B', 'E']); ok('overdue orders are included');
+// R480W: when nothing is picked, the words say WHY, order by order counts, no buyer text.
+assert.strictEqual(W.mlwWhy(rows, day(18, 12), ['E'], day(18)), 'The Ready to Ship list shows 6 orders; none was picked. 1 already printed by Click; 1 label already made (not "Not Downloaded"); 1 due after the cutoff day 18 Nov (earliest 19 Nov); 1 with a date Click cannot read ("??").' );
+assert.strictEqual(W.mlwWhy([], day(18, 12), [], day(18)), 'The Ready to Ship list shows no orders.');
+assert.strictEqual(W.mlwWhy([{ orderId: 'C', due: '19 Nov', notDownloaded: true }], day(18, 12), [], day(18)), 'The Ready to Ship list shows 1 order; none was picked. 1 due after the cutoff day 18 Nov (earliest 19 Nov).'); ok('nothing picked: the reason is said in words, per kind, with the cutoff day');
 const real = fs.readFileSync('D:\\Click-saved-pages\\2026-11-18\\Sub_Order_Labels_86add923-9fe9-4e13-ae1e-e9d040cdbde3.pdf');
 assert.ok(W.mlwIsPdf(real.toString('base64'))); assert.strictEqual(W.mlwDataUrlBase64('data:application/pdf;base64,' + real.toString('base64')), real.toString('base64'));
 assert.strictEqual(W.mlwDataUrlBase64('data:application/pdf,%25PDF-1'), Buffer.from('%PDF-1').toString('base64')); assert.strictEqual(W.mlwDataUrlBase64('blob:https://x/1'), null);
@@ -63,6 +67,8 @@ function io(over = {}) {
   w = io({ answer: () => null }); await assert.rejects(W.meeshoLabelWalk(day(18), w), /[Rr]eload the Meesho tab/); ok('no answer and nothing to put back: also says reload the Meesho tab');
   { w = io({ answer: m => m.type === 'KC_LABEL_CHECK' ? { ok: false, reason: 'x' } : { ok: true }, revive: async () => { w.calls.push('REVIVE'); } });
     await assert.rejects(W.meeshoLabelWalk(day(18), w), /not as Click knows it \(x\)/); assert.ok(!w.calls.includes('REVIVE')); ok('a page that answers (even badly) is never re-injected'); }
+  w = io({ answer: m => m.type === 'KC_LABEL_ROWS' ? { ok: true, rows: [{ orderId: 'C', due: '19 Nov', notDownloaded: true }] } : { ok: true } });
+  r = await W.meeshoLabelWalk(day(18, 12), w); assert.deepStrictEqual(r.files, []); assert.deepStrictEqual(r.orderIds, []); assert.match(r.note, /1 due after the cutoff day 18 Nov/); assert.deepStrictEqual(w.calls, ['KC_LABEL_CHECK', 'KC_LABEL_ROWS']); ok('the walk hands the reason back with an empty result, pressing nothing');
   w = io({ idle: async () => false });
   await assert.rejects(W.meeshoLabelWalk(day(18), w), /came back to the computer/); assert.deepStrictEqual(w.calls, []); ok('computer in use: not one page action');
   w = io({ idle: async () => false }); r = await W.meeshoLabelWalk(day(18, 12), w, true); assert.deepStrictEqual(r.orderIds, ['A', 'B', 'E']); ok('Print now by hand: he is there, so the walk does not wait for 3 idle minutes');
@@ -74,7 +80,7 @@ function io(over = {}) {
   await assert.rejects(W.meeshoLabelWalk(day(18), w), /open Meesho/); ok('no Meesho tab: says so');
 
   w = io({ printed: async () => ['A', 'B', 'E'] }); r = await W.meeshoLabelWalk(day(18, 12), w);
-  assert.deepStrictEqual(r, { files: [], orderIds: [] }); assert.ok(!w.calls.some(c => c.startsWith('KC_LABEL_OPEN'))); ok('everything already printed: nothing pressed');
+  assert.deepStrictEqual([r.files, r.orderIds], [[], []]); assert.match(r.note, /3 already printed by Click/); assert.ok(!w.calls.some(c => c.startsWith('KC_LABEL_OPEN'))); ok('everything already printed: nothing pressed');
 
   w = io({ answer: m => m.type === 'KC_LABEL_OPEN' ? { ok: false, reason: 'order A no longer says Not Downloaded' } : m.type === 'KC_LABEL_ROWS' ? { ok: true, rows } : { ok: true } });
   await assert.rejects(W.meeshoLabelWalk(day(18, 12), w), /no longer says Not Downloaded/); ok('the first order failing is an error, nothing handed on');

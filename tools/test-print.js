@@ -263,6 +263,10 @@ async function check(name, fn) {
     P.printSources.meesho = async () => ({ files: [{ name: 'l.pdf', base64: 'JVBERg==' }], orderIds: ['A', 'B'] }); await main('meesho', T(15, 18, 0));
     assert.deepStrictEqual(store.kcPrintRun_meesho.orderIds, ['A', 'B']);
   });
+  await check('R480W: nothing to print says why when the source gives a reason', async () => {
+    await setup(); P.printSources.meesho = async () => ({ files: [], orderIds: [], note: 'The Ready to Ship list shows 1 order; none was picked. 1 due after the cutoff day.' }); await main('meesho', T(15, 18, 0));
+    assert.ok(/Nothing to print\. The Ready to Ship list shows 1 order; none was picked/.test(said[0].message) && !bridgeCalls.length);
+  });
   await check('nothing to print / cropper failed: said, nothing opened, nothing asked', async () => {
     await setup(); P.printSources.meesho = async () => []; await main('meesho', T(15, 18, 0));
     assert.ok(/Nothing to print/.test(said[0].message) && !bridgeCalls.length && !store.kcPrintRun_meesho);

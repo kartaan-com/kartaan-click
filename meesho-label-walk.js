@@ -31,6 +31,20 @@ function mlwPick(rows, shipBy, printed, now) {
   return rows.filter(r => r.notDownloaded && !printed.includes(r.orderId) && (mlwDueDay(r.due, now) ?? Infinity) <= last).map(r => r.orderId);
 }
 
+// Why nothing was picked, in words: counts per reason (no buyer or product text, only dates), for the 'Nothing to print' line.
+function mlwWhy(rows, shipBy, printed, now) {
+  if (!rows.length) return 'The Ready to Ship list shows no orders.';
+  const last = new Date(shipBy).setHours(23, 59, 59, 999), day = ms => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const made = rows.filter(r => !r.notDownloaded), left = rows.filter(r => r.notDownloaded), already = left.filter(r => printed.includes(r.orderId)), rest = left.filter(r => !printed.includes(r.orderId));
+  const undated = rest.filter(r => mlwDueDay(r.due, now) === null), late = rest.filter(r => (mlwDueDay(r.due, now) ?? -Infinity) > last);
+  const part = [];
+  if (already.length) part.push(already.length + ' already printed by Click');
+  if (made.length) part.push(made.length + ' label already made (not "Not Downloaded")');
+  if (late.length) part.push(late.length + ' due after the cutoff day ' + day(last) + ' (earliest ' + day(Math.min(...late.map(r => mlwDueDay(r.due, now)))) + ')');
+  if (undated.length) part.push(undated.length + ' with a date Click cannot read ("' + String(undated[0].due).slice(0, 20) + '")');
+  return 'The Ready to Ship list shows ' + rows.length + (rows.length === 1 ? ' order' : ' orders') + '; none was picked. ' + part.join('; ') + '.';
+}
+
 // The bytes of a data: address (what the page hands Chrome for the label), as base64; null for anything else.
 function mlwDataUrlBase64(url) {
   const m = /^data:[^,]*?(;base64)?,(.*)$/s.exec(url || '');
@@ -61,6 +75,7 @@ async function meeshoLabelWalk(shipBy, io, byHand = false) {
   await ask(tab.id, { type: 'KC_LABEL_CHECK' });
   const rows = (await ask(tab.id, { type: 'KC_LABEL_ROWS' })).rows || [];
   const ids = mlwPick(rows, shipBy, await io.printed(rows.map(r => r.orderId)), Date.now());
+  if (!ids.length) return { files: [], orderIds: [], note: mlwWhy(rows, shipBy, await io.printed(rows.map(r => r.orderId)), Date.now()) };
   const files = [], orderIds = [];
   for (const id of ids) {
     try {
@@ -123,4 +138,4 @@ const mlwIo = {
 };
 if (typeof printSources !== 'undefined') printSources.meesho = (shipBy, opts) => meeshoLabelWalk(shipBy, mlwIo, !!(opts && opts.byHand));
 
-if (typeof module !== 'undefined') module.exports = { meeshoLabelWalk, mlwPick, mlwDueDay, mlwReadyUrl, mlwDataUrlBase64, mlwIsPdf, mlwFileFrom };
+if (typeof module !== 'undefined') module.exports = { meeshoLabelWalk, mlwWhy, mlwPick, mlwDueDay, mlwReadyUrl, mlwDataUrlBase64, mlwIsPdf, mlwFileFrom };

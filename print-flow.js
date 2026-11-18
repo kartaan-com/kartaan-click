@@ -191,7 +191,7 @@ async function printStart(p, at, since = Date.now(), byHand = false) {
     if (shipBy === null) return await stop('There is no cutoff set for ' + name + ', so Click cannot tell what to print. Nothing was printed.');
     const got = await source(shipBy, { byHand });   // a list of files, or { files, orderIds }: the ids the walk fetched (N9)
     const files = Array.isArray(got) ? got : got && got.files, fetched = got && !Array.isArray(got) && Array.isArray(got.orderIds) ? got.orderIds : null;
-    if (!files || files.length === 0) return await stop('Nothing to print.');
+    if (!files || files.length === 0) return await stop('Nothing to print.' + (got && got.note ? ' ' + got.note : ''));
     const r = await bridgeRun({ platform: p, files });
     if (!r.ok && r.reason === printBusy) {   // something else is using the cropper: try again in a minute, same record
       await runPut(p, { at, state: 'waiting', since, msg: PRINT_WAIT_MSG });
