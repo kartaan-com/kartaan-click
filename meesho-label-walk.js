@@ -62,7 +62,7 @@ async function meeshoLabelWalk(shipBy, io) {
   for (const id of ids) {
     try {
       await ask(tab.id, { type: 'KC_LABEL_OPEN', orderId: id });
-      const cap = io.capture();
+      const cap = io.capture(tab.id);
       try { await ask(tab.id, { type: 'KC_LABEL_SAVE' }); files.push(await cap.done); } finally { cap.stop(); }
       orderIds.push(id);
     } catch (e) {
@@ -76,10 +76,13 @@ async function meeshoLabelWalk(shipBy, io) {
 
 // The real Chrome behind `io`. The Meesho tab: one he already has; the seller id in the address is his own, taken from there.
 const mlwReadyUrl = url => url.replace(/\/orders\/[\w-]+.*$/, '/orders/ready-to-ship');
-const mlwFileFrom = async item => {   // the label Chrome is saving: bytes from its data: address, or fetched when it is a plain https address
+// The label Chrome is saving: bytes from its data: address; from the Meesho page itself when it is a blob: address (a blob belongs to
+// the page that made it, so only that page's script can read it); fetched when it is a plain https address.
+const mlwFileFrom = async (item, readBlob) => {
   const url = item.url || '';
   const name = (item.filename || '').split(/[\\/]/).pop() || 'label.pdf';
   let base64 = mlwDataUrlBase64(url);
+  if (base64 === null && /^blob:/.test(url)) base64 = (await readBlob(url) || {}).base64;
   if (base64 === null && /^https:/.test(url)) {
     const buf = new Uint8Array(await (await fetch(url, { credentials: 'include' })).arrayBuffer());
     base64 = btoa(Array.from(buf, b => String.fromCharCode(b)).join(''));
@@ -103,11 +106,11 @@ const mlwIo = {
   idle: async () => !(await computerInUse()),
   printed: ids => printedAmong('meesho', ids),
   pause: () => new Promise(r => setTimeout(r, 3000 + Math.random() * 3000)),
-  capture: () => {
+  capture: tabId => {
     let on, timer;
     const done = new Promise((resolve, reject) => {
       timer = setTimeout(() => reject(new Error('the label file did not come in time (it may be in your Downloads folder).')), MLW_FILE_WAIT_MS);
-      on = item => { if (/^data:|^blob:/.test(item.url || '') || /Sub_Order_Labels/i.test(item.filename || item.url || '')) { clearTimeout(timer); mlwFileFrom(item).then(resolve, reject); } };
+      on = item => { if (/^data:|^blob:/.test(item.url || '') || /Sub_Order_Labels/i.test(item.filename || item.url || '')) { clearTimeout(timer); mlwFileFrom(item, u => mlwIo.call(tabId, { type: 'KC_LABEL_BLOB', url: u })).then(resolve, reject); } };
       chrome.downloads.onCreated.addListener(on);
     });
     done.catch(() => {});
@@ -116,4 +119,4 @@ const mlwIo = {
 };
 if (typeof printSources !== 'undefined') printSources.meesho = shipBy => meeshoLabelWalk(shipBy, mlwIo);
 
-if (typeof module !== 'undefined') module.exports = { meeshoLabelWalk, mlwPick, mlwDueDay, mlwReadyUrl, mlwDataUrlBase64, mlwIsPdf };
+if (typeof module !== 'undefined') module.exports = { meeshoLabelWalk, mlwPick, mlwDueDay, mlwReadyUrl, mlwDataUrlBase64, mlwIsPdf, mlwFileFrom };

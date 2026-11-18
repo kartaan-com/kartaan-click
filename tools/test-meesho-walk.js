@@ -22,7 +22,18 @@ assert.deepStrictEqual(W.mlwPick(rows, day(18, 12), [], day(18)), ['A', 'B', 'E'
 const real = fs.readFileSync('D:\\Click-saved-pages\\2026-11-18\\Sub_Order_Labels_86add923-9fe9-4e13-ae1e-e9d040cdbde3.pdf');
 assert.ok(W.mlwIsPdf(real.toString('base64'))); assert.strictEqual(W.mlwDataUrlBase64('data:application/pdf;base64,' + real.toString('base64')), real.toString('base64'));
 assert.strictEqual(W.mlwDataUrlBase64('data:application/pdf,%25PDF-1'), Buffer.from('%PDF-1').toString('base64')); assert.strictEqual(W.mlwDataUrlBase64('blob:https://x/1'), null);
-assert.ok(!W.mlwIsPdf(Buffer.from('<html>').toString('base64'))); ok('a data: address gives the label bytes (the real saved label); a blob or a non-PDF is refused');
+assert.ok(!W.mlwIsPdf(Buffer.from('<html>').toString('base64'))); ok('a data: address gives the label bytes (the real saved label); a non-PDF is refused');
+(async () => {
+  const b64 = real.toString('base64'), noBlob = async () => { throw new Error('no blob reader wanted'); };
+  assert.deepStrictEqual(await W.mlwFileFrom({ url: 'data:application/pdf;base64,' + b64, filename: 'C:\\Downloads\\Sub_Order_Labels_x.pdf' }, noBlob), { name: 'Sub_Order_Labels_x.pdf', base64: b64 });
+  let asked; assert.deepStrictEqual(await W.mlwFileFrom({ url: 'blob:https://supplier.meesho.com/abc' }, async u => { asked = u; return { ok: true, base64: b64 }; }), { name: 'label.pdf', base64: b64 });
+  assert.strictEqual(asked, 'blob:https://supplier.meesho.com/abc');
+  await assert.rejects(W.mlwFileFrom({ url: 'blob:https://supplier.meesho.com/abc' }, async () => ({ ok: false })), /could not read the label file/);
+  await assert.rejects(W.mlwFileFrom({ url: 'blob:https://supplier.meesho.com/abc' }, async () => null), /could not read the label file/);
+  await assert.rejects(W.mlwFileFrom({ url: 'data:text/html;base64,PGh0bWw+' }, noBlob), /could not read the label file/);
+  ok('a blob: address is read by the page; a failed or non-PDF read says the file is in Downloads');
+})().then(() => {})
+.catch(e => { console.error('FAILED', e); process.exit(1); });
 
 // ── the walk, with a stand-in for Chrome ──
 function io(over = {}) {

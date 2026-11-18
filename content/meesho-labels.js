@@ -90,11 +90,21 @@
     return { ok: false, reason: 'the dialog did not close after pressing Label' };
   }
 
+  // The label Chrome is saving may be a blob: address, which only this page can read. Only this page's own blobs; the bytes go back to Click, nowhere else.
+  async function readBlob(url) {
+    if (typeof url !== 'string' || !url.startsWith('blob:' + location.origin + '/')) return { ok: false, reason: 'not a blob of this page' };
+    // NET-OK: nowhere. `url` is a blob: address of a file this page itself made, checked above; the read stays in the browser.
+    const buf = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    let s = ''; for (let i = 0; i < buf.length; i += 8192) s += String.fromCharCode(...buf.subarray(i, i + 8192));
+    return { ok: true, base64: btoa(s) };
+  }
+
   chrome.runtime.onMessage.addListener((msg, sender, respond) => {
     if (!msg || sender.id !== chrome.runtime.id) return;
     if (msg.type === 'KC_LABEL_CHECK') { const r = check(); respond(r.ok ? { ok: true } : r); }
     else if (msg.type === 'KC_LABEL_ROWS') respond(rows());
     else if (msg.type === 'KC_LABEL_OPEN' && typeof msg.orderId === 'string') { open(msg.orderId, msg.waitMs || 60000).then(respond); return true; }
+    else if (msg.type === 'KC_LABEL_BLOB') { readBlob(msg.url).then(respond, e => respond({ ok: false, reason: String(e && e.message || e) })); return true; }
     else if (msg.type === 'KC_LABEL_SAVE') { save(msg.waitMs || 15000).then(respond); return true; }
   });
   if (typeof module !== 'undefined') module.exports = { check, rows, open, save };
