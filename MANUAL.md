@@ -719,7 +719,8 @@ Nothing leaves your computer, with one exception, described below.
   `notifications`, which shows the cutoff reminder you set, on your own computer only; and
   `idle`, which only answers whether the computer was used in the last 3 minutes; and
   `activeTab` with `scripting`, used only when you press Copy product details, to read the
-  one product page you are looking at.
+  one product page you are looking at; and
+  `nativeMessaging`, used only while you have turned on "AI may drive" in Click's panel, to let the AI app on your own computer use Click through the Kartaan helper program.
 
 **The one exception:** once a day it reads a small public file on
 `raw.githubusercontent.com` — in this extension's own public repository, the same

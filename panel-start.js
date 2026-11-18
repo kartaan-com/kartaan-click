@@ -10,5 +10,5 @@ document.body.appendChild(el('div', 'p-page', null, [bar, body]));
 const said = el('p', 'p-said');
 printingCards(printing, said);
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && PRINT_KEYS.some(k => changes[k])) printingCards(printing, said);
+  if ((area === 'local' && PRINT_KEYS.some(k => changes[k])) || (area === 'session' && changes.kcAiDrive)) printingCards(printing, said);
 });

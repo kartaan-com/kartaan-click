@@ -68,10 +68,20 @@ function runsCard(saved) {
     el('div', 'p-actions', null, [button('Clear this list', 'k-button--quiet k-button--small', () => chrome.storage.local.remove('kcPrintLog'))])]);
 }
 
+// The switch (R051): while it is on, the AI app on this computer may change cutoffs, press Print now and reload Click, through Kartaan's local helper.
+async function aiCard() {
+  const s = (await chrome.storage.session.get('kcAiDrive')).kcAiDrive, on = !!(s && s.on);
+  const toggle = button(on ? 'Stop' : 'Let my AI drive Click', on ? 'k-button--quiet k-button--small' : 'k-button--main', () => chrome.runtime.sendMessage({ type: 'KC_AI_SET', on: !on }, () => void chrome.runtime.lastError));
+  return el('div', 'p-card', null, [el('h2', 'p-title', 'AI may drive'),
+    el('p', 'p-note', on ? 'AI is driving Click. It can set cutoffs, press Print now and reload Click. It stops by itself 60 minutes after its last call, or when you press Stop.'
+                         : 'Off. Turn it on only when you want your AI app to use Click for you. It needs the Kartaan helper that Tune uses.'),
+    el('div', 'p-actions', null, [toggle])]);
+}
+
 // The three cards, drawn again whenever the saved records change.
 // `said` is made once by the caller: what a button said back stays on screen when the cards are drawn again.
 async function printingCards(holder, said) {
   const saved = await store(PRINT_KEYS);
   holder.textContent = '';
-  holder.append(printingCard(saved, said), statusCard(saved, saved), runsCard(saved));
+  holder.append(printingCard(saved, said), statusCard(saved, saved), runsCard(saved), await aiCard());
 }

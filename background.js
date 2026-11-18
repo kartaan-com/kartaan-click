@@ -1666,6 +1666,13 @@ try {
   console.log('[Kartaan Click] Meesho label walk did not load: ' + e);   // must never stop the rest of this file
 }
 
+// "AI may drive": the panel's switch and the five tools the AI app may call (its own file; after print-flow.js and reminders.js).
+try {
+  importScripts('ai-drive.js');
+} catch (e) {
+  console.log('[Kartaan Click] AI drive did not load: ' + e);   // must never stop the rest of this file
+}
+
 // Loads a new build of itself at a safe moment (its own file; reads what the files above keep, after they loaded).
 try {
   importScripts('self-reload.js');

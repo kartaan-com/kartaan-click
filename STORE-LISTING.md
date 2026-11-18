@@ -108,6 +108,8 @@ has been used in the last 3 minutes, and waits if it has, so a round never opens
 while the seller is working. Only the browser's "active / idle / locked" answer is
 read; nothing is stored or sent.
 
+*nativeMessaging* — the "AI may drive" switch in Click's panel. While the user has turned it on, Click talks to a small helper program on the user's own computer (the helper Kartaan Tune uses), so the user's own AI app can set a cutoff, press Print now or reload Click. It is off at every browser start, stops after 60 minutes with no call or on the user's Stop, and nothing is sent over the internet.
+
 *activeTab* and *scripting* — the "Copy product details" button. When the user
 presses it, the browser lets the extension read the one tab in front of them, for that
 press only, and a small reader collects the product's public details (title, price,

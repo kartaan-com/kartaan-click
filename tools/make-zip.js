@@ -35,6 +35,7 @@ const include = [
   'print.html',
   'print.js',
   'self-reload.js',
+  'ai-drive.js',
   'content',
   'icons/icon16.png',
   'icons/icon48.png',
