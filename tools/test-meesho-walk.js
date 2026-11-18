@@ -19,7 +19,9 @@ const rows = [
 ];
 assert.deepStrictEqual(W.mlwPick(rows, day(18, 12), ['E'], day(18)), ['A', 'B']); ok('due by the cutoff day, label not downloaded, not printed, not undated');
 assert.deepStrictEqual(W.mlwPick(rows, day(18, 12), [], day(18)), ['A', 'B', 'E']); ok('overdue orders are included');
-assert.deepStrictEqual(W.mlwPick(rows.concat([{ orderId: 'A', due: '17 Nov', notDownloaded: true }]), day(18, 12), [], day(18)), ['A', 'B', 'E']); ok('an order shown in two rows is picked once');
+assert.deepStrictEqual(W.mlwPick(rows.concat([{ orderId: 'A', due: '17 Nov', notDownloaded: true }]), day(18, 12), [], day(18)), ['A', 'B', 'E', 'A']); ok('two rows of one order id (a split order) are both picked');
+assert.ok(W.mlwMine({ referrer: 'https://supplier.meesho.com/panel/x', url: 'https://storage.googleapis.com/b/Sub_Order_Labels_1.pdf' }) && W.mlwMine({ referrer: '', url: 'data:application/pdf;base64,AA==' }));
+assert.ok(!W.mlwMine({ referrer: 'https://evil.example/', url: 'data:application/pdf;base64,AA==' }) && !W.mlwMine({ referrer: 'https://supplier.meesho.com.evil/', url: 'blob:https://x/1' }) && !W.mlwMine({ url: 'https://a.example/x.png' })); ok('a download counts only if it looks like the label and came from the Meesho page'); 
 // R480W: when nothing is picked, the words say WHY, order by order counts, no buyer text.
 assert.strictEqual(W.mlwWhy(rows, day(18, 12), ['E'], day(18)), 'The Ready to Ship list shows 6 orders; none was picked. 1 already printed by Click; 1 label already made (not "Not Downloaded"); 1 due after the cutoff day 18 Nov (earliest 19 Nov); 1 with a date Click cannot read ("??").' );
 assert.strictEqual(W.mlwWhy([], day(18, 12), [], day(18)), 'The Ready to Ship list shows no orders.');
@@ -85,6 +87,10 @@ function io(over = {}) {
     r = await W.meeshoLabelWalk(day(18, 12), w); assert.deepStrictEqual(r.orderIds, ['A']); assert.ok(w.calls.includes('KC_LABEL_SAVE')); ok('he comes back between the two presses: the second still goes, the next order does not'); }
   w = io({ capture: () => ({ done: Promise.reject(new Error('the label file did not come in time')), stop() {} }) });
   await assert.rejects(W.meeshoLabelWalk(day(18, 12), w), /Order A: its label was made on Meesho but Click could not take the file.*did not come in time/); ok('a label made on Meesho but not taken says which order and that it was made');
+  // Second review: every file gets its own name (the order id), and an OPEN that fails after the press still names the order.
+  w = io(); r = await W.meeshoLabelWalk(day(18, 12), w); assert.deepStrictEqual(r.files.map(f => f.name), ['Meesho_A.pdf', 'Meesho_B.pdf', 'Meesho_E.pdf']); ok('files are named by order id, so a left-out file is told apart');
+  w = io({ answer: m => m.type === 'KC_LABEL_OPEN' ? { ok: false, reason: 'the "Labels generated successfully" message did not come in time' } : (m.type === 'KC_LABEL_ROWS' ? { ok: true, rows } : { ok: true }) });
+  await assert.rejects(W.meeshoLabelWalk(day(18, 12), w), /Order A: .*did not come in time.*may already be made on Meesho/); ok('a failed press names the order and says its label may be made');
   w = io({ idle: async () => false });
   await assert.rejects(W.meeshoLabelWalk(day(18), w), /came back to the computer/); assert.deepStrictEqual(w.calls, []); ok('computer in use: not one page action');
   w = io({ idle: async () => false }); r = await W.meeshoLabelWalk(day(18, 12), w, true); assert.deepStrictEqual(r.orderIds, ['A', 'B', 'E']); ok('Print now by hand: he is there, so the walk does not wait for 3 idle minutes');
@@ -150,6 +156,12 @@ function io(over = {}) {
     assert.strictEqual((await send({ type: 'KC_LABEL_BLOB', url: here + 'l.pdf' })).ok, true); assert.strictEqual((await send({ type: 'KC_LABEL_BLOB', url: 'blob:' + here + 'u' })).ok, true);
     got2 = null; assert.strictEqual((await send({ type: 'KC_LABEL_BLOB', url: 'https://cdn.example.com/l.pdf' })).ok, false); assert.strictEqual((await send({ type: 'KC_LABEL_BLOB', url: 'blob:https://evil.example/u' })).ok, false); assert.strictEqual(got2, null);
     global.fetch = was2; ok('page: reads its own blob and its own https files only, nothing of another site'); }
+  // Second review: a split order = two rows with one order id; the press goes to the row that still says Not Downloaded. A toast AFTER the real dialog must not hide it.
+  { send = load(html); const d = window.document, trs = [...d.querySelectorAll('tbody tr')].filter(t => t.querySelectorAll('td').length > 5), first = trs[0], twin = first.cloneNode(true);
+    const idT = got[0].orderId; first.querySelectorAll('td').forEach(td => { if (/not downloaded/i.test(td.textContent)) td.innerHTML = td.innerHTML.replace(/Not Downloaded/i, 'Downloaded'); }); first.after(twin);
+    const hits = []; for (const [i, tr] of [first, twin].entries()) for (const b of tr.querySelectorAll('button')) b.addEventListener('click', () => hits.push(i));
+    const split = await send({ type: 'KC_LABEL_OPEN', orderId: idT, waitMs: 200 }); assert.deepStrictEqual(hits, [1]); assert.ok(!/no longer says Not Downloaded/.test(split.reason || ''));
+    ok('page: of two rows with one order id, the one still Not Downloaded is pressed'); }
   // The live run of 18 Nov: the page fills its table a few seconds after the tab opens, and its heading reads "Dispatch Date/SLA" (maybe with an icon after it).
   send = load(html.replace('Dispatch Date/SLA', 'Dispatch Date/SLA ⓘ'));
   assert.deepStrictEqual(await send({ type: 'KC_LABEL_CHECK', waitMs: 300 }), { ok: true }); ok('page: a heading with something after "Dispatch Date" is still the date column');
@@ -186,6 +198,9 @@ function io(over = {}) {
   dialogPage('x', false); window.document.body.insertAdjacentHTML('beforeend', '<div class="toast">Labels generated successfully for 1 order</div>');
   let rowPressed = 0; for (const b of window.document.querySelectorAll('tbody button')) b.addEventListener('click', () => rowPressed++);
   const toast = await send({ type: 'KC_LABEL_SAVE', waitMs: 300 }); assert.strictEqual(toast.ok, false); assert.strictEqual(rowPressed, 0); ok('page: the success words in a toast are not a dialog, and no row Label is pressed');
+  dialogPage('Labels generated successfully for 1 order', true); await send({ type: 'KC_LABEL_OPEN', orderId: id0, waitMs: 3000 });
+  window.document.body.insertAdjacentHTML('beforeend', '<div class="toast">Labels generated successfully for 1 order</div>');
+  assert.deepStrictEqual(await send({ type: 'KC_LABEL_SAVE', waitMs: 3000 }), { ok: true }); ok('page: a toast with the same words AFTER the real dialog does not hide it');
   dialogPage('Labels generated successfully for 3 orders', true);
   const bad = await send({ type: 'KC_LABEL_OPEN', orderId: id0, waitMs: 3000 }); assert.strictEqual(bad.ok, false); assert.ok(/3 orders, not 1/.test(bad.reason)); ok('page: a dialog for more than 1 order stops');
   dialogPage('Something else', true);

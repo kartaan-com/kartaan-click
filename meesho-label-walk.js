@@ -28,7 +28,7 @@ function mlwDueDay(text, now) {
 // The rows to print: label not downloaded, due on or before the cutoff's day (overdue included), not already printed.
 function mlwPick(rows, shipBy, printed, now) {
   const last = new Date(shipBy).setHours(23, 59, 59, 999);
-  return [...new Set(rows.filter(r => r.notDownloaded && !printed.includes(r.orderId) && (mlwDueDay(r.due, now) ?? Infinity) <= last).map(r => r.orderId))];
+  return rows.filter(r => r.notDownloaded && !printed.includes(r.orderId) && (mlwDueDay(r.due, now) ?? Infinity) <= last).map(r => r.orderId);   // a split order has two rows and so appears twice: each press takes the next row still Not Downloaded
 }
 
 // Why nothing was picked, in words: counts per reason (no buyer or product text, only dates), for the 'Nothing to print' line.
@@ -79,9 +79,10 @@ async function meeshoLabelWalk(shipBy, io, byHand = false) {
   const files = [], orderIds = [];
   for (const id of ids) {
     try {
-      await ask(tab.id, { type: 'KC_LABEL_OPEN', orderId: id });
+      try { await ask(tab.id, { type: 'KC_LABEL_OPEN', orderId: id }); }
+      catch (e) { throw new Error('Order ' + id + ': ' + (e && e.message || e) + ' (its label may already be made on Meesho).'); }
       const cap = io.capture(tab.id);
-      try { await ask(tab.id, { type: 'KC_LABEL_SAVE' }, true); files.push(await cap.done); }
+      try { await ask(tab.id, { type: 'KC_LABEL_SAVE' }, true); files.push({ ...(await cap.done), name: 'Meesho_' + id + '.pdf' }); }
       catch (e) { throw new Error('Order ' + id + ': its label was made on Meesho but Click could not take the file (' + (e && e.message || e) + ').'); }
       finally { cap.stop(); }
       orderIds.push(id);
@@ -101,6 +102,8 @@ const mlwKind = url => { const m = /^(data|blob:https?|https?)[:/]*([^/?#]*)/.ex
 // The label Chrome is saving: bytes from its data: address; from the Meesho page itself when it is a blob: address (a blob belongs to
 // the page that made it, so only that page's script can read it); fetched when it is a plain https address.
 // Meesho serves the label from Google Cloud Storage (a signed link; seen 18 Nov 2026: HostUrl storage.googleapis.com, referrer supplier.meesho.com).
+// A download that looks like the label AND came from the Meesho page (a download another tab starts in the same seconds is not taken).
+const mlwMine = item => (/^data:|^blob:/.test(item.url || '') || /Sub_Order_Labels/i.test(item.filename || item.url || '')) && (!item.referrer || item.referrer.startsWith('https://supplier.meesho.com/'));
 const MLW_FILE_HOSTS = ['supplier.meesho.com', 'storage.googleapis.com'];
 const mlwFileFrom = async (item, readBlob) => {
   const url = item.url || '';
@@ -143,7 +146,7 @@ const mlwIo = {
     let on, timer;
     const done = new Promise((resolve, reject) => {
       timer = setTimeout(() => reject(new Error('the label file did not come in time (it may be in your Downloads folder).')), MLW_FILE_WAIT_MS);
-      on = item => { if (/^data:|^blob:/.test(item.url || '') || /Sub_Order_Labels/i.test(item.filename || item.url || '')) { clearTimeout(timer); mlwFileFrom(item, u => mlwIo.call(tabId, { type: 'KC_LABEL_BLOB', url: u })).then(resolve, reject); } };
+      on = item => { if (mlwMine(item)) { clearTimeout(timer); mlwFileFrom(item, u => mlwIo.call(tabId, { type: 'KC_LABEL_BLOB', url: u })).then(resolve, reject); } };
       chrome.downloads.onCreated.addListener(on);
     });
     done.catch(() => {});
@@ -152,4 +155,4 @@ const mlwIo = {
 };
 if (typeof printSources !== 'undefined') printSources.meesho = (shipBy, opts) => meeshoLabelWalk(shipBy, mlwIo, !!(opts && opts.byHand));
 
-if (typeof module !== 'undefined') module.exports = { mlwKind, meeshoLabelWalk, mlwWhy, mlwPick, mlwDueDay, mlwReadyUrl, mlwDataUrlBase64, mlwIsPdf, mlwFileFrom };
+if (typeof module !== 'undefined') module.exports = { mlwMine, mlwKind, meeshoLabelWalk, mlwWhy, mlwPick, mlwDueDay, mlwReadyUrl, mlwDataUrlBase64, mlwIsPdf, mlwFileFrom };

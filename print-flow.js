@@ -191,16 +191,17 @@ async function printStart(p, at, since = Date.now(), byHand = false) {
     if (shipBy === null) return await stop('There is no cutoff set for ' + name + ', so Click cannot tell what to print. Nothing was printed.');
     // Labels already fetched for THIS print time, kept when the cropper was busy: the walk changes Meesho (the labels stop saying "Not Downloaded"), so it must not run twice.
     const heldKey = 'kcPrintHeld_' + p, held = ((await chrome.storage.session.get(heldKey))[heldKey]) || null;
-    const got = held && held.at === at ? held.got : await source(shipBy, { byHand });   // a list of files, or { files, orderIds }: the ids the walk fetched (N9)
+    const hold = g => !Array.isArray(g) && g && g.orderIds && g.orderIds.length ? chrome.storage.session.set({ [heldKey]: { ts: Date.now(), got: g } }) : null;
+    const got = held && Date.now() - held.ts < 6 * 3600000 ? held.got : await source(shipBy, { byHand });   // a list of files, or { files, orderIds }: the ids the walk fetched (N9)
     const files = Array.isArray(got) ? got : got && got.files, fetched = got && !Array.isArray(got) && Array.isArray(got.orderIds) ? got.orderIds : null;
     if (!files || files.length === 0) return await stop('Nothing to print.' + (got && got.note ? ' ' + got.note : ''));
-    const r = await bridgeRun({ platform: p, files });
+    const r = await bridgeRun({ platform: p, files }).catch(async e => { await hold(got); throw e; });
+    if (!r.ok) await hold(got);   // the labels are made on Meesho: keep them for the next try, whatever the reason (busy, page broke)
     if (!r.ok && r.reason === printBusy) {   // something else is using the cropper: try again in a minute, same record
-      if (!Array.isArray(got)) await chrome.storage.session.set({ [heldKey]: { at, got } });
       await runPut(p, { at, state: 'waiting', since, msg: PRINT_WAIT_MSG });
       return chrome.alarms.create(PRINT_WAIT + p, { delayInMinutes: 1 });
     }
-    await chrome.storage.session.remove(heldKey);
+    if (r.ok) await chrome.storage.session.remove(heldKey);
     if (!r.ok) return await stop('Labels were not made: ' + r.reason + ' Nothing was printed.', r.reason);
     const mode = ((saved[PRINT_KEY] || {})[p] || {}).mode;
     await (Object.prototype.hasOwnProperty.call(PRINT_MODES, mode) ? PRINT_MODES[mode] : PRINT_MODES.silent)(PRINT_PDFS + p + '_' + at, r.outputs);

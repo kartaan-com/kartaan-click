@@ -269,6 +269,14 @@ async function check(name, fn) {
     bridgeImpl = async f => answer(['A']); await ring('kcPrintWait_meesho', T(15, 18, 1));
     assert.strictEqual(walks, 1); assert.deepStrictEqual(store.kcPrintRun_meesho.orderIds, ['A']); assert.ok(!Object.keys(sess).some(k => /^kcPrintHeld/.test(k)), 'kept labels are dropped once used');
   });
+  await check('R480W second review: labels already made are used again by ANY later print (Print now, next time), not only the same-time retry', async () => {
+    await setup(); let walks = 0; P.printSources.meesho = async () => { walks++; return { files: [{ name: 'a.pdf', base64: 'JVBERg==' }], orderIds: ['A'] }; };
+    bridgeImpl = async () => ({ ok: false, reason: B.BRIDGE_BUSY }); await main('meesho', T(15, 18, 0));
+    bridgeImpl = async () => ({ ok: false, reason: 'the cropper page broke' }); await main('meesho', T(15, 19, 0));
+    assert.ok(Object.keys(sess).some(k => /^kcPrintHeld/.test(k)), 'a failed hand-over keeps the labels');
+    bridgeImpl = async () => answer(['A']); await main('meesho', T(15, 20, 0));
+    assert.strictEqual(walks, 1); assert.deepStrictEqual(store.kcPrintRun_meesho.orderIds, ['A']); assert.ok(!Object.keys(sess).some(k => /^kcPrintHeld/.test(k)));
+  });
   await check('R480W review: an order whose file the cropper left out is not marked printed by a Yes', async () => {
     await setup(); P.printSources.meesho = async () => ({ files: [{ name: 'a.pdf', base64: 'JVBERg==' }, { name: 'b.pdf', base64: 'JVBERg==' }], orderIds: ['A', 'B'] });
     bridgeImpl = async () => ({ ...answer(['A']), leftOut: [{ file: 'b.pdf', reason: 'is empty' }] }); await main('meesho', T(15, 18, 0));
