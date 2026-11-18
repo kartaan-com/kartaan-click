@@ -44,6 +44,9 @@ function reloadView(res, version) {
 }
 
 // The runs list, newest first, one line each, as the seller reads it.
+// The Settings page, at its Cutoff reminders card (the card has id="cutoff"): the panel's "set a cutoff" buttons open this.
+const cutoffSettingsUrl = optionsUrl => optionsUrl + '#cutoff';
+
 const logLines = (log, fmt) => (log || []).filter(e => e && e.text).map(e => fmt(e.ts) + '  ' + e.p.charAt(0).toUpperCase() + e.p.slice(1) + '  ' + e.text);
 
-if (typeof module !== 'undefined') module.exports = { platformView, addTime, removeTime, cropperView, reloadView, logLines, PRINT_MODE_LABELS };
+if (typeof module !== 'undefined') module.exports = { cutoffSettingsUrl, platformView, addTime, removeTime, cropperView, reloadView, logLines, PRINT_MODE_LABELS };

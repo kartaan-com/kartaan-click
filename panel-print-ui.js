@@ -14,6 +14,9 @@ async function savePrintTimes(p, patch) {
   await chrome.storage.local.set({ kcPrintTimes: all });
 }
 
+// Opens the Settings page at the Cutoff reminders card (openOptionsPage cannot jump to a card, so the page is opened by its address).
+const openCutoffSettings = () => chrome.tabs.create({ url: cutoffSettingsUrl(chrome.runtime.getURL('options.html')) });
+
 function platformBox(p, saved, said) {
   const v = platformView(saved, p, when);
   const chips = v.times.map(t => el('span', 'p-chip', t, [button('✕', 'k-button--quiet k-button--small', async () => { await savePrintTimes(p, { times: removeTime(v.times, t) }); })]));
@@ -31,9 +34,9 @@ function platformBox(p, saved, said) {
     });
   });
   const box = el('div', 'p-platform', null, [el('div', 'p-platform-name', nameOf(p)),
-    el('div', 'p-kv', null, [el('span', '', 'Cutoff'), el('span', '', v.cutoff || 'Not set — set it in Settings'), el('span', '', 'Last print run'), el('span', '', v.last), el('span', '', 'Next print'), el('span', '', v.next)]),
+    el('div', 'p-kv', null, [el('span', '', 'Cutoff'), (v.cutoff ? el('span', '', v.cutoff) : button('Not set — set it in Settings', 'k-button--quiet k-button--small', openCutoffSettings)), el('span', '', 'Last print run'), el('span', '', v.last), el('span', '', 'Next print'), el('span', '', v.next)]),
     el('div', 'p-row', null, [el('span', 'p-label', 'Print times'), ...chips, input, add])].concat(
-      v.needsCutoff ? [state('Set a cutoff first (Settings, Cutoff reminders): without it nothing prints.', 'no')] : [], [el('div', 'p-actions', null, [now])]));
+      v.needsCutoff ? [state('Without a cutoff nothing prints.', 'no'), button('Set the cutoff', 'k-button--quiet k-button--small', openCutoffSettings)] : [], [el('div', 'p-actions', null, [now])]));
   box.style.borderLeft = '4px solid var(' + COLOUR[p] + ')';
   return box;
 }

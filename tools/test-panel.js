@@ -34,4 +34,16 @@ ok('remove time', () => assert.deepStrictEqual(pr.removeTime(['09:00', '18:00'],
 ok('cropper view: unused, working, failed', () => { assert.strictEqual(pr.cropperView([]).ok, null); assert.strictEqual(pr.cropperView(saved.kcPrintLog).ok, true); assert.match(pr.cropperView([{ bridge: 'the page did not answer' }]).text, /[Dd]id not answer at the last print: the page did not answer/); });
 ok('reload view: only for the build it reloaded to', () => { assert.match(pr.reloadView({}, '1.8.0'), /No self-update/); assert.match(pr.reloadView({ kcReloadedTo: { version: '1.8.0', at: 5 } }, '1.8.0'), /Updated by itself to 1.8.0/); assert.match(pr.reloadView({ kcReloadedTo: { version: '1.7.0', at: 5 } }, '1.8.0'), /No self-update/); });
 ok('log lines newest first, named platform', () => assert.deepStrictEqual(pr.logLines(saved.kcPrintLog, f), ['T3  Flipkart  Printed 9', 'T2  Meesho  Nothing to print.', 'T1  Meesho  older']));
+// R480W: "set it in Settings" is a button that opens the Settings page AT the Cutoff reminders card (he could not find it).
+ok('cutoff link: the options page, at the card', () => assert.strictEqual(pr.cutoffSettingsUrl('chrome-extension://abc/options.html'), 'chrome-extension://abc/options.html#cutoff'));
+ok('the Cutoff reminders card carries that anchor, once', () => {
+  const html = require('fs').readFileSync(require('path').join(__dirname, '..', 'options.html'), 'utf8');
+  assert.strictEqual((html.match(/id="cutoff"/g) || []).length, 1);
+  assert.match(html, /<div class="card" id="cutoff">\s*<h2>Cutoff reminders<\/h2>/);
+});
+ok('both panel messages use the link, not plain words', () => {
+  const ui = require('fs').readFileSync(require('path').join(__dirname, '..', 'panel-print-ui.js'), 'utf8');
+  assert.ok((ui.match(/openCutoffSettings/g) || []).length >= 3, 'defined once, used for the Cutoff row and the warning');
+  assert.ok(!/v\.cutoff \|\| 'Not set/.test(ui) && !/state\('Set a cutoff first/.test(ui));
+});
 console.log(n + ' checks passed in all');
