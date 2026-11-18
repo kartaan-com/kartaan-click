@@ -49,13 +49,15 @@ async function meeshoLabelWalk(shipBy, io, byHand = false) {
   const ask = async (tabId, msg) => {
     await stopIfUsed();
     const r = await io.call(tabId, msg);
-    if (!r || r.ok === false) throw new Error('the Meesho Ready to Ship page is not as Click knows it (' + (r && r.reason || 'no answer from the page') + '). Click stopped.' + (r && r.seen ? ' Seen on the page: ' + JSON.stringify(r.seen) : ''));
+    if (!r || r.ok === false) throw new Error('the Meesho Ready to Ship page is not as Click knows it (' + (r && r.reason || 'no answer from the page: reload the Meesho tab (F5) and press again') + '). Click stopped.' + (r && r.seen ? ' Seen on the page: ' + JSON.stringify(r.seen) : ''));
     return r;
   };
   const found = await io.tab();
   if (!found) throw new Error('open Meesho\'s seller panel in a tab once, signed in, so Click can use it.');
   await stopIfUsed();
   const tab = await io.toReady(found);
+  // After Click reloads itself, the open Meesho tab can still hold the old script and not answer: put the script back in, once, and ask again.
+  if (io.revive && !(await io.call(tab.id, { type: 'KC_LABEL_CHECK' }))) await io.revive(tab.id);
   await ask(tab.id, { type: 'KC_LABEL_CHECK' });
   const rows = (await ask(tab.id, { type: 'KC_LABEL_ROWS' })).rows || [];
   const ids = mlwPick(rows, shipBy, await io.printed(rows.map(r => r.orderId)), Date.now());
@@ -103,6 +105,7 @@ const mlwIo = {
     }
     throw new Error('the Ready to Ship page did not open in time.');
   },
+  revive: tabId => chrome.scripting.executeScript({ target: { tabId }, files: ['content/meesho-labels.js'] }).catch(() => {}),
   call: (tabId, msg) => new Promise(res => chrome.tabs.sendMessage(tabId, msg, r => res(chrome.runtime.lastError ? null : r))),
   idle: async () => !(await computerInUse()),
   printed: ids => printedAmong('meesho', ids),

@@ -55,6 +55,14 @@ function io(over = {}) {
   w = io({ answer: m => m.type === 'KC_LABEL_CHECK' ? { ok: false, reason: 'the "action" column heading is missing or renamed' } : { ok: true } });
   await assert.rejects(W.meeshoLabelWalk(day(18), w), /not as Click knows it.*action/); assert.deepStrictEqual(w.calls, ['KC_LABEL_CHECK']); ok('a changed page stops the walk, pressing nothing');
 
+  // R480W: after Click reloads itself the Meesho tab may hold the OLD script (no answer): Click puts the script back in, once, then asks again.
+  { let first = true; w = io({ answer: m => (m.type === 'KC_LABEL_CHECK' && first) ? (first = false, null) : (m.type === 'KC_LABEL_ROWS' ? { ok: true, rows } : { ok: true }), revive: async id => { w.calls.push('REVIVE:' + id); } });
+    r = await W.meeshoLabelWalk(day(18, 12), w); assert.deepStrictEqual(w.calls.slice(0, 3), ['KC_LABEL_CHECK', 'REVIVE:1', 'KC_LABEL_CHECK']); assert.deepStrictEqual(r.orderIds, ['A', 'B', 'E']); ok('no answer from the page: the script is put back in once and the check is asked again'); }
+  { w = io({ answer: () => null, revive: async id => { w.calls.push('REVIVE:' + id); } });
+    await assert.rejects(W.meeshoLabelWalk(day(18), w), /no answer from the page.*[Rr]eload the Meesho tab/); assert.deepStrictEqual(w.calls, ['KC_LABEL_CHECK', 'REVIVE:1', 'KC_LABEL_CHECK']); ok('still no answer after that: says plainly to reload the Meesho tab, tried only once'); }
+  w = io({ answer: () => null }); await assert.rejects(W.meeshoLabelWalk(day(18), w), /[Rr]eload the Meesho tab/); ok('no answer and nothing to put back: also says reload the Meesho tab');
+  { w = io({ answer: m => m.type === 'KC_LABEL_CHECK' ? { ok: false, reason: 'x' } : { ok: true }, revive: async () => { w.calls.push('REVIVE'); } });
+    await assert.rejects(W.meeshoLabelWalk(day(18), w), /not as Click knows it \(x\)/); assert.ok(!w.calls.includes('REVIVE')); ok('a page that answers (even badly) is never re-injected'); }
   w = io({ idle: async () => false });
   await assert.rejects(W.meeshoLabelWalk(day(18), w), /came back to the computer/); assert.deepStrictEqual(w.calls, []); ok('computer in use: not one page action');
   w = io({ idle: async () => false }); r = await W.meeshoLabelWalk(day(18, 12), w, true); assert.deepStrictEqual(r.orderIds, ['A', 'B', 'E']); ok('Print now by hand: he is there, so the walk does not wait for 3 idle minutes');
@@ -111,6 +119,10 @@ function io(over = {}) {
   assert.ok(JSON.stringify(renamed.seen).length < 1500); ok('page: a missed table reports its shape (path, headings, counts, tabs) and no order text');
   w = io({ answer: m => m.type === 'KC_LABEL_CHECK' ? { ok: false, reason: 'the orders table is missing', seen: { path: '/x', tables: 0 } } : { ok: true } });
   await assert.rejects(W.meeshoLabelWalk(day(18), w), /orders table is missing[\s\S]*Seen on the page: \{"path":"\/x","tables":0\}/); ok('the walk puts the page shape into its failure message (which the last-runs list records)');
+  { let listeners = 0; const dom = new JSDOM(html, { url: 'https://supplier.meesho.com/panel/v3/new/fulfillment/xuptj/orders/ready-to-ship' }); global.document = dom.window.document; global.location = dom.window.location;
+    global.chrome = { runtime: { id: 'me', onMessage: { addListener: () => { listeners++; } } } };
+    for (let i = 0; i < 2; i++) { delete require.cache[require.resolve('../content/meesho-labels.js')]; require('../content/meesho-labels.js'); }
+    assert.strictEqual(listeners, 1); ok('page: the script put in twice in the same page listens once (a press is never made twice)'); }
   // The live run of 18 Nov: the page fills its table a few seconds after the tab opens, and its heading reads "Dispatch Date/SLA" (maybe with an icon after it).
   send = load(html.replace('Dispatch Date/SLA', 'Dispatch Date/SLA ⓘ'));
   assert.deepStrictEqual(await send({ type: 'KC_LABEL_CHECK', waitMs: 300 }), { ok: true }); ok('page: a heading with something after "Dispatch Date" is still the date column');

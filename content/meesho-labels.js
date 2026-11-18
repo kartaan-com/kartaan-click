@@ -12,6 +12,8 @@
 'use strict';
 (function () {
   if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.onMessage) return;
+  if (globalThis.__kcMeeshoLabels === chrome.runtime.onMessage) return;   // put in twice into the same page (Click does that after its own reload): listen once, or a press is made twice
+  globalThis.__kcMeeshoLabels = chrome.runtime.onMessage;
   const txt = el => ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim();
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const HEADS = { details: /^product details$/i, sub: /^sub-order id$/i, due: /^dispatch date/i, action: /^action$/i };
