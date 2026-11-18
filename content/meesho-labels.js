@@ -118,9 +118,9 @@
     return { ok: false, reason: 'the dialog did not close after pressing Label' };
   }
 
-  // The label Chrome is saving may be a blob: address, which only this page can read. Only this page's own blobs; the bytes go back to Click, nowhere else.
+  // The label Chrome is saving may be a blob: address, which only this page can read, or a file of this same site. Only those; the bytes go back to Click, nowhere else.
   async function readBlob(url) {
-    if (typeof url !== 'string' || !url.startsWith('blob:' + location.origin + '/')) return { ok: false, reason: 'not a blob of this page' };
+    if (typeof url !== 'string' || !(url.startsWith('blob:' + location.origin + '/') || url.startsWith(location.origin + '/'))) return { ok: false, reason: 'not an address of this page' };
     // NET-OK: nowhere. `url` is a blob: address of a file this page itself made, checked above; the read stays in the browser.
     const buf = new Uint8Array(await (await fetch(url)).arrayBuffer());
     let s = ''; for (let i = 0; i < buf.length; i += 8192) s += String.fromCharCode(...buf.subarray(i, i + 8192));

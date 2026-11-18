@@ -96,18 +96,26 @@ async function meeshoLabelWalk(shipBy, io, byHand = false) {
 
 // The real Chrome behind `io`. The Meesho tab: one he already has; the seller id in the address is his own, taken from there.
 const mlwReadyUrl = url => url.replace(/\/orders\/[\w-]+.*$/, '/orders/ready-to-ship');
+// Only the kind and the host of an address, never its path or token: 'blob address of supplier.meesho.com'.
+const mlwKind = url => { const m = /^(data|blob:https?|https?)[:/]*([^/?#]*)/.exec(url || ''); return m ? (m[1].startsWith('blob') ? 'blob' : m[1].replace(/:$/, '')) + ' address' + (m[2] && m[1] !== 'data' ? ' of ' + m[2] : '') : 'address'; };
 // The label Chrome is saving: bytes from its data: address; from the Meesho page itself when it is a blob: address (a blob belongs to
 // the page that made it, so only that page's script can read it); fetched when it is a plain https address.
 const mlwFileFrom = async (item, readBlob) => {
   const url = item.url || '';
   const name = (item.filename || '').split(/[\\/]/).pop() || 'label.pdf';
-  let base64 = mlwDataUrlBase64(url);
-  if (base64 === null && /^blob:/.test(url)) base64 = (await readBlob(url) || {}).base64;
-  if (base64 === null && /^https:/.test(url)) {
-    const buf = new Uint8Array(await (await fetch(url, { credentials: 'include' })).arrayBuffer());
-    base64 = btoa(Array.from(buf, b => String.fromCharCode(b)).join(''));
+  let base64 = mlwDataUrlBase64(url), why = '';
+  // Seen 18 Nov: the file was saved, then "Failed to fetch". So each read says which kind of address it was and why it failed.
+  if (base64 === null && /^(blob:|https:)/.test(url)) {   // the Meesho page reads its own blobs and files first (they belong to it)
+    const r = await readBlob(url);
+    if (r && r.ok) base64 = r.base64; else why = (r && r.reason) || 'no answer from the page';
   }
-  if (!mlwIsPdf(base64)) throw new Error('Click could not read the label file Chrome saved (it is in your Downloads folder).');
+  if (!mlwIsPdf(base64) && /^https:/.test(url)) {
+    try {
+      const buf = new Uint8Array(await (await fetch(url, { credentials: 'include' })).arrayBuffer());
+      base64 = btoa(Array.from(buf, b => String.fromCharCode(b)).join(''));
+    } catch (e) { why += (why ? '; ' : '') + 'Click: ' + (e && e.message || e); }
+  }
+  if (!mlwIsPdf(base64)) throw new Error('Click could not read the label file Chrome saved (it is in your Downloads folder): its ' + mlwKind(url) + ' could not be read' + (why ? ' (' + why + ')' : '') + '.');
   return { name, base64 };
 };
 const mlwIo = {
@@ -140,4 +148,4 @@ const mlwIo = {
 };
 if (typeof printSources !== 'undefined') printSources.meesho = (shipBy, opts) => meeshoLabelWalk(shipBy, mlwIo, !!(opts && opts.byHand));
 
-if (typeof module !== 'undefined') module.exports = { meeshoLabelWalk, mlwWhy, mlwPick, mlwDueDay, mlwReadyUrl, mlwDataUrlBase64, mlwIsPdf, mlwFileFrom };
+if (typeof module !== 'undefined') module.exports = { mlwKind, meeshoLabelWalk, mlwWhy, mlwPick, mlwDueDay, mlwReadyUrl, mlwDataUrlBase64, mlwIsPdf, mlwFileFrom };

@@ -37,6 +37,15 @@ assert.ok(!W.mlwIsPdf(Buffer.from('<html>').toString('base64'))); ok('a data: ad
   await assert.rejects(W.mlwFileFrom({ url: 'blob:https://supplier.meesho.com/abc' }, async () => null), /could not read the label file/);
   await assert.rejects(W.mlwFileFrom({ url: 'data:text/html;base64,PGh0bWw+' }, noBlob), /could not read the label file/);
   ok('a blob: address is read by the page; a failed or non-PDF read says the file is in Downloads');
+  // 18 Nov real try: the file WAS saved, then "Failed to fetch". Every read step now says which address kind it was (scheme + host only, never the path or token) and why it failed.
+  const was = global.fetch; global.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  await assert.rejects(W.mlwFileFrom({ url: 'blob:https://supplier.meesho.com/abc' }, async () => ({ ok: false, reason: 'Failed to fetch' })), /Downloads folder.*blob address of supplier\.meesho\.com.*Failed to fetch/);
+  await assert.rejects(W.mlwFileFrom({ url: 'https://cdn.example.com/l/SECRET-TOKEN.pdf?sig=SECRET' }, async () => ({ ok: false, reason: 'not an address of this page' })), e => /https address of cdn\.example\.com/.test(e.message) && /Failed to fetch/.test(e.message) && !/SECRET/.test(e.message));
+  let asked2 = 0; global.fetch = async () => { asked2++; return { arrayBuffer: async () => Buffer.from('%PDF-1') }; };
+  assert.deepStrictEqual(await W.mlwFileFrom({ url: 'https://supplier.meesho.com/x.pdf', filename: 'a/L.pdf' }, async () => ({ ok: true, base64: b64 })), { name: 'L.pdf', base64: b64 }); assert.strictEqual(asked2, 0);
+  assert.strictEqual((await W.mlwFileFrom({ url: 'https://cdn.example.com/x.pdf' }, async () => ({ ok: false, reason: 'no' }))).base64, Buffer.from('%PDF-1').toString('base64'));
+  global.fetch = was; ok('an https label is tried through the page first, then Click; a failed read names the address kind and the reason, never the path');
+
 })().then(() => {})
 .catch(e => { console.error('FAILED', e); process.exit(1); });
 
@@ -135,6 +144,11 @@ function io(over = {}) {
     global.chrome = { runtime: { id: 'me', onMessage: { addListener: () => { listeners++; } } } };
     for (let i = 0; i < 2; i++) { delete require.cache[require.resolve('../content/meesho-labels.js')]; require('../content/meesho-labels.js'); }
     assert.strictEqual(listeners, 1); ok('page: the script put in twice in the same page listens once (a press is never made twice)'); }
+  { const was2 = global.fetch; let got2; global.fetch = async u => { got2 = u; return { arrayBuffer: async () => Buffer.from('%PDF-1') }; };
+    send = load(html); const here = 'https://supplier.meesho.com/';
+    assert.strictEqual((await send({ type: 'KC_LABEL_BLOB', url: here + 'l.pdf' })).ok, true); assert.strictEqual((await send({ type: 'KC_LABEL_BLOB', url: 'blob:' + here + 'u' })).ok, true);
+    got2 = null; assert.strictEqual((await send({ type: 'KC_LABEL_BLOB', url: 'https://cdn.example.com/l.pdf' })).ok, false); assert.strictEqual((await send({ type: 'KC_LABEL_BLOB', url: 'blob:https://evil.example/u' })).ok, false); assert.strictEqual(got2, null);
+    global.fetch = was2; ok('page: reads its own blob and its own https files only, nothing of another site'); }
   // The live run of 18 Nov: the page fills its table a few seconds after the tab opens, and its heading reads "Dispatch Date/SLA" (maybe with an icon after it).
   send = load(html.replace('Dispatch Date/SLA', 'Dispatch Date/SLA ⓘ'));
   assert.deepStrictEqual(await send({ type: 'KC_LABEL_CHECK', waitMs: 300 }), { ok: true }); ok('page: a heading with something after "Dispatch Date" is still the date column');
