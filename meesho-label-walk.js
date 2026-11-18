@@ -28,7 +28,7 @@ function mlwDueDay(text, now) {
 // The rows to print: label not downloaded, due on or before the cutoff's day (overdue included), not already printed.
 function mlwPick(rows, shipBy, printed, now) {
   const last = new Date(shipBy).setHours(23, 59, 59, 999);
-  return rows.filter(r => r.notDownloaded && !printed.includes(r.orderId) && (mlwDueDay(r.due, now) ?? Infinity) <= last).map(r => r.orderId);
+  return [...new Set(rows.filter(r => r.notDownloaded && !printed.includes(r.orderId) && (mlwDueDay(r.due, now) ?? Infinity) <= last).map(r => r.orderId))];
 }
 
 // Why nothing was picked, in words: counts per reason (no buyer or product text, only dates), for the 'Nothing to print' line.
@@ -60,8 +60,8 @@ const mlwIsPdf = base64 => typeof base64 === 'string' && /^JVBER/.test(base64); 
 //   pause() -> a short human-sized wait between orders
 async function meeshoLabelWalk(shipBy, io, byHand = false) {
   const stopIfUsed = async () => { if (!byHand && !(await io.idle())) throw new Error('you came back to the computer, so Click stopped.'); };
-  const ask = async (tabId, msg) => {
-    await stopIfUsed();
+  const ask = async (tabId, msg, afterPress = false) => {   // afterPress: the row's Label is already pressed, so the dialog's Label goes on even if he came back (else the box stays open and the order is lost)
+    if (!afterPress) await stopIfUsed();
     const r = await io.call(tabId, msg);
     if (!r || r.ok === false) throw new Error('the Meesho Ready to Ship page is not as Click knows it (' + (r && r.reason || 'no answer from the page: reload the Meesho tab (F5) and press again') + '). Click stopped.' + (r && r.seen ? ' Seen on the page: ' + JSON.stringify(r.seen) : ''));
     return r;
@@ -81,7 +81,9 @@ async function meeshoLabelWalk(shipBy, io, byHand = false) {
     try {
       await ask(tab.id, { type: 'KC_LABEL_OPEN', orderId: id });
       const cap = io.capture(tab.id);
-      try { await ask(tab.id, { type: 'KC_LABEL_SAVE' }); files.push(await cap.done); } finally { cap.stop(); }
+      try { await ask(tab.id, { type: 'KC_LABEL_SAVE' }, true); files.push(await cap.done); }
+      catch (e) { throw new Error('Order ' + id + ': its label was made on Meesho but Click could not take the file (' + (e && e.message || e) + ').'); }
+      finally { cap.stop(); }
       orderIds.push(id);
     } catch (e) {
       if (files.length === 0) throw e;

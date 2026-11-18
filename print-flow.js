@@ -189,19 +189,25 @@ async function printStart(p, at, since = Date.now(), byHand = false) {
     // The cutoff comes from the latest print time that has come round, not from the moment of the click: a late "Print now" is still for today's orders.
     const shipBy = printShipBy((saved.kcCutoff || {})[p], Math.max(at, printLatest(printPlan(saved, p).times, Date.now())));
     if (shipBy === null) return await stop('There is no cutoff set for ' + name + ', so Click cannot tell what to print. Nothing was printed.');
-    const got = await source(shipBy, { byHand });   // a list of files, or { files, orderIds }: the ids the walk fetched (N9)
+    // Labels already fetched for THIS print time, kept when the cropper was busy: the walk changes Meesho (the labels stop saying "Not Downloaded"), so it must not run twice.
+    const heldKey = 'kcPrintHeld_' + p, held = ((await chrome.storage.session.get(heldKey))[heldKey]) || null;
+    const got = held && held.at === at ? held.got : await source(shipBy, { byHand });   // a list of files, or { files, orderIds }: the ids the walk fetched (N9)
     const files = Array.isArray(got) ? got : got && got.files, fetched = got && !Array.isArray(got) && Array.isArray(got.orderIds) ? got.orderIds : null;
     if (!files || files.length === 0) return await stop('Nothing to print.' + (got && got.note ? ' ' + got.note : ''));
     const r = await bridgeRun({ platform: p, files });
     if (!r.ok && r.reason === printBusy) {   // something else is using the cropper: try again in a minute, same record
+      if (!Array.isArray(got)) await chrome.storage.session.set({ [heldKey]: { at, got } });
       await runPut(p, { at, state: 'waiting', since, msg: PRINT_WAIT_MSG });
       return chrome.alarms.create(PRINT_WAIT + p, { delayInMinutes: 1 });
     }
+    await chrome.storage.session.remove(heldKey);
     if (!r.ok) return await stop('Labels were not made: ' + r.reason + ' Nothing was printed.', r.reason);
     const mode = ((saved[PRINT_KEY] || {})[p] || {}).mode;
     await (Object.prototype.hasOwnProperty.call(PRINT_MODES, mode) ? PRINT_MODES[mode] : PRINT_MODES.silent)(PRINT_PDFS + p + '_' + at, r.outputs);
     // The orders a Yes marks printed are the ones the walk fetched, never the ones the cropper page says it read (N9).
-    const orderIds = fetched ? fetched.filter(id => typeof id === 'string' && !r.alreadyPrinted.includes(id))
+    // A file the cropper left out (leftOut names it) is not printed, so its order is not marked: the walk's files and ids go in the same order.
+    const out = new Set((r.leftOut || []).map(x => x && x.file)), kept = fetched && fetched.length === files.length ? fetched.filter((id, i) => !out.has(files[i].name)) : fetched;
+    const orderIds = fetched ? kept.filter(id => typeof id === 'string' && !r.alreadyPrinted.includes(id))
       : r.rows.filter(o => o && typeof o.orderId === 'string' && !r.alreadyPrinted.includes(o.orderId)).map(o => o.orderId);
     const rec = { at, state: 'asked', orderIds, n: r.count.ordersOut, msg: 'Printed ' + r.count.ordersOut + ' — did you get ' + r.count.ordersOut + '? ' + r.count.text + (got && !Array.isArray(got) && got.note ? ' ' + got.note : '') };
     await runPut(p, rec);

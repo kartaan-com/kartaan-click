@@ -19,6 +19,7 @@ const rows = [
 ];
 assert.deepStrictEqual(W.mlwPick(rows, day(18, 12), ['E'], day(18)), ['A', 'B']); ok('due by the cutoff day, label not downloaded, not printed, not undated');
 assert.deepStrictEqual(W.mlwPick(rows, day(18, 12), [], day(18)), ['A', 'B', 'E']); ok('overdue orders are included');
+assert.deepStrictEqual(W.mlwPick(rows.concat([{ orderId: 'A', due: '17 Nov', notDownloaded: true }]), day(18, 12), [], day(18)), ['A', 'B', 'E']); ok('an order shown in two rows is picked once');
 // R480W: when nothing is picked, the words say WHY, order by order counts, no buyer text.
 assert.strictEqual(W.mlwWhy(rows, day(18, 12), ['E'], day(18)), 'The Ready to Ship list shows 6 orders; none was picked. 1 already printed by Click; 1 label already made (not "Not Downloaded"); 1 due after the cutoff day 18 Nov (earliest 19 Nov); 1 with a date Click cannot read ("??").' );
 assert.strictEqual(W.mlwWhy([], day(18, 12), [], day(18)), 'The Ready to Ship list shows no orders.');
@@ -69,10 +70,15 @@ function io(over = {}) {
     await assert.rejects(W.meeshoLabelWalk(day(18), w), /not as Click knows it \(x\)/); assert.ok(!w.calls.includes('REVIVE')); ok('a page that answers (even badly) is never re-injected'); }
   w = io({ answer: m => m.type === 'KC_LABEL_ROWS' ? { ok: true, rows: [{ orderId: 'C', due: '19 Nov', notDownloaded: true }] } : { ok: true } });
   r = await W.meeshoLabelWalk(day(18, 12), w); assert.deepStrictEqual(r.files, []); assert.deepStrictEqual(r.orderIds, []); assert.match(r.note, /1 due after the cutoff day 18 Nov/); assert.deepStrictEqual(w.calls, ['KC_LABEL_CHECK', 'KC_LABEL_ROWS']); ok('the walk hands the reason back with an empty result, pressing nothing');
+  // Review of 18 Nov: once the row's Label is pressed, the dialog's Label is pressed WITHOUT another idle check (else the dialog stays open and the order is lost).
+  { let opened = false; w = io({ idle: async () => !opened, answer: m => { if (m.type === 'KC_LABEL_OPEN') opened = true; return m.type === 'KC_LABEL_ROWS' ? { ok: true, rows } : { ok: true }; } });
+    r = await W.meeshoLabelWalk(day(18, 12), w); assert.deepStrictEqual(r.orderIds, ['A']); assert.ok(w.calls.includes('KC_LABEL_SAVE')); ok('he comes back between the two presses: the second still goes, the next order does not'); }
+  w = io({ capture: () => ({ done: Promise.reject(new Error('the label file did not come in time')), stop() {} }) });
+  await assert.rejects(W.meeshoLabelWalk(day(18, 12), w), /Order A: its label was made on Meesho but Click could not take the file.*did not come in time/); ok('a label made on Meesho but not taken says which order and that it was made');
   w = io({ idle: async () => false });
   await assert.rejects(W.meeshoLabelWalk(day(18), w), /came back to the computer/); assert.deepStrictEqual(w.calls, []); ok('computer in use: not one page action');
   w = io({ idle: async () => false }); r = await W.meeshoLabelWalk(day(18, 12), w, true); assert.deepStrictEqual(r.orderIds, ['A', 'B', 'E']); ok('Print now by hand: he is there, so the walk does not wait for 3 idle minutes');
-  let left = 5;   // idle for the check, the rows and the first Label + dialog Label (5 asks), then he comes back
+  let left = 4;   // idle for the check, the rows and the first Label (the dialog's Label is no longer checked), then he comes back
   w = io({ idle: async () => left-- > 0 });
   r = await W.meeshoLabelWalk(day(18, 12), w); assert.deepStrictEqual(r.orderIds, ['A']); assert.ok(/Stopped after 1 of 3.*came back/.test(r.note)); ok('he comes back mid-walk: the finished label is kept, the rest stop, and it says so');
 
@@ -158,6 +164,13 @@ function io(over = {}) {
   await send({ type: 'KC_LABEL_OPEN', orderId: id0, waitMs: 3000 });
   [...window.document.querySelectorAll('[role=dialog] input')][0].click();
   await send({ type: 'KC_LABEL_SAVE', waitMs: 3000 }); assert.deepStrictEqual(window.__pressed, [{ manifest: false }]); ok('page: a ticked Download Manifest is cleared before pressing Label');
+  // Review of 18 Nov: a dialog from before, or a toast with the same words, must never be taken for the order's own dialog.
+  dialogPage('Labels generated successfully for 1 order', false);
+  window.document.body.insertAdjacentHTML('beforeend', '<div id="old" role="dialog"><p>Labels generated successfully for 1 order</p><button>Label</button></div>');
+  const stale = await send({ type: 'KC_LABEL_OPEN', orderId: id0, waitMs: 500 }); assert.strictEqual(stale.ok, false); assert.ok(/already open/.test(stale.reason)); assert.deepStrictEqual(window.__pressed, []); ok('page: a success box left open from before stops the press');
+  dialogPage('x', false); window.document.body.insertAdjacentHTML('beforeend', '<div class="toast">Labels generated successfully for 1 order</div>');
+  let rowPressed = 0; for (const b of window.document.querySelectorAll('tbody button')) b.addEventListener('click', () => rowPressed++);
+  const toast = await send({ type: 'KC_LABEL_SAVE', waitMs: 300 }); assert.strictEqual(toast.ok, false); assert.strictEqual(rowPressed, 0); ok('page: the success words in a toast are not a dialog, and no row Label is pressed');
   dialogPage('Labels generated successfully for 3 orders', true);
   const bad = await send({ type: 'KC_LABEL_OPEN', orderId: id0, waitMs: 3000 }); assert.strictEqual(bad.ok, false); assert.ok(/3 orders, not 1/.test(bad.reason)); ok('page: a dialog for more than 1 order stops');
   dialogPage('Something else', true);

@@ -263,6 +263,17 @@ async function check(name, fn) {
     P.printSources.meesho = async () => ({ files: [{ name: 'l.pdf', base64: 'JVBERg==' }], orderIds: ['A', 'B'] }); await main('meesho', T(15, 18, 0));
     assert.deepStrictEqual(store.kcPrintRun_meesho.orderIds, ['A', 'B']);
   });
+  await check('R480W review: a busy cropper after the walk keeps the fetched labels; the retry does not walk again', async () => {
+    await setup(); let walks = 0; P.printSources.meesho = async () => { walks++; return { files: [{ name: 'a.pdf', base64: 'JVBERg==' }], orderIds: ['A'] }; };
+    bridgeImpl = async () => ({ ok: false, reason: B.BRIDGE_BUSY }); await main('meesho', T(15, 18, 0));
+    bridgeImpl = async f => answer(['A']); await ring('kcPrintWait_meesho', T(15, 18, 1));
+    assert.strictEqual(walks, 1); assert.deepStrictEqual(store.kcPrintRun_meesho.orderIds, ['A']); assert.ok(!Object.keys(sess).some(k => /^kcPrintHeld/.test(k)), 'kept labels are dropped once used');
+  });
+  await check('R480W review: an order whose file the cropper left out is not marked printed by a Yes', async () => {
+    await setup(); P.printSources.meesho = async () => ({ files: [{ name: 'a.pdf', base64: 'JVBERg==' }, { name: 'b.pdf', base64: 'JVBERg==' }], orderIds: ['A', 'B'] });
+    bridgeImpl = async () => ({ ...answer(['A']), leftOut: [{ file: 'b.pdf', reason: 'is empty' }] }); await main('meesho', T(15, 18, 0));
+    assert.deepStrictEqual(store.kcPrintRun_meesho.orderIds, ['A']);
+  });
   await check('R480W: nothing to print says why when the source gives a reason', async () => {
     await setup(); P.printSources.meesho = async () => ({ files: [], orderIds: [], note: 'The Ready to Ship list shows 1 order; none was picked. 1 due after the cutoff day.' }); await main('meesho', T(15, 18, 0));
     assert.ok(/Nothing to print\. The Ready to Ship list shows 1 order; none was picked/.test(said[0].message) && !bridgeCalls.length);

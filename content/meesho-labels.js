@@ -82,7 +82,10 @@
   // The dialog that says "Labels generated successfully": from that line, up to the first box that holds a "Label" button.
   function doneDialog() {
     const line = [...document.querySelectorAll('body *')].filter(e => DONE.test(txt(e))).pop();   // the innermost one comes last
-    for (let e = line; e && e !== document.body; e = e.parentElement) if (labelButton(e)) return { line, box: e };
+    for (let e = line; e && e !== document.body; e = e.parentElement) {
+      if (e.querySelector('table')) return null;   // reached the page itself (the success words were in a toast): not the dialog, and never a row's Label
+      if (labelButton(e)) return { line, box: e };
+    }
     return null;
   }
 
@@ -90,6 +93,7 @@
   async function open(orderId, waitMs) {
     const c = check();
     if (!c.ok) return c;
+    if (doneDialog()) return { ok: false, reason: 'a "Labels generated successfully" box is already open from before; close it first' };
     const all = orderRows(c), row = all && all.find(r => r.orderId === orderId);
     if (!row) return { ok: false, reason: 'order ' + orderId + ' is not in the list' };
     if (!/not downloaded/i.test(txt(row.action))) return { ok: false, reason: 'order ' + orderId + ' no longer says Not Downloaded' };
