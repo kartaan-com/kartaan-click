@@ -46,9 +46,17 @@
     return out;
   }
 
-  // Every row: its order id, sub-order id, dispatch date as shown, and whether its label is still "Not Downloaded".
-  function rows() {
-    const c = check();
+  // The page fills its table a few seconds after the tab opens (seen live 18 Nov): wait for it before deciding the page differs.
+  // Only a missing table is waited for: a page that is not Ready to Ship at all, or a table with a wrong heading, is final at once.
+  async function ready(waitMs) {
+    for (const t0 = Date.now(); ; await sleep(300)) {
+      const c = check();
+      if (c.ok || !/orders table/.test(c.reason) || Date.now() - t0 >= waitMs) return c;
+    }
+  }
+
+  // Every row of the checked table: its order id, sub-order id, dispatch date as shown, and whether its label is still "Not Downloaded".
+  function rowsOf(c) {
     if (!c.ok) return c;
     const all = orderRows(c);
     if (!all) return { ok: false, reason: 'a row has no order id' };
@@ -101,11 +109,11 @@
 
   chrome.runtime.onMessage.addListener((msg, sender, respond) => {
     if (!msg || sender.id !== chrome.runtime.id) return;
-    if (msg.type === 'KC_LABEL_CHECK') { const r = check(); respond(r.ok ? { ok: true } : r); }
-    else if (msg.type === 'KC_LABEL_ROWS') respond(rows());
+    if (msg.type === 'KC_LABEL_CHECK') { ready(msg.waitMs === undefined ? 20000 : msg.waitMs).then(r => respond(r.ok ? { ok: true } : r)); return true; }
+    else if (msg.type === 'KC_LABEL_ROWS') { ready(msg.waitMs === undefined ? 20000 : msg.waitMs).then(r => respond(rowsOf(r))); return true; }
     else if (msg.type === 'KC_LABEL_OPEN' && typeof msg.orderId === 'string') { open(msg.orderId, msg.waitMs || 60000).then(respond); return true; }
     else if (msg.type === 'KC_LABEL_BLOB') { readBlob(msg.url).then(respond, e => respond({ ok: false, reason: String(e && e.message || e) })); return true; }
     else if (msg.type === 'KC_LABEL_SAVE') { save(msg.waitMs || 15000).then(respond); return true; }
   });
-  if (typeof module !== 'undefined') module.exports = { check, rows, open, save };
+  if (typeof module !== 'undefined') module.exports = { check, rowsOf, open, save };
 })();

@@ -95,11 +95,21 @@ function io(over = {}) {
   assert.strictEqual(got.length, 13); assert.ok(got.every(x => /^\d{15,}$/.test(x.orderId) && x.notDownloaded && /^\d+ [A-Z][a-z]{2}/.test(x.due))); ok('page: 13 rows with order id, date, Not Downloaded');
   for (const [name, bad] of [['Dispatch Date/SLA', 'Dispatch Day'], ['Sub-order ID', 'Suborder']]) {
     send = load(html.split(name).join(bad));
-    const r2 = await send({ type: 'KC_LABEL_CHECK' }); assert.strictEqual(r2.ok, false, name); console.log('   says: ' + r2.reason);
+    const r2 = await send({ type: 'KC_LABEL_CHECK', waitMs: 300 }); assert.strictEqual(r2.ok, false, name); console.log('   says: ' + r2.reason);
   }
   ok('page: a renamed heading is named, not guessed');
   send = load(html, 'https://supplier.meesho.com/panel/v3/new/fulfillment/xuptj/orders/pending');
-  assert.strictEqual((await send({ type: 'KC_LABEL_CHECK' })).ok, false); ok('page: the Pending page is not Ready to Ship');
+  assert.strictEqual((await send({ type: 'KC_LABEL_CHECK', waitMs: 300 })).ok, false); ok('page: the Pending page is not Ready to Ship');
+  // The live run of 18 Nov: the page fills its table a few seconds after the tab opens, and its heading reads "Dispatch Date/SLA" (maybe with an icon after it).
+  send = load(html.replace('Dispatch Date/SLA', 'Dispatch Date/SLA ⓘ'));
+  assert.deepStrictEqual(await send({ type: 'KC_LABEL_CHECK', waitMs: 300 }), { ok: true }); ok('page: a heading with something after "Dispatch Date" is still the date column');
+  send = load(html); const tbl = window.document.querySelector('table'), holder = tbl.parentElement, next = tbl.nextSibling; tbl.remove();
+  setTimeout(() => holder.insertBefore(tbl, next), 700);
+  assert.deepStrictEqual(await send({ type: 'KC_LABEL_CHECK', waitMs: 5000 }), { ok: true }); ok('page: the table appearing after a short wait is waited for');
+  send = load(html); window.document.querySelector('table').remove(); const t0 = Date.now();
+  const late = await send({ type: 'KC_LABEL_CHECK', waitMs: 600 }); assert.strictEqual(late.ok, false); assert.ok(Date.now() - t0 >= 550 && /Dispatch Date column is missing/.test(late.reason)); ok('page: a table that never comes is reported only after the wait');
+  send = load(html); window.document.querySelector('table').remove(); setTimeout(() => window.document.body.appendChild(Object.assign(window.document.createElement('p'), { textContent: 'x' })), 100);
+  const t1 = Date.now(); const rowsLate = await send({ type: 'KC_LABEL_ROWS', waitMs: 500 }); assert.strictEqual(rowsLate.ok, false); assert.ok(Date.now() - t1 >= 450); ok('page: reading the rows waits for the table too');
 
   // The dialog, as watched on 18 Nov: Label on a row -> "Generating labels..." -> "Labels generated successfully for 1 order" + Download Manifest + Label -> closes.
   const id0 = got[0].orderId;
