@@ -176,7 +176,8 @@ const PRINT_MODES = { silent: printTabs('&s=1'), box: printTabs('') };
 
 // One print for the platform's print time `at`: labels for everything due by the cutoff that print time looks at, put in front of the
 // seller, then the count question. `since` is when it first had to wait. Callers hold the print chain.
-async function printStart(p, at, since = Date.now()) {
+// `byHand`: he pressed Print now himself (the panel, or the notice button): the source need not wait for 3 idle minutes, as with a check-in round he starts by hand.
+async function printStart(p, at, since = Date.now(), byHand = false) {
   await runPut(p, { at, state: 'printing', since });
   chrome.notifications.clear(goId(p, at));   // a "Print now?" for this time is spent
   const name = printName(p);
@@ -188,7 +189,7 @@ async function printStart(p, at, since = Date.now()) {
     // The cutoff comes from the latest print time that has come round, not from the moment of the click: a late "Print now" is still for today's orders.
     const shipBy = printShipBy((saved.kcCutoff || {})[p], Math.max(at, printLatest(printPlan(saved, p).times, Date.now())));
     if (shipBy === null) return await stop('There is no cutoff set for ' + name + ', so Click cannot tell what to print. Nothing was printed.');
-    const got = await source(shipBy);   // a list of files, or { files, orderIds }: the ids the walk fetched (N9)
+    const got = await source(shipBy, { byHand });   // a list of files, or { files, orderIds }: the ids the walk fetched (N9)
     const files = Array.isArray(got) ? got : got && got.files, fetched = got && !Array.isArray(got) && Array.isArray(got.orderIds) ? got.orderIds : null;
     if (!files || files.length === 0) return await stop('Nothing to print.');
     const r = await bridgeRun({ platform: p, files });
@@ -251,7 +252,7 @@ const printClick = (id, button) => printSerial(async () => {
   if (!m) return;
   const [, kind, p, at] = m, rec = await runGet(p);
   if (!rec || String(rec.at) !== at || !(kind === 'Go' ? rec.state === 'offer' || rec.state === 'waiting' : rec.state === 'asked')) return chrome.notifications.clear(id);
-  if (kind === 'Go') return button === 0 ? printStart(p, rec.at, rec.since) : undefined;
+  if (kind === 'Go') return button === 0 ? printStart(p, rec.at, rec.since, true) : undefined;
   // D652: printed means downloaded AND printed, on his word. Marked first; the question goes only once that is recorded.
   if (button === 0) {
     try { await printedMark(p, rec.orderIds); } catch (e) {
@@ -306,7 +307,7 @@ const printNow = p => printSerial(async () => {
   if (!PRINT_PLATFORMS.includes(p)) return { ok: false, reason: 'Unknown platform.' };
   const old = await runGet(p);
   if (old && ['printing', 'asked', 'waiting'].includes(old.state)) return { ok: false, reason: 'A print for ' + printName(p) + ' is already open. Answer it first.' };
-  await printStart(p, Date.now());
+  await printStart(p, Date.now(), undefined, true);
   const after = await runGet(p);
   return { ok: true, waiting: !!after && after.state === 'waiting' };
 });

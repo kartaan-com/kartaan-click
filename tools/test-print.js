@@ -445,6 +445,12 @@ async function check(name, fn) {
     assert.strictEqual(bridgeCalls.length, 1);
     const log = store.kcPrintLog; assert.strictEqual(log[0].p, 'meesho'); assert.strictEqual(log[0].bridge, 'ok'); assert.match(log[0].text, /^Printed 2/);
   });
+  await check('R480W: the source is told when HE pressed Print now (no 3-minute wait), and not for a timed print', async () => {
+    const opts = [], src = async (by, o) => { opts.push(o); return [{ name: 'l.pdf', base64: 'JVBERg==' }]; };
+    await setup(['18:00'], ['meesho']); P.printSources.meesho = src; setNow(T(15, 10, 0)); await now('meesho');
+    await setup(['18:00'], ['meesho']); P.printSources.meesho = src; await main('meesho', T(16, 18, 0));
+    assert.deepStrictEqual(opts, [{ byHand: true }, { byHand: false }]);
+  });
   await check('R496 Print now is refused while that platform has an open print, and from a stranger', async () => {
     await setup(['18:00'], ['meesho']); setNow(T(15, 10, 0)); await now('meesho');   // now "asked"
     const again = await now('meesho'); assert.strictEqual(again.ok, false); assert.match(again.reason, /already open/); assert.strictEqual(bridgeCalls.length, 1);

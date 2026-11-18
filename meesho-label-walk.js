@@ -9,7 +9,8 @@
 //     (watched 18 Nov 2026): the row's Label button, wait for "Labels generated successfully", the dialog's Label button;
 //     Chrome then saves Sub_Order_Labels_<uuid>.pdf (it stays in Downloads) and its bytes are read from that download.
 //   An order whose step fails stops the walk; the files already made are still handed on, the rest stay "Not Downloaded" for next time.
-// Before every page action the computer must have been left alone for 3 minutes (N063); if he comes back, it stops.
+// Before every page action of a timed print the computer must have been left alone for 3 minutes (N063); if he comes back, it stops.
+// A print he starts himself (Print now) does not wait: he is there, watching.
 'use strict';
 
 const MLW_PAGE_WAIT_MS = 30 * 1000;
@@ -43,8 +44,8 @@ const mlwIsPdf = base64 => typeof base64 === 'string' && /^JVBER/.test(base64); 
 //   idle() -> true when the computer has been left alone 3 min;  printed(ids) -> those already printed
 //   capture() -> { done: Promise<{ name, base64 }>, stop() }, watching for the label download BEFORE the dialog's Label is pressed
 //   pause() -> a short human-sized wait between orders
-async function meeshoLabelWalk(shipBy, io) {
-  const stopIfUsed = async () => { if (!(await io.idle())) throw new Error('you came back to the computer, so Click stopped.'); };
+async function meeshoLabelWalk(shipBy, io, byHand = false) {
+  const stopIfUsed = async () => { if (!byHand && !(await io.idle())) throw new Error('you came back to the computer, so Click stopped.'); };
   const ask = async (tabId, msg) => {
     await stopIfUsed();
     const r = await io.call(tabId, msg);
@@ -117,6 +118,6 @@ const mlwIo = {
     return { done, stop: () => { clearTimeout(timer); chrome.downloads.onCreated.removeListener(on); } };
   },
 };
-if (typeof printSources !== 'undefined') printSources.meesho = shipBy => meeshoLabelWalk(shipBy, mlwIo);
+if (typeof printSources !== 'undefined') printSources.meesho = (shipBy, opts) => meeshoLabelWalk(shipBy, mlwIo, !!(opts && opts.byHand));
 
 if (typeof module !== 'undefined') module.exports = { meeshoLabelWalk, mlwPick, mlwDueDay, mlwReadyUrl, mlwDataUrlBase64, mlwIsPdf, mlwFileFrom };

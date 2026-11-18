@@ -57,6 +57,7 @@ function io(over = {}) {
 
   w = io({ idle: async () => false });
   await assert.rejects(W.meeshoLabelWalk(day(18), w), /came back to the computer/); assert.deepStrictEqual(w.calls, []); ok('computer in use: not one page action');
+  w = io({ idle: async () => false }); r = await W.meeshoLabelWalk(day(18, 12), w, true); assert.deepStrictEqual(r.orderIds, ['A', 'B', 'E']); ok('Print now by hand: he is there, so the walk does not wait for 3 idle minutes');
   let left = 5;   // idle for the check, the rows and the first Label + dialog Label (5 asks), then he comes back
   w = io({ idle: async () => left-- > 0 });
   r = await W.meeshoLabelWalk(day(18, 12), w); assert.deepStrictEqual(r.orderIds, ['A']); assert.ok(/Stopped after 1 of 3.*came back/.test(r.note)); ok('he comes back mid-walk: the finished label is kept, the rest stop, and it says so');
