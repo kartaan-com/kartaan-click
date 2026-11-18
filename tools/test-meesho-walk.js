@@ -100,6 +100,17 @@ function io(over = {}) {
   ok('page: a renamed heading is named, not guessed');
   send = load(html, 'https://supplier.meesho.com/panel/v3/new/fulfillment/xuptj/orders/pending');
   assert.strictEqual((await send({ type: 'KC_LABEL_CHECK', waitMs: 300 })).ok, false); ok('page: the Pending page is not Ready to Ship');
+  // R480W: when the table is not found, the answer carries what the page DID show (no order, buyer or product text) so one failed press tells us its shape.
+  send = load(html); window.document.querySelector('table').remove();
+  const noTbl = await send({ type: 'KC_LABEL_CHECK', waitMs: 200 });
+  assert.ok(noTbl.seen && noTbl.seen.path === '/panel/v3/new/fulfillment/xuptj/orders/ready-to-ship' && noTbl.seen.tables === 0 && typeof noTbl.seen.rows === 'number' && typeof noTbl.seen.iframes === 'number' && Array.isArray(noTbl.seen.tabs));
+  send = load(html); { const th = window.document.querySelector('table thead th:nth-child(8)'); th.textContent = 'Ship By'; }
+  const renamed = await send({ type: 'KC_LABEL_CHECK', waitMs: 200 });
+  assert.ok(renamed.seen && renamed.seen.tables === 1 && renamed.seen.heads[0].includes('Ship By') && renamed.seen.heads[0].includes('Product Details'));
+  assert.ok(!JSON.stringify([noTbl, renamed]).includes('Order ID'), 'no order text in what is recorded');
+  assert.ok(JSON.stringify(renamed.seen).length < 1500); ok('page: a missed table reports its shape (path, headings, counts, tabs) and no order text');
+  w = io({ answer: m => m.type === 'KC_LABEL_CHECK' ? { ok: false, reason: 'the orders table is missing', seen: { path: '/x', tables: 0 } } : { ok: true } });
+  await assert.rejects(W.meeshoLabelWalk(day(18), w), /orders table is missing[\s\S]*Seen on the page: \{"path":"\/x","tables":0\}/); ok('the walk puts the page shape into its failure message (which the last-runs list records)');
   // The live run of 18 Nov: the page fills its table a few seconds after the tab opens, and its heading reads "Dispatch Date/SLA" (maybe with an icon after it).
   send = load(html.replace('Dispatch Date/SLA', 'Dispatch Date/SLA ⓘ'));
   assert.deepStrictEqual(await send({ type: 'KC_LABEL_CHECK', waitMs: 300 }), { ok: true }); ok('page: a heading with something after "Dispatch Date" is still the date column');

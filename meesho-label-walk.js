@@ -49,7 +49,7 @@ async function meeshoLabelWalk(shipBy, io, byHand = false) {
   const ask = async (tabId, msg) => {
     await stopIfUsed();
     const r = await io.call(tabId, msg);
-    if (!r || r.ok === false) throw new Error('the Meesho Ready to Ship page is not as Click knows it (' + (r && r.reason || 'no answer from the page') + '). Click stopped.');
+    if (!r || r.ok === false) throw new Error('the Meesho Ready to Ship page is not as Click knows it (' + (r && r.reason || 'no answer from the page') + '). Click stopped.' + (r && r.seen ? ' Seen on the page: ' + JSON.stringify(r.seen) : ''));
     return r;
   };
   const found = await io.tab();

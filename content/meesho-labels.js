@@ -20,15 +20,29 @@
 
   function table() { return [...document.querySelectorAll('table')].find(t => [...t.querySelectorAll('thead th')].some(h => HEADS.due.test(txt(h)))) || null; }
 
-  // { ok, t, cols } or { ok:false, reason } saying what is not as expected.
+  // What the page shows when the table is not found: facts only (address path, headings, counts, tab names), never order, buyer or product text.
+  function shape() {
+    const cut = (x, n) => txt({ textContent: x }).slice(0, n);
+    return {
+      path: location.pathname,
+      tables: document.querySelectorAll('table').length,
+      heads: [...document.querySelectorAll('table')].slice(0, 3).map(t => [...t.querySelectorAll('thead th')].slice(0, 12).map(h => cut(txt(h), 30)).join(' | ')),
+      rows: document.querySelectorAll('tbody tr').length,
+      roles: { table: document.querySelectorAll('[role=table]').length, grid: document.querySelectorAll('[role=grid]').length, row: document.querySelectorAll('[role=row]').length },
+      iframes: document.querySelectorAll('iframe').length,
+      tabs: [...document.querySelectorAll('[role=tab]')].slice(0, 12).map(x => cut(txt(x), 30) + (x.getAttribute('aria-selected') === 'true' ? ' *' : ''))
+    };
+  }
+
+  // { ok, t, cols } or { ok:false, reason, seen } saying what is not as expected and what the page did show.
   function check() {
     if (!/^\/panel\/.*\/orders\/ready-to-ship\b/.test(location.pathname)) return { ok: false, reason: 'this is not the Ready to Ship page' };
     const t = table();
-    if (!t) return { ok: false, reason: 'the orders table with a Dispatch Date column is missing' };
+    if (!t) return { ok: false, reason: 'the orders table with a Dispatch Date column is missing', seen: shape() };
     const heads = [...t.querySelectorAll('thead th')].map(txt), cols = {};
     for (const k of Object.keys(HEADS)) {
       cols[k] = heads.findIndex(h => HEADS[k].test(h));
-      if (cols[k] < 0) return { ok: false, reason: 'the "' + k + '" column heading is missing or renamed' };
+      if (cols[k] < 0) return { ok: false, reason: 'the "' + k + '" column heading is missing or renamed', seen: shape() };
     }
     return { ok: true, t, cols };
   }
