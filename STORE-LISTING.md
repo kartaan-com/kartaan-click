@@ -126,7 +126,7 @@ site is queried, and tabs on any other site are never looked at.
 those pages. `https://supplier.meesho.com/*` is required for the portal check-in
 script and for the order-accepting script, which runs only on the user's own
 Pending orders tab and reads only the SKU code and the dispatch-by date from each
-row. `https://sellercentral.amazon.in/*` is required for the portal check-in
+row. `https://storage.googleapis.com/*` is required for the label download: Meesho serves a seller's label PDF from its own Google storage link, and the extension reads that one file back (without cookies, only the label Chrome is saving at that moment) to hand it to the Label Cropper tab; nothing is sent anywhere else. `https://sellercentral.amazon.in/*` is required for the portal check-in
 content script alone — nothing on Amazon is ever clicked beyond its order tabs. That script does nothing at
 all unless the user has switched check-ins on AND the background worker confirms
 this tab is part of a round — which it does for a tab the extension opened, for a
@@ -191,6 +191,7 @@ machine:
 There is no `XMLHttpRequest` anywhere. The only URLs in the package are
 `seller.flipkart.com`, `supplier.meesho.com`, `sellercentral.amazon.in` — the three
 seller portals the user already works on, opened only for a check-in round — and
+`storage.googleapis.com` for Meesho's own label file (read back once per label, after the user presses Print), and
 `raw.githubusercontent.com` for the version file, which is read once a day, and
 `*.synlabs.io` for the VMS tool described above. Two further addresses appear in
 the package but are never requested by the extension: `kartaan.com`, the

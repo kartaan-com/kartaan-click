@@ -40,10 +40,11 @@ assert.ok(!W.mlwIsPdf(Buffer.from('<html>').toString('base64'))); ok('a data: ad
   // 18 Nov real try: the file WAS saved, then "Failed to fetch". Every read step now says which address kind it was (scheme + host only, never the path or token) and why it failed.
   const was = global.fetch; global.fetch = async () => { throw new TypeError('Failed to fetch'); };
   await assert.rejects(W.mlwFileFrom({ url: 'blob:https://supplier.meesho.com/abc' }, async () => ({ ok: false, reason: 'Failed to fetch' })), /Downloads folder.*blob address of supplier\.meesho\.com.*Failed to fetch/);
-  await assert.rejects(W.mlwFileFrom({ url: 'https://cdn.example.com/l/SECRET-TOKEN.pdf?sig=SECRET' }, async () => ({ ok: false, reason: 'not an address of this page' })), e => /https address of cdn\.example\.com/.test(e.message) && /Failed to fetch/.test(e.message) && !/SECRET/.test(e.message));
-  let asked2 = 0; global.fetch = async () => { asked2++; return { arrayBuffer: async () => Buffer.from('%PDF-1') }; };
+  await assert.rejects(W.mlwFileFrom({ url: 'https://storage.googleapis.com/b/l/SECRET-TOKEN.pdf?sig=SECRET' }, async () => ({ ok: false, reason: 'not an address of this page' })), e => /https address of storage\.googleapis\.com/.test(e.message) && /Failed to fetch/.test(e.message) && !/SECRET/.test(e.message));
+  let asked2 = 0, init2; global.fetch = async (u, i) => { asked2++; init2 = i; return { arrayBuffer: async () => Buffer.from('%PDF-1') }; };
   assert.deepStrictEqual(await W.mlwFileFrom({ url: 'https://supplier.meesho.com/x.pdf', filename: 'a/L.pdf' }, async () => ({ ok: true, base64: b64 })), { name: 'L.pdf', base64: b64 }); assert.strictEqual(asked2, 0);
-  assert.strictEqual((await W.mlwFileFrom({ url: 'https://cdn.example.com/x.pdf' }, async () => ({ ok: false, reason: 'no' }))).base64, Buffer.from('%PDF-1').toString('base64'));
+  assert.strictEqual((await W.mlwFileFrom({ url: 'https://storage.googleapis.com/b/x.pdf?sig=1' }, async () => ({ ok: false, reason: 'no' }))).base64, Buffer.from('%PDF-1').toString('base64')); assert.strictEqual(init2.credentials, 'omit', 'no cookies go to Google storage');
+  asked2 = 0; await assert.rejects(W.mlwFileFrom({ url: 'https://cdn.example.com/x.pdf' }, async () => ({ ok: false, reason: 'no' })), /https address of cdn\.example\.com could not be read \(no; Click does not read files from that host\)/); assert.strictEqual(asked2, 0, 'a host that is not Meesho or its label storage is never fetched');
   global.fetch = was; ok('an https label is tried through the page first, then Click; a failed read names the address kind and the reason, never the path');
 
 })().then(() => {})

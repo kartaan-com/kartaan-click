@@ -11,6 +11,7 @@
   "host_permissions": [
     "https://seller.flipkart.com/*",
     "https://supplier.meesho.com/*",
+    "https://storage.googleapis.com/*",
     "https://sellercentral.amazon.in/*"
   ],
 

@@ -100,6 +100,8 @@ const mlwReadyUrl = url => url.replace(/\/orders\/[\w-]+.*$/, '/orders/ready-to-
 const mlwKind = url => { const m = /^(data|blob:https?|https?)[:/]*([^/?#]*)/.exec(url || ''); return m ? (m[1].startsWith('blob') ? 'blob' : m[1].replace(/:$/, '')) + ' address' + (m[2] && m[1] !== 'data' ? ' of ' + m[2] : '') : 'address'; };
 // The label Chrome is saving: bytes from its data: address; from the Meesho page itself when it is a blob: address (a blob belongs to
 // the page that made it, so only that page's script can read it); fetched when it is a plain https address.
+// Meesho serves the label from Google Cloud Storage (a signed link; seen 18 Nov 2026: HostUrl storage.googleapis.com, referrer supplier.meesho.com).
+const MLW_FILE_HOSTS = ['supplier.meesho.com', 'storage.googleapis.com'];
 const mlwFileFrom = async (item, readBlob) => {
   const url = item.url || '';
   const name = (item.filename || '').split(/[\\/]/).pop() || 'label.pdf';
@@ -110,8 +112,10 @@ const mlwFileFrom = async (item, readBlob) => {
     if (r && r.ok) base64 = r.base64; else why = (r && r.reason) || 'no answer from the page';
   }
   if (!mlwIsPdf(base64) && /^https:/.test(url)) {
-    try {
-      const buf = new Uint8Array(await (await fetch(url, { credentials: 'include' })).arrayBuffer());
+    const host = (/^https:\/\/([^/?#]*)/.exec(url) || [])[1];
+    if (!MLW_FILE_HOSTS.includes(host)) why += (why ? '; ' : '') + 'Click does not read files from that host';
+    else try {   // NET-OK: only Meesho's own site and its label storage (MLW_FILE_HOSTS), and only the address of the label Chrome is saving; the bytes go to the Label Cropper tab, nowhere else.
+      const buf = new Uint8Array(await (await fetch(url, { credentials: host === 'supplier.meesho.com' ? 'include' : 'omit' })).arrayBuffer());
       base64 = btoa(Array.from(buf, b => String.fromCharCode(b)).join(''));
     } catch (e) { why += (why ? '; ' : '') + 'Click: ' + (e && e.message || e); }
   }

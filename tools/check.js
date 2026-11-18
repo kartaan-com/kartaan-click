@@ -181,7 +181,7 @@ const shipped = referenced.filter(f => f.endsWith('.js'));
 // the tools run on; kartaan.com is the version file. Anything else is a finding.
 const ALLOWED_HOSTS = [
   'kartaan.com', 'raw.githubusercontent.com', 'github.com',
-  'seller.flipkart.com', 'supplier.meesho.com',
+  'seller.flipkart.com', 'supplier.meesho.com', 'storage.googleapis.com',
   'sellercentral.amazon.in', 'www.w3.org',   // the last is the SVG namespace, not a server
 ];
 
