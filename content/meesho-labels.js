@@ -1,21 +1,26 @@
 // ─── Kartaan Click — Meesho label walk, the page side (round R480W) ───
 //
-// Reads the seller's "Ready to Ship" list and ticks rows. It never presses Generate label or Label:
-// that step is meesho-label-walk.js's `arrive`, built only once the real pop-up has been watched.
-// The page is known from the saved page of 17 Nov 2026: a table headed
+// Reads the seller's "Ready to Ship" list and, for ONE order at a time, does what he does by hand (watched 18 Nov 2026):
+//   press the row's "Label" button -> the "Ready to Ship Labels" dialog says "Generating labels...", then
+//   "Labels generated successfully for 1 order" with a "Download Manifest" box and a "Label" button
+//   -> press that "Label" button: the dialog closes and Chrome saves Sub_Order_Labels_<uuid>.pdf.
+// Catching the file is the worker's job (meesho-label-walk.js); this file only reads and presses.
+// The list is known from the saved page of 17 Nov 2026: a table headed
 //   (box) | Product Details | Sub-order ID | SKU ID | Meesho ID | Quantity | Size | Dispatch Date/SLA | Action
-// with a "select all rows" box in the heading, a "Select row N" box in each row, the order id as
-// "Order ID: 123…" in the Product Details cell, and "Not Downloaded" beside the row's Label button.
-// A heading, box or word that is not there = the page is not the one Click knows, and it says which.
+// with the order id as "Order ID: 123…" in the Product Details cell and "Not Downloaded" beside the row's Label button.
+// A heading, button or word that is not there = the page is not the one Click knows, and the answer says which.
 'use strict';
 (function () {
   if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.onMessage) return;
   const txt = el => ((el && (el.innerText || el.textContent)) || '').replace(/\s+/g, ' ').trim();
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
   const HEADS = { details: /^product details$/i, sub: /^sub-order id$/i, due: /^dispatch date/i, action: /^action$/i };
+  const DONE = /Labels generated successfully for (\d+) orders?/i;
+  const labelButton = root => [...root.querySelectorAll('button')].find(b => txt(b) === 'Label') || null;
 
   function table() { return [...document.querySelectorAll('table')].find(t => [...t.querySelectorAll('thead th')].some(h => HEADS.due.test(txt(h)))) || null; }
 
-  // { ok, table, cols } or { ok:false, reason } saying what is not as expected.
+  // { ok, t, cols } or { ok:false, reason } saying what is not as expected.
   function check() {
     if (!/^\/panel\/.*\/orders\/ready-to-ship\b/.test(location.pathname)) return { ok: false, reason: 'this is not the Ready to Ship page' };
     const t = table();
@@ -25,44 +30,72 @@
       cols[k] = heads.findIndex(h => HEADS[k].test(h));
       if (cols[k] < 0) return { ok: false, reason: 'the "' + k + '" column heading is missing or renamed' };
     }
-    if (!t.querySelector('thead input[type="checkbox"][aria-label="select all rows"]')) return { ok: false, reason: 'the select-all box is missing' };
     return { ok: true, t, cols };
   }
 
-  // Every row: its order id, its sub-order id, its dispatch date as shown, whether its label is still "Not Downloaded".
+  // The order rows as { tr, orderId, sub, due, action }; a one-cell row (seen on the saved page) is not an order.
+  function orderRows(c) {
+    const out = [];
+    for (const tr of c.t.querySelectorAll('tbody tr')) {
+      const cells = tr.querySelectorAll('td');
+      if (cells.length <= Math.max(...Object.values(c.cols))) continue;
+      const id = /Order ID:\s*(\d+)/.exec(txt(cells[c.cols.details]));
+      if (!id) return null;
+      out.push({ tr, orderId: id[1], sub: txt(cells[c.cols.sub]), due: txt(cells[c.cols.due]), action: cells[c.cols.action] });
+    }
+    return out;
+  }
+
+  // Every row: its order id, sub-order id, dispatch date as shown, and whether its label is still "Not Downloaded".
   function rows() {
     const c = check();
     if (!c.ok) return c;
-    const out = [];
-    for (const tr of c.t.querySelectorAll('tbody tr')) {
-      const cells = tr.querySelectorAll('td'), box = tr.querySelector('input[type="checkbox"]');
-      if (cells.length <= Math.max(...Object.values(c.cols))) continue;   // a one-cell row (seen on the saved page) is not an order
-      const id = /Order ID:\s*(\d+)/.exec(txt(cells[c.cols.details]));
-      if (!box || !id || !cells[c.cols.action]) return { ok: false, reason: 'a row has no order id or no tick box' };
-      out.push({ orderId: id[1], sub: txt(cells[c.cols.sub]), due: txt(cells[c.cols.due]), notDownloaded: /not downloaded/i.test(txt(cells[c.cols.action])) });
-    }
-    return { ok: true, rows: out };
+    const all = orderRows(c);
+    if (!all) return { ok: false, reason: 'a row has no order id' };
+    return { ok: true, rows: all.map(r => ({ orderId: r.orderId, sub: r.sub, due: r.due, notDownloaded: /not downloaded/i.test(txt(r.action)) })) };
   }
 
-  // Tick exactly these orders (clearing every other tick first) and say which ended up ticked. mode 'clear' unticks all.
-  function tick(orderIds) {
+  // The dialog that says "Labels generated successfully": from that line, up to the first box that holds a "Label" button.
+  function doneDialog() {
+    const line = [...document.querySelectorAll('body *')].filter(e => DONE.test(txt(e))).pop();   // the innermost one comes last
+    for (let e = line; e && e !== document.body; e = e.parentElement) if (labelButton(e)) return { line, box: e };
+    return null;
+  }
+
+  // Press the Label button of ONE order and wait until its labels are ready ("generated successfully for 1 order").
+  async function open(orderId, waitMs) {
     const c = check();
     if (!c.ok) return c;
-    const want = new Set(orderIds), ticked = [];
-    for (const tr of c.t.querySelectorAll('tbody tr')) {
-      const box = tr.querySelector('input[type="checkbox"]'), m = /Order ID:\s*(\d+)/.exec(txt(tr.querySelectorAll('td')[c.cols.details]));
-      if (!box || !m) continue;
-      if (box.checked !== want.has(m[1])) box.click();
-      if (box.checked) ticked.push(m[1]);
+    const all = orderRows(c), row = all && all.find(r => r.orderId === orderId);
+    if (!row) return { ok: false, reason: 'order ' + orderId + ' is not in the list' };
+    if (!/not downloaded/i.test(txt(row.action))) return { ok: false, reason: 'order ' + orderId + ' no longer says Not Downloaded' };
+    const btn = labelButton(row.action);
+    if (!btn) return { ok: false, reason: 'the row\'s Label button is missing' };
+    btn.click();
+    for (const t0 = Date.now(); Date.now() - t0 < waitMs; await sleep(300)) {
+      const d = doneDialog();
+      if (d) return Number(DONE.exec(txt(d.line))[1]) === 1 ? { ok: true } : { ok: false, reason: 'the dialog says labels for ' + DONE.exec(txt(d.line))[1] + ' orders, not 1' };
     }
-    return { ok: true, ticked };
+    return { ok: false, reason: 'the "Labels generated successfully" message did not come in time' };
+  }
+
+  // Press the dialog's Label button (Download Manifest stays unticked) and wait for the dialog to close.
+  async function save(waitMs) {
+    const d = doneDialog();
+    if (!d) return { ok: false, reason: 'the "Labels generated successfully" dialog is not showing' };
+    const manifest = d.box.querySelector('input[type="checkbox"]');
+    if (manifest && manifest.checked) manifest.click();
+    labelButton(d.box).click();
+    for (const t0 = Date.now(); Date.now() - t0 < waitMs; await sleep(300)) if (!doneDialog()) return { ok: true };
+    return { ok: false, reason: 'the dialog did not close after pressing Label' };
   }
 
   chrome.runtime.onMessage.addListener((msg, sender, respond) => {
     if (!msg || sender.id !== chrome.runtime.id) return;
     if (msg.type === 'KC_LABEL_CHECK') { const r = check(); respond(r.ok ? { ok: true } : r); }
     else if (msg.type === 'KC_LABEL_ROWS') respond(rows());
-    else if (msg.type === 'KC_LABEL_TICK') respond(tick(Array.isArray(msg.orderIds) ? msg.orderIds.filter(i => typeof i === 'string') : []));
+    else if (msg.type === 'KC_LABEL_OPEN' && typeof msg.orderId === 'string') { open(msg.orderId, msg.waitMs || 60000).then(respond); return true; }
+    else if (msg.type === 'KC_LABEL_SAVE') { save(msg.waitMs || 15000).then(respond); return true; }
   });
-  if (typeof module !== 'undefined') module.exports = { check, rows, tick };
+  if (typeof module !== 'undefined') module.exports = { check, rows, open, save };
 })();

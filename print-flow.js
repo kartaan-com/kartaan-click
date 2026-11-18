@@ -202,7 +202,7 @@ async function printStart(p, at, since = Date.now()) {
     // The orders a Yes marks printed are the ones the walk fetched, never the ones the cropper page says it read (N9).
     const orderIds = fetched ? fetched.filter(id => typeof id === 'string' && !r.alreadyPrinted.includes(id))
       : r.rows.filter(o => o && typeof o.orderId === 'string' && !r.alreadyPrinted.includes(o.orderId)).map(o => o.orderId);
-    const rec = { at, state: 'asked', orderIds, n: r.count.ordersOut, msg: 'Printed ' + r.count.ordersOut + ' — did you get ' + r.count.ordersOut + '? ' + r.count.text };
+    const rec = { at, state: 'asked', orderIds, n: r.count.ordersOut, msg: 'Printed ' + r.count.ordersOut + ' — did you get ' + r.count.ordersOut + '? ' + r.count.text + (got && !Array.isArray(got) && got.note ? ' ' + got.note : '') };
     await runPut(p, rec);
     await printNote(p, rec.msg, 'ok');
     return printShow(p, rec);

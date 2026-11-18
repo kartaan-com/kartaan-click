@@ -5,14 +5,15 @@
 // exactly these printed — never what the cropper page says it read, N9).
 //   1 the seller's Meesho tab goes to Ready to Ship (a tab he already has open; never a new sign-in)
 //   2 the page is checked against what Click knows; anything different = stop, touch nothing, say what
-//   3 the orders due by the cutoff, label not downloaded, not already printed, are ticked
-//   4 `arrive`: Generate label and the file coming back. NOT BUILT: its pop-up has not been watched yet.
+//   3 the orders due by the cutoff, label not downloaded, not already printed, are taken ONE AT A TIME, as he does it by hand
+//     (watched 18 Nov 2026): the row's Label button, wait for "Labels generated successfully", the dialog's Label button;
+//     Chrome then saves Sub_Order_Labels_<uuid>.pdf (it stays in Downloads) and its bytes are read from that download.
+//   An order whose step fails stops the walk; the files already made are still handed on, the rest stay "Not Downloaded" for next time.
 // Before every page action the computer must have been left alone for 3 minutes (N063); if he comes back, it stops.
-// Until `arrive` exists the source is not registered, so nothing here ever touches his page.
 'use strict';
 
-const MLW_ARRIVE_READY = false;                // the day `arrive` is real, this becomes true
 const MLW_PAGE_WAIT_MS = 30 * 1000;
+const MLW_FILE_WAIT_MS = 20 * 1000;
 const MLW_MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 
 // "17 Nov" as the page shows it -> that day's start (ms), in the year that puts it nearest to `now`. null if it is not a date.
@@ -29,15 +30,25 @@ function mlwPick(rows, shipBy, printed, now) {
   return rows.filter(r => r.notDownloaded && !printed.includes(r.orderId) && (mlwDueDay(r.due, now) ?? Infinity) <= last).map(r => r.orderId);
 }
 
+// The bytes of a data: address (what the page hands Chrome for the label), as base64; null for anything else.
+function mlwDataUrlBase64(url) {
+  const m = /^data:[^,]*?(;base64)?,(.*)$/s.exec(url || '');
+  if (!m) return null;
+  return m[1] ? m[2] : (typeof Buffer !== 'undefined' ? Buffer.from(decodeURIComponent(m[2]), 'latin1').toString('base64') : btoa(decodeURIComponent(m[2])));
+}
+const mlwIsPdf = base64 => typeof base64 === 'string' && /^JVBER/.test(base64);   // "%PDF" in base64
+
 // The walk. `io` holds everything that touches Chrome, so it can be tried without a browser:
 //   tab() -> a Meesho panel tab | null;  toReady(tab) -> the tab on Ready to Ship;  call(tabId, msg) -> the page's answer
-//   idle() -> true when the computer has been left alone 3 min;  printed(ids) -> those already printed;  arrive(tabId, ids) -> files
+//   idle() -> true when the computer has been left alone 3 min;  printed(ids) -> those already printed
+//   capture() -> { done: Promise<{ name, base64 }>, stop() }, watching for the label download BEFORE the dialog's Label is pressed
+//   pause() -> a short human-sized wait between orders
 async function meeshoLabelWalk(shipBy, io) {
-  const stopIfUsed = async () => { if (!(await io.idle())) throw new Error('you came back to the computer, so Click stopped. Nothing was printed.'); };
+  const stopIfUsed = async () => { if (!(await io.idle())) throw new Error('you came back to the computer, so Click stopped.'); };
   const ask = async (tabId, msg) => {
     await stopIfUsed();
     const r = await io.call(tabId, msg);
-    if (!r || r.ok === false) throw new Error('the Meesho Ready to Ship page is not as Click knows it (' + (r && r.reason || 'no answer from the page') + '). Click stopped and pressed nothing.');
+    if (!r || r.ok === false) throw new Error('the Meesho Ready to Ship page is not as Click knows it (' + (r && r.reason || 'no answer from the page') + '). Click stopped.');
     return r;
   };
   const found = await io.tab();
@@ -47,19 +58,35 @@ async function meeshoLabelWalk(shipBy, io) {
   await ask(tab.id, { type: 'KC_LABEL_CHECK' });
   const rows = (await ask(tab.id, { type: 'KC_LABEL_ROWS' })).rows || [];
   const ids = mlwPick(rows, shipBy, await io.printed(rows.map(r => r.orderId)), Date.now());
-  if (ids.length === 0) return { files: [], orderIds: [] };
-  try {
-    const t = await ask(tab.id, { type: 'KC_LABEL_TICK', orderIds: ids });
-    if (t.ticked.length !== ids.length || ids.some(i => !t.ticked.includes(i))) throw new Error('Click could not tick exactly the orders it meant to (' + t.ticked.length + ' of ' + ids.length + ').');
-    return { files: await io.arrive(tab.id, ids), orderIds: ids };
-  } catch (e) {
-    try { await io.call(tab.id, { type: 'KC_LABEL_TICK', orderIds: [] }); } catch (x) { /* the page is gone or changed: nothing more to undo */ }
-    throw e;
+  const files = [], orderIds = [];
+  for (const id of ids) {
+    try {
+      await ask(tab.id, { type: 'KC_LABEL_OPEN', orderId: id });
+      const cap = io.capture();
+      try { await ask(tab.id, { type: 'KC_LABEL_SAVE' }); files.push(await cap.done); } finally { cap.stop(); }
+      orderIds.push(id);
+    } catch (e) {
+      if (files.length === 0) throw e;
+      return { files, orderIds, note: 'Stopped after ' + files.length + ' of ' + ids.length + ' orders: ' + (e && e.message || e) };
+    }
+    if (id !== ids[ids.length - 1]) await io.pause();
   }
+  return { files, orderIds };
 }
 
 // The real Chrome behind `io`. The Meesho tab: one he already has; the seller id in the address is his own, taken from there.
 const mlwReadyUrl = url => url.replace(/\/orders\/[\w-]+.*$/, '/orders/ready-to-ship');
+const mlwFileFrom = async item => {   // the label Chrome is saving: bytes from its data: address, or fetched when it is a plain https address
+  const url = item.url || '';
+  const name = (item.filename || '').split(/[\\/]/).pop() || 'label.pdf';
+  let base64 = mlwDataUrlBase64(url);
+  if (base64 === null && /^https:/.test(url)) {
+    const buf = new Uint8Array(await (await fetch(url, { credentials: 'include' })).arrayBuffer());
+    base64 = btoa(Array.from(buf, b => String.fromCharCode(b)).join(''));
+  }
+  if (!mlwIsPdf(base64)) throw new Error('Click could not read the label file Chrome saved (it is in your Downloads folder).');
+  return { name, base64 };
+};
 const mlwIo = {
   tab: async () => (await chrome.tabs.query({ url: 'https://supplier.meesho.com/panel/*' })).find(t => /\/orders\//.test(t.url)) || null,
   toReady: async tab => {
@@ -75,8 +102,18 @@ const mlwIo = {
   call: (tabId, msg) => new Promise(res => chrome.tabs.sendMessage(tabId, msg, r => res(chrome.runtime.lastError ? null : r))),
   idle: async () => !(await computerInUse()),
   printed: ids => printedAmong('meesho', ids),
-  arrive: async () => { throw new Error('the label download step is not built yet.'); },
+  pause: () => new Promise(r => setTimeout(r, 3000 + Math.random() * 3000)),
+  capture: () => {
+    let on, timer;
+    const done = new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('the label file did not come in time (it may be in your Downloads folder).')), MLW_FILE_WAIT_MS);
+      on = item => { if (/^data:|^blob:/.test(item.url || '') || /Sub_Order_Labels/i.test(item.filename || item.url || '')) { clearTimeout(timer); mlwFileFrom(item).then(resolve, reject); } };
+      chrome.downloads.onCreated.addListener(on);
+    });
+    done.catch(() => {});
+    return { done, stop: () => { clearTimeout(timer); chrome.downloads.onCreated.removeListener(on); } };
+  },
 };
-if (MLW_ARRIVE_READY && typeof printSources !== 'undefined') printSources.meesho = shipBy => meeshoLabelWalk(shipBy, mlwIo);
+if (typeof printSources !== 'undefined') printSources.meesho = shipBy => meeshoLabelWalk(shipBy, mlwIo);
 
-if (typeof module !== 'undefined') module.exports = { meeshoLabelWalk, mlwPick, mlwDueDay, mlwReadyUrl };
+if (typeof module !== 'undefined') module.exports = { meeshoLabelWalk, mlwPick, mlwDueDay, mlwReadyUrl, mlwDataUrlBase64, mlwIsPdf };
